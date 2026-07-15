@@ -4,7 +4,8 @@
 
 **Created**: 2026-07-15
 
-**Status**: Implemented local MVP; final release and publication gates pending
+**Status**: Implemented local MVP and published public repository; credentialed
+live-model validation and operator submission actions remain pending
 
 **Input**: Build Verity Cordon, a tamper-evident memory firewall for Codex,
 as a complete OpenAI Build Week Developer Tools submission.

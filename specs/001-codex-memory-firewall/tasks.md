@@ -219,7 +219,7 @@ Deferred `VC-FUT-*` capabilities are not implementation tasks.
 - [x] T074 Run the offline demo from a fresh isolated clone, verify no real credential is required or logged, and record exact commands/results in `docs/hackathon/HACKATHON_WORK.md`
 - [x] T075 Run final Spec Kit consistency analysis and convergence; close only verified checklist items in `specs/001-codex-memory-firewall/checklists/` and `docs/hackathon/SUBMISSION_CHECKLIST.md`
 - [x] T076 Audit tracked files and Git history under `.` for credentials, private keys, mutation capabilities, raw evidence, generated databases, and unsupported claims before publication
-- [ ] T077 Create intentional feature commits, integrate without force-push, create the authorized public GitHub repository, push the verified default branch, and record the exact repository URL and commit in `docs/hackathon/HACKATHON_WORK.md`
+- [x] T077 Create intentional feature commits, integrate without force-push, create the authorized public GitHub repository, push the verified default branch, and record the exact repository URL and commit in `docs/hackathon/HACKATHON_WORK.md`
 
 ---
 

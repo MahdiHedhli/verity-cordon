@@ -13,7 +13,9 @@ were used for official-rule and Spec Kit research, current Codex surface
 research, donor-source inspection, contract drafting, isolated review, and the
 Codex plugin/hook integration implementation and verification in a temporary
 configuration. The primary thread reviewed and integrated that bounded work.
-No public repository publication is claimed complete yet.
+The verified default branch was published at
+`https://github.com/MahdiHedhli/verity-cordon` only after the clean-clone,
+security, browser, and Spec Kit release gates passed.
 
 ## Where Codex Accelerated the Work
 

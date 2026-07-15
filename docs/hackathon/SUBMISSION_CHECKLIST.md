@@ -26,7 +26,7 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 
 ## Repository
 
-- [ ] Public repository URL is live with relevant licensing.
+- [x] Public repository URL is live with relevant licensing.
 - [x] Apache-2.0 project license is selected.
 - [x] `LICENSE`, `NOTICE`, and `THIRD_PARTY_NOTICES.md` are complete.
 - [x] Donor commit, license, baseline, and Verity contribution are documented.
@@ -35,7 +35,8 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 - [x] README explains Codex collaboration, operator decisions, and GPT-5.6 use.
 - [x] No private keys, API keys, bearer capabilities, raw secrets, or unsafe logs
   are tracked.
-- [ ] Final branch, commit, tags, and verification results are recorded.
+- [x] Final branch, initial public commit, repository topics, and verification
+  results are recorded.
 
 ## Demo Video
 

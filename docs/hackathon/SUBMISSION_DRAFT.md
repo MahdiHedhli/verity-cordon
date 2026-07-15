@@ -159,6 +159,6 @@ service. It does not claim to launch Codex.
 
 ## Required Final Links
 
-- **Repository**: `REPLACE_WITH_PUBLIC_REPOSITORY_URL`
+- **Repository**: https://github.com/MahdiHedhli/verity-cordon
 - **Public YouTube demo**: `REPLACE_WITH_PUBLIC_YOUTUBE_URL`
 - **Codex `/feedback` Session ID**: `REPLACE_WITH_REAL_SESSION_ID`

@@ -6,7 +6,8 @@
   2026-07-21 17:00 PT
 - **Verity Cordon project start**: 2026-07-15
 - **Clean baseline commit**: `ef2c80d` (`chore: establish hackathon baseline`)
-- **Active branch**: `feat/001-codex-memory-firewall`
+- **Integrated default branch**: `main`
+- **Implementation branch**: `feat/001-codex-memory-firewall`
 - **Only active feature**: `specs/001-codex-memory-firewall/`
 
 The baseline is an empty root commit created after confirming that the workspace
@@ -38,10 +39,11 @@ renamed codebase.
 | `5a2aa36` | Explicit demo and signed memory-expiration lifecycle | Complete |
 | `9f2089b` | Complete Control Room, Codex integration, security hardening, and verification suite | Complete |
 | `c632e62` | Converged specifications and hackathon release materials | Complete |
-| `c632e62..HEAD` | Fresh-clone, audit, and publication evidence | In progress |
+| `c632e62..95459ac` | Fresh-clone, audit, repeatable verification, and publication evidence | Complete |
+| `95459ac` | Initial verified public `main` commit | Complete |
 
-The final commit, public URL, and integrated default-branch range must be added
-after publication.
+The feature branch was fast-forwarded into `main` without rewriting history or
+force-pushing.
 
 ## Milestones
 
@@ -64,7 +66,7 @@ after publication.
 - [x] Final clean-checkout offline demonstration
 - [x] Final full verification after security hardening
 - [x] Final Spec Kit analysis and checklist convergence
-- [ ] Public repository creation and push
+- [x] Public repository creation and push
 - [ ] Operator video, `/feedback`, and Devpost submission
 
 ## Verified Checkpoints
@@ -165,6 +167,23 @@ still ask for a false-positive review. Secret scanning will not be disabled to
 work around a hypothetical block. Ignored demo runtime state was removed before
 publication.
 
+### Public repository
+
+- URL: https://github.com/MahdiHedhli/verity-cordon
+- Initial public commit: `95459ac6559d79220307624847804aa5f29963f2`
+- Visibility: public
+- Default branch: `main`
+- License detected from the anonymous GitHub API: Apache-2.0
+- Topics: `codex`, `developer-tools`, `memory-security`, `openai-build-week`,
+  `prompt-injection`, `security`
+- GitHub security state: secret scanning enabled, push protection enabled,
+  Dependabot security updates enabled, and private vulnerability reporting
+  enabled
+
+An unauthenticated API request and anonymous raw-file requests confirmed the
+public repository, README positioning, default branch, and license after the
+initial push.
+
 ### Browser and Codex integration
 
 A desktop-width browser smoke exercised Overview, inventory, candidate detail,
@@ -218,8 +237,6 @@ submission-checklist item remain intentionally unchecked.
 
 - Exercise the credentialed live GPT-5.6 path if a suitable local key is
   available; otherwise disclose it as unexercised.
-- Create and verify the authorized public GitHub repository, then record its URL
-  and exact commit here.
 - Run `/feedback` in the primary project thread and record the real Session ID.
 - Record and upload a public YouTube video with audio under three minutes.
 - Keep the free judge path available through 2026-08-05 17:00 PT.
@@ -227,6 +244,7 @@ submission-checklist item remain intentionally unchecked.
 
 ## Submission Status
 
-Not submitted. No public repository state, successful live API call, video,
-screenshot, `/feedback` Session ID, or Devpost submission is represented as
-complete until independently created and verified.
+Not submitted. The public repository is independently verified. No successful
+credentialed live API call, video, screenshot, `/feedback` Session ID, or
+Devpost submission is represented as complete until independently created and
+verified.

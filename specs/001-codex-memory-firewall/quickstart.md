@@ -249,11 +249,10 @@ live-model accuracy claims.
 
 ## Clean-Checkout Acceptance
 
-This publication gate remains pending until the final public URL and commit are
-available:
+The public judge path is:
 
 ```bash
-git clone <PUBLIC_REPOSITORY_URL> verity-cordon-judge
+git clone https://github.com/MahdiHedhli/verity-cordon.git verity-cordon-judge
 cd verity-cordon-judge
 ./scripts/bootstrap.sh
 export VERITY_DATA_DIR=.verity-demo
