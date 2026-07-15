@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import aiosqlite
@@ -578,7 +578,91 @@ class MemoryService:
         del session_id
         if not self.event_store.healthy:
             return ""
+        verification = await self.event_store.verify()
+        if not verification.verified:
+            return ""
+        await self.expire_due_memories()
+        if not self.event_store.healthy:
+            return ""
         return render_approved_memory(
             await self.memory_view.list_active(),
             token_budget=token_budget,
         )
+
+    async def expire_due_memories(self, *, now: datetime | None = None) -> list[str]:
+        """Append explicit expiration events and atomically remove due active memory."""
+
+        if not self.event_store.healthy:
+            raise LedgerError("The ledger is unhealthy; expiration is disabled.")
+        current = (now or utc_now()).astimezone(UTC)
+        due: list[MemoryRecord] = []
+        for record in await self.memory_view.list_active():
+            if record.expires_at is None:
+                continue
+            try:
+                expires_at = datetime.fromisoformat(
+                    record.expires_at.replace("Z", "+00:00")
+                )
+            except ValueError as exc:
+                raise LedgerError("An active memory expiration is invalid.") from exc
+            if expires_at.tzinfo is None:
+                raise LedgerError("An active memory expiration lacks a UTC offset.")
+            if expires_at.astimezone(UTC) <= current:
+                due.append(record)
+        if not due:
+            return []
+
+        occurred_at = format_utc(current)
+        events = [
+            EventInput(
+                event_id=new_id(),
+                stream_id=record.candidate_id,
+                event_type=EventType.MEMORY_EXPIRED,
+                actor=Actor(type=ActorType.SYSTEM, id="verity.expiration-sweep"),
+                session_id=record.session_id,
+                source_class=EventSourceClass.SYSTEM,
+                memory_id=record.memory_id,
+                policy_id=record.policy_id,
+                policy_version=record.policy_version,
+                payload={
+                    "memory_id": record.memory_id,
+                    "commit_event_id": record.commit_event_id,
+                    "expires_at": record.expires_at,
+                    "reason": "ttl_elapsed",
+                },
+                occurred_at=occurred_at,
+            )
+            for record in due
+        ]
+
+        async def project(
+            connection: aiosqlite.Connection,
+            envelopes: list[EventEnvelope],
+        ) -> None:
+            for record, envelope in zip(due, envelopes, strict=True):
+                expired = record.model_copy(
+                    update={
+                        "status": "expired",
+                        "last_event_id": envelope.event_id,
+                        "last_event_sequence": envelope.sequence_number,
+                    }
+                )
+                await connection.execute(
+                    "DELETE FROM active_memories WHERE memory_id = ?",
+                    (record.memory_id,),
+                )
+                await connection.execute(
+                    """
+                    UPDATE memory_inventory
+                    SET status = 'expired', record_json = ?, last_event_sequence = ?
+                    WHERE memory_id = ?
+                    """,
+                    (
+                        canonical_json(expired.model_dump(mode="json")),
+                        envelope.sequence_number,
+                        record.memory_id,
+                    ),
+                )
+
+        await self.event_store.append_with_projection(events, project)
+        return [record.memory_id for record in due]

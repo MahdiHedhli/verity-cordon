@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -230,3 +231,32 @@ async def test_ledger_unhealthy_disables_injection_and_new_evaluation(tmp_path) 
                 content="Safe but must not commit.",
             )
         )
+
+
+@pytest.mark.asyncio
+async def test_due_ttl_appends_expiration_before_session_injection(tmp_path) -> None:
+    service, store, view = await build_service(tmp_path)
+    policy = service.policy_engine.policy.model_copy(deep=True)
+    next(rule for rule in policy.rules if rule.rule_id == "clean-project-fact").ttl_seconds = 60
+    service.policy_engine = PolicyEngine(policy)
+    committed = await service.evaluate_evidence(
+        EvidenceSubmission(
+            session_id=new_id(),
+            source_class=SourceClass.USER_INPUT,
+            content="The release manifest is generated from release.yaml.",
+        )
+    )
+    memory_id = committed.outcomes[0].memory_id
+    assert memory_id is not None
+
+    expired = await service.expire_due_memories(
+        now=datetime.now(UTC) + timedelta(minutes=2)
+    )
+
+    assert expired == [memory_id]
+    assert await view.list_active() == []
+    assert await service.session_start_context(session_id=new_id(), token_budget=1000) == ""
+    events = await store.list_events()
+    assert events[-1].event_type.value == "MemoryExpired"
+    assert events[-1].memory_id == memory_id
+    assert (await store.verify()).verified is True

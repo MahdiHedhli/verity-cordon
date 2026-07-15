@@ -20,6 +20,7 @@ from verity_cordon.core.errors import VerityError
 from verity_cordon.crypto.keys import FileKeyProvider
 from verity_cordon.daemon.app import create_app
 from verity_cordon.daemon.runtime import build_runtime
+from verity_cordon.demo import run_live_demo, run_offline_demo
 from verity_cordon.policies.load import load_policy
 
 app = typer.Typer(
@@ -345,6 +346,60 @@ def policy_activate(
                 "mode": activated.mode.value,
             }
         )
+    except Exception as error:
+        _safe_error(error)
+        raise typer.Exit(1) from error
+
+
+@demo_app.command("offline")
+def demo_offline(
+    serve_control_room: Annotated[
+        bool,
+        typer.Option("--serve/--no-serve", help="Start the local Control Room after seeding."),
+    ] = False,
+) -> None:
+    """Run attack, shadow, enforcement, revocation, and verification without an API key."""
+
+    try:
+        run = _run(run_offline_demo())
+        console.print_json(data=run.summary)
+        if serve_control_room:
+            settings = run.runtime.settings
+            if settings.control_room_passphrase is None:
+                entered = getpass.getpass("Control Room passphrase (12+ characters): ")
+                settings.validate_control_room_passphrase(entered)
+                settings = replace(settings, control_room_passphrase=entered)
+                run.runtime.settings = settings
+            uvicorn.run(
+                create_app(run.runtime),
+                host=settings.host,
+                port=settings.port,
+                access_log=False,
+            )
+    except Exception as error:
+        _safe_error(error)
+        raise typer.Exit(1) from error
+
+
+@demo_app.command("live")
+def demo_live(
+    serve_control_room: Annotated[
+        bool,
+        typer.Option("--serve/--no-serve", help="Start the local Control Room after seeding."),
+    ] = False,
+) -> None:
+    """Run the synthetic attack through explicit live GPT-5.6 structured assessment."""
+
+    try:
+        run = _run(run_live_demo())
+        console.print_json(data=run.summary)
+        if serve_control_room:
+            uvicorn.run(
+                create_app(run.runtime),
+                host=run.runtime.settings.host,
+                port=run.runtime.settings.port,
+                access_log=False,
+            )
     except Exception as error:
         _safe_error(error)
         raise typer.Exit(1) from error
