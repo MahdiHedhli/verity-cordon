@@ -229,7 +229,7 @@ gate, and leave only honest operator-owned submission work.
 - [x] T055 Run Ruff, mypy, tracked backend unit/contract/integration/adversarial/end-to-end tests with coverage, frontend lint/type/test/build, schema/OpenAPI validation, dependency audit, and `./scripts/verify.sh` from a clean checkout; record exact outcomes in `docs/hackathon/HACKATHON_WORK.md`
 - [ ] T056 Perform browser smoke/accessibility checks and a timed manual Codex Desktop attack-enforcement-clean-task-revocation-ledger rehearsal; record elapsed time and clearly separate automated from manual evidence in `docs/hackathon/HACKATHON_WORK.md`
 - [x] T057 Run Spec Kit consistency analysis and convergence, append and complete any remaining build tasks in `specs/002-codex-desktop-subscription-defense/tasks.md`, and update the constitution sync report in `.specify/memory/constitution.md`
-- [ ] T058 Record branch, final commit, tests, known limitations, deferred roadmap confirmation, submission status, exact operator actions, and the real `/feedback` reminder in `docs/hackathon/HACKATHON_WORK.md`
+- [x] T058 Record branch, final commit, tests, known limitations, deferred roadmap confirmation, submission status, exact operator actions, and the real `/feedback` reminder in `docs/hackathon/HACKATHON_WORK.md`
 
 **T057 Spec Kit analysis/convergence (2026-07-15)**:
 
@@ -245,6 +245,7 @@ gate, and leave only honest operator-owned submission work.
 - A clone below `/tmp` was intentionally rejected by the trusted-root security boundary; acceptance moved to a private trusted parent instead of weakening that control.
 - Browser smoke verified Overview, a typed `MemoryRevoked` detail event, quarantine Block, selective revocation with unrelated memory preserved, enforce-to-shadow-to-enforce mode changes ending on policy `1.0.2`, and a 69-event ledger with anchored completeness and a consistent view. At 1280x720 it showed no horizontal overflow, 0 console errors or warnings, the expected main/navigation/heading/skip-link structure, 0 unlabeled controls, and 0 duplicate IDs.
 - T056 remains open because the timed, operator-visible Codex Desktop app rehearsal has not been performed. The completed Control Room browser smoke is recorded separately and is not treated as Desktop app evidence.
+- T058 records public branch checkpoint `79a12d0c8058d579664c90740a8bd44ae3359c68`, the complete verification and limitation set, deferred-scope confirmation, unsubmitted status, the exact operator sequence, and the required reminder to run `/feedback` without inventing a Session ID.
 
 ---
 

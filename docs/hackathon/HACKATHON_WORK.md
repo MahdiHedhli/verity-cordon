@@ -46,9 +46,11 @@ renamed codebase.
 | `485e49b..5bd85ff` | Sprint 002 specification, subscription boundary, Desktop defense, and secure demo vertical slice | Complete |
 | `104e0f0` | Pushed Sprint 002 clean-verification checkpoint with deterministic uncached Ruff checks | Complete |
 | `c70db72` | Pinned release verification to the bootstrapped environment and enforced the declared Node engine | Complete |
+| `79a12d0` | Recorded fresh-clone and Control Room browser acceptance evidence | Complete |
 
-The feature branch was fast-forwarded into `main` without rewriting history or
-force-pushing.
+The feature-001 branch was fast-forwarded into `main` without rewriting history
+or force-pushing. Sprint 002 remains on its public feature branch pending
+operator review and merge.
 
 ## Sprint 002 Baseline
 
@@ -370,6 +372,8 @@ submission-checklist item remain intentionally unchecked.
 
 ## Open Issues and Operator Actions
 
+- Review and merge `codex/002-desktop-subscription-defense` into public `main`;
+  no pull request or merge is represented as complete.
 - Exercise the credentialed live GPT-5.6 path if a suitable local key is
   available; otherwise disclose it as unexercised.
 - Perform and time the operator-visible Codex Desktop app rehearsal; automated
@@ -386,3 +390,37 @@ Not submitted. The public repository is independently verified. No successful
 credentialed live API call, video, screenshot, `/feedback` Session ID, or
 Devpost submission is represented as complete until independently created and
 verified.
+
+## Sprint 002 Handoff Snapshot
+
+- **Public repository**: `https://github.com/MahdiHedhli/verity-cordon`
+- **Branch**: `codex/002-desktop-subscription-defense`
+- **Final verified implementation/evidence checkpoint**:
+  `79a12d0c8058d579664c90740a8bd44ae3359c68`
+- **Automated verification**: 506 backend tests, 13 isolated example/plugin
+  tests, 10 frontend tests, 80% backend coverage, schema/OpenAPI validation,
+  dependency audits, type checks, lint, production build, and 20 fixture
+  evaluations with 0 fixture-scoped false positives and 0 fixture-scoped false
+  negatives
+- **Browser verification**: protected quarantine action, selective revocation,
+  shadow/enforce transitions, 69-event anchored ledger verification, consistent
+  materialized view, 0 console errors or warnings, and the recorded 1280x720
+  layout/accessibility smoke
+- **Known limitations**: the Codex Desktop app rehearsal is not yet observed;
+  the subscription smoke exercised semantic assessment with `gpt-5.6-luna`
+  rather than the direct API target `gpt-5.6`; the fixed sink sequence is an
+  inert simulation and does not prove a causal memory-to-tool-call path; and a
+  compromised host, Codex binary, or signing key remains out of scope
+- **Deferred roadmap**: all `VC-FUT-*` backends, additional agents, remote
+  control-plane capabilities, enterprise identity, packaged local models, and
+  exporter ecosystems remain outside the active feature task graph
+- **Submission status**: not submitted; video, final form entry, logged-out link
+  checks, and the real `/feedback` Session ID remain operator-owned
+- **Exact next operator sequence**: close unrelated Codex tasks; follow the
+  preview/digest-confirmed setup in `scripts/demo-desktop.sh`; quit/restart
+  Codex Desktop around setup and teardown; run and time the documented attack,
+  enforcement, clean-task, revocation, and ledger sequence; immediately tear
+  down the user-wide fixture; review and merge the feature branch; record and
+  upload the under-three-minute public video; run `/feedback` in this primary
+  task; enter the real Session ID; test public links logged out; and submit
+  before 2026-07-21 17:00 PT
