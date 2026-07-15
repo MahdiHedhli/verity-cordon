@@ -291,7 +291,7 @@ def status() -> None:
         policy = runtime.memory_service.policy_engine.policy
         provider_label = runtime.memory_service.semantic_adjudicator.provider_label
         provider_isolation = provider_isolation_for(provider_label).value
-        provider_ready = True
+        provider_ready = provider_label != "live_codex_subscription"
         provider_failure_class: str | None = None
         if runtime.subscription_runner is not None:
             try:
