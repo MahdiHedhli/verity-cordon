@@ -19,6 +19,7 @@ from verity_cordon.core.models import (
     format_utc,
     new_id,
 )
+from verity_cordon.core.protocols import Detector
 
 
 @dataclass(frozen=True, slots=True)
@@ -339,7 +340,7 @@ class ConcealedInstructionDetector(_BuiltinDetector):
         )
 
 
-def builtin_detectors(*, max_candidate_bytes: int = 8192) -> list[_BuiltinDetector]:
+def builtin_detectors(*, max_candidate_bytes: int = 8192) -> list[Detector]:
     return [
         AnomalousSizeDetector(max_candidate_bytes),
         ConcealedInstructionDetector(),

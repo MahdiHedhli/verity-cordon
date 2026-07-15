@@ -21,7 +21,7 @@ from verity_cordon.core.models import (
 from verity_cordon.core.protocols import SemanticAdjudicator
 
 
-def _failed_assessment(
+def failed_assessment(
     candidate: MemoryCandidate,
     *,
     failure_class: str,
@@ -79,7 +79,7 @@ async def run_semantic_assessment(
     except Exception:
         failure_class, retryable = "internal_error", True
     latency_ms = max(0, int((perf_counter() - started) * 1000))
-    return _failed_assessment(
+    return failed_assessment(
         candidate,
         failure_class=failure_class,
         retryable=retryable,

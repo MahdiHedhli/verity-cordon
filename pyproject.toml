@@ -59,6 +59,7 @@ packages = ["src/verity_cordon"]
 [tool.pytest.ini_options]
 addopts = "--strict-markers --strict-config"
 asyncio_mode = "auto"
+pythonpath = ["src"]
 testpaths = ["tests"]
 timeout = 30
 markers = [
