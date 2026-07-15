@@ -205,6 +205,7 @@
           "maximum": 300000
         },
         "injection_token_budget": {
+          "description": "Maximum UTF-8 byte length of the complete rendered injection context. This is a conservative token-count upper bound, not exact model-specific tokenization; whole records that do not fit are omitted.",
           "type": "integer",
           "minimum": 0,
           "maximum": 32768
@@ -338,72 +339,130 @@
           "minProperties": 1,
           "properties": {
             "source_classes": {
-              "type": "array",
-              "minItems": 1,
-              "uniqueItems": true,
-              "items": {
-                "$ref": "#/$defs/sourceClass"
-              }
+              "anyOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/sourceClass"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "namespace_patterns": {
-              "type": "array",
-              "minItems": 1,
-              "uniqueItems": true,
-              "items": {
-                "$ref": "#/$defs/namespacePattern"
-              }
+              "anyOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/namespacePattern"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "memory_kinds": {
-              "type": "array",
-              "minItems": 1,
-              "uniqueItems": true,
-              "items": {
-                "$ref": "#/$defs/memoryKind"
-              }
+              "anyOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/memoryKind"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "sensitivities": {
-              "type": "array",
-              "minItems": 1,
-              "uniqueItems": true,
-              "items": {
-                "enum": [
-                  "public",
-                  "internal",
-                  "sensitive",
-                  "restricted",
-                  "credential"
-                ]
-              }
+              "anyOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "enum": [
+                      "public",
+                      "internal",
+                      "sensitive",
+                      "restricted",
+                      "credential"
+                    ]
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "detector_categories_any": {
-              "type": "array",
-              "minItems": 1,
-              "uniqueItems": true,
-              "items": {
-                "$ref": "#/$defs/detectorCategory"
-              }
+              "anyOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/detectorCategory"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "minimum_detector_severity": {
-              "$ref": "#/$defs/severity"
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/severity"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "semantic_categories_any": {
-              "type": "array",
-              "minItems": 1,
-              "uniqueItems": true,
-              "items": {
-                "$ref": "#/$defs/semanticCategory"
-              }
+              "anyOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/semanticCategory"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "minimum_semantic_risk": {
-              "type": "number",
+              "type": [
+                "number",
+                "null"
+              ],
               "minimum": 0,
               "maximum": 1
             },
             "persistence_requested": {
-              "type": "boolean"
+              "type": [
+                "boolean",
+                "null"
+              ]
             },
             "semantic_required": {
-              "type": "boolean"
+              "type": [
+                "boolean",
+                "null"
+              ]
             }
           }
         },

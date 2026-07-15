@@ -15,7 +15,10 @@ session-start injection path owned by Verity Cordon. It is not an interception
 of undocumented Codex memory internals.
 
 **Evidence**: Source observation and provenance from which candidates are
-derived. Routine operator surfaces use safe representations and digests.
+derived. The MVP does not retain the original submitted bytes; it permanently
+binds their digest and a bounded pattern-sanitized excerpt, while full sanitized
+queue text is transient. Routine operator surfaces use content-safe
+representations and digests. Pattern sanitization is not exhaustive.
 
 **Event ledger**: The append-only, ordered, payload-bound, signed security event
 history from which active and quarantine views can be reconstructed.

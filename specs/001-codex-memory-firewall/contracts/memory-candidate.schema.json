@@ -107,7 +107,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 1000,
-      "description": "Content-safe explanation of why the candidate may be useful in a later session."
+      "description": "Content-safe explanation of why the candidate may be useful in a later session. Live model output is bounded and pattern-sanitized again before persistence."
     },
     "sensitivity": {
       "enum": [

@@ -46,7 +46,8 @@ Verity Cordon provides:
 - Isolated GPT-5.6 structured semantic assessment
 - Pydantic-validated versioned policy with enforce and shadow modes
 - A signed append-only event chain and deterministic active view
-- Quarantine, manual review, selective revocation, and replay
+- Quarantine, manual review, targeted current-policy rescan, selective
+  revocation, and replay
 - Transactional streamed memory writes
 - A calm, local Memory Control Room
 - Offline synthetic judging and an explicit live GPT-5.6 path
@@ -54,9 +55,11 @@ Verity Cordon provides:
 ## How It Works
 
 Supported Codex hooks send bounded evidence to a loopback async daemon. Verity
-screens secrets, extracts atomic candidates, fans out deterministic detectors,
-and optionally asks GPT-5.6 for schema-constrained semantic risk evidence. A
-deterministic policy chooses allow, redact, quarantine, or block.
+screens recognized secrets, atomically records signed capture plus a bounded
+sanitized queue row, then acknowledges the hook before background extraction or
+semantic work. The worker extracts atomic candidates, fans out deterministic
+detectors, and optionally asks GPT-5.6 for schema-constrained semantic risk
+evidence. A deterministic policy chooses allow, redact, quarantine, or block.
 
 The outcome, provenance, versions, digests, and signatures are appended to
 SQLite as an ordered event chain. Eligible events materialize an active memory
@@ -75,12 +78,15 @@ in no injected memory.
 
 ## How Codex Was Used
 
-Codex drove the work end to end in the primary project thread: live rules and
+Codex drove the work end to end in the primary project thread: current rules and
 API research, donor inspection, Spec Kit source of truth, architecture,
 implementation, adversarial tests, UI, documentation, browser verification,
-and repository publication. The operator set the product identity, security
-constitution, claims, scope cuts, and release decisions. Bounded subagents were
-used for research, contracts, and isolated review—not the core build.
+and repository publication preparation. The operator set the product identity,
+security constitution, claims, scope cuts, and release decisions. Bounded
+subagents were used for research, contracts, isolated review, and Codex
+plugin/hook integration implementation and verification in a temporary
+configuration. The primary thread reviewed and integrated that work and
+retained the majority of the core build.
 
 ## How GPT-5.6 Is Used at Runtime
 
@@ -91,6 +97,10 @@ cross-task contamination. The call has no tools, durable memory, conversation,
 or previous response. The model recommends risk; deterministic policy retains
 final authority. Offline mode uses visibly labeled recorded fixtures and never
 pretends they are live.
+
+The live integration is implemented, but the repository evidence does not yet
+claim a successful credentialed live API run. This sentence must be updated
+only if the final live exercise succeeds.
 
 ## Challenges
 
@@ -131,13 +141,21 @@ intentionally deferred behind separate numbered Spec Kit features.
 
 ```bash
 ./scripts/bootstrap.sh
+export VERITY_DATA_DIR=.verity-demo
 ./scripts/demo-offline.sh
 ```
 
-Open the printed loopback URL. Reproduce shadow admission, enforcement,
-cross-session injection, selective revocation, rebuild, and ledger verification.
-Run the full critical suite with `./scripts/verify.sh`. Live GPT-5.6 instructions
-are in the README and require a local `OPENAI_API_KEY` that is never printed.
+Open the printed loopback URL. Inspect shadow admission, enforcement, selective
+rescan/revocation, simulated SessionStart rendering, rebuild, and ledger
+verification. The supported Codex installation and deterministic hook contract
+tests cover the actual hook boundary separately. Run the full critical suite
+with `./scripts/verify.sh`. Live GPT-5.6 instructions are in the README and
+require a local `OPENAI_API_KEY` that is never printed.
+
+For stage reliability, the one-command offline path invokes the reviewed fixture
+over bounded stdio under a minimal environment, validates its inert safety flag,
+and supplies the returned synthetic response directly to the same memory
+service. It does not claim to launch Codex.
 
 ## Required Final Links
 

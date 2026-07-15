@@ -2,8 +2,8 @@
 
 **Feature**: `001-codex-memory-firewall`
 **Review date**: 2026-07-15
-**Status**: Security design baseline; protection claims require the linked
-adversarial and end-to-end tests to pass
+**Status**: Implemented local MVP; protection claims remain limited to the
+linked tests and final publication verification
 
 ## Scope and Security Objective
 
@@ -26,7 +26,8 @@ memory becomes active and is supplied to a later session.
 - Provenance and decision history for each candidate memory.
 - Ordering, payload binding, and signature validity of the event ledger.
 - Integrity and availability of the active policy and its version history.
-- Confidentiality of raw evidence, credentials, API keys, and signing material.
+- Exclusion of original evidence bytes, recognized credentials, API keys, and
+  signing material from routine output and remote calls.
 - Integrity of manual approval, block, revocation, and rebuild actions.
 - Separation between concurrent transactional memory streams.
 - Honest operator visibility into degraded, shadow, fixture, and live states.
@@ -45,8 +46,9 @@ memory, but Verity Cordon must fail closed for new memory trust and injection.
 5. A ledger or materialized-view integrity failure disables injection and new
    commits.
 6. A correction is a new event; historical security events are not rewritten.
-7. Detected secret material does not enter model-bound content, routine
-   telemetry, list views, fixtures, or screenshots.
+7. Recognized secret material is replaced before model-bound content and is
+   excluded from routine telemetry, list views, fixtures, and screenshots.
+   Sanitizer false negatives remain a documented residual risk.
 8. Shadow admission is labeled as shadow admission and is not active protection.
 9. Facts and tool observations do not gain instruction authority merely because
    they were approved as memory.
@@ -55,9 +57,11 @@ memory, but Verity Cordon must fail closed for new memory trust and injection.
 
 ## System and Adversary Model
 
-The MVP is a single-user local service on macOS or Linux. Codex, the thin hook
+The MVP is a single-user local service. macOS is the exercised platform; Linux
+is an intended local target but is not yet recorded as exercised, and Windows
+is unverified. Codex, the thin hook
 adapter, the Verity daemon, SQLite, the Control Room, detector plugins, and the
-local demo MCP server share a host but cross distinct application trust
+local stdio demo fixture share a host but cross distinct application trust
 boundaries. Live semantic assessment crosses the host boundary to the OpenAI
 API only after local secret screening and sanitization.
 
@@ -160,10 +164,10 @@ the instruction's intent.
 
 **Expected control**: Preserve the evidence chain and `agent_output` source
 class; never upgrade authority because text was model-authored; detect
-self-reinforcement, persistence intent, and kind/content mismatch; and require
-stronger policy for operational instructions. Semantic assessment receives the
-sanitized candidate and provenance, while deterministic policy retains the
-decision.
+self-reinforcement and persistence intent; and require stronger policy for
+operational instructions. Semantic assessment receives the sanitized candidate
+and provenance, while deterministic policy retains the decision. The MVP has no
+dedicated kind/content-mismatch detector.
 
 **Residual risk**: Meaning can be laundered subtly enough to appear benign.
 Model provenance and policy reduce authority but do not prove intent.
@@ -188,14 +192,16 @@ classify it.
 **Scenario**: The candidate uses encoding, euphemism, indirection, or an
 authority-by-reference pattern instead of explicit attack language.
 
-**Expected control**: Apply structural validation and bounded normalization,
-flag anomalous encoding and authority claims, preserve the original evidence
-digest, and route ambiguity to semantic review or quarantine according to
-policy. Decoders must be allow-listed and bounded; recursive or executable
-decoding is prohibited.
+**Expected control**: Apply structural and size validation, preserve the
+original evidence digest, run the implemented persistence and authority
+detectors on visible text, and route candidates selected by policy to semantic
+review. The MVP does not implement a general decoder, an anomalous-encoding
+detector, or recursive normalization; it never executes encoded content.
 
-**Residual risk**: Unknown encodings, steganography, and novel indirect language
-can remain undetected. Quarantining ambiguity trades availability for safety.
+**Residual risk**: Encoded instructions, steganography, and novel indirect
+language can remain undetected, particularly if candidate extraction presents
+them as benign or opaque. This abuse case is in scope for risk analysis but is
+not a demonstrated comprehensive encoded-content defense.
 
 ### TM-05: Benign documentation says "ignore previous" in an explanation
 
@@ -259,7 +265,10 @@ envelope.
 **Expected control**: Re-canonicalize the stored payload, recompute its SHA-256
 digest, compare it to `payload_digest`, then verify the event hash, Ed25519
 signature, and chain. On the first mismatch, disable injection and new commits,
-show the exact failing event, and retain safe read-only audit access.
+show the exact failing event, and retain safe read-only audit access. A restart
+must enter read-only mode before using stored policy: the status/policy/audit
+surface remains content-safe, the displayed fallback policy is labeled invalid,
+third-party detector plugins do not load, and `SessionStart` returns no context.
 
 **Residual risk**: An attacker who also controls the signing key and writable
 history can construct a new apparently valid history. That host/key compromise
@@ -284,13 +293,19 @@ reconstruction. External transparency anchoring is deferred.
 a newly activated policy identifies as malicious.
 
 **Expected control**: Preserve original policy ID, version, mode, actual action,
-and would-have action; append `PolicyActivated`; rescan affected active memory;
-append a reasoned `MemoryRevoked` event; replay the active view; and verify that
-unrelated memory remains.
+and would-have action; append `PolicyActivated`; identify the affected active
+memory; and run a confirmed targeted rescan from its signed candidate event.
+The rescan derives a fresh signed candidate that binds current sanitization and
+the original candidate lineage, then applies current detector,
+semantic-when-required, and policy inputs. It appends the new findings and
+decision, and atomically appends a reasoned `MemoryRevoked` event when the
+enforcement action is redact, quarantine, or block. Replay and verification
+must preserve unrelated memory.
 
-**Residual risk**: Revocation depends on a rescan trigger, suitable new
-detection, and operator or policy action. Previously injected content cannot be
-removed retroactively from sessions that already received it.
+**Residual risk**: The operator must identify and rescan one active memory at a
+time. Policy activation does not automatically discover or reevaluate every
+prior memory, and previously injected content cannot be removed retroactively
+from sessions that already received it.
 
 ### TM-12: A malicious detector plugin tries to crash the pipeline
 
@@ -299,8 +314,11 @@ data, or conflicts with an existing detector ID.
 
 **Expected control**: Require explicit installation trust; validate identity and
 version at discovery; reject duplicate IDs; bound execution time and result
-size; isolate failure from other detector tasks; and convert failure to a
-detector failure finding. Policy determines the safe fallback.
+field counts, UTF-8 size, and total serialization; sanitize messages,
+categories, and string metadata before policy or signed persistence; isolate
+failure from other detector tasks; and convert failure to a detector failure
+finding. Routine UI detail drops plugin metadata and reflects only fixed
+messages plus an allow-listed taxonomy. Policy determines the safe fallback.
 
 **Residual risk**: A Python plugin loaded into the daemon process is code, not
 untrusted data. Without process isolation it can access the daemon's user-level
@@ -312,15 +330,17 @@ and operators must install only trusted code.
 **Scenario**: A candidate is labeled as a fact or tool observation but its
 statement contains an operational instruction.
 
-**Expected control**: Detect kind/content and namespace mismatches before
-commit; require stronger policy for instruction-like text; preserve the type in
-the active view; and inject memories inside a strict delimiter with developer
-context stating that facts and tool observations are data, not higher-priority
-authority. Blocked or quarantined content is never injected.
+**Expected control**: Apply persistence and authority detectors independently of
+the declared kind, preserve the type in the active view, require stronger policy
+for candidates classified as operational instructions, and inject memories
+inside a strict delimiter with developer context stating that facts and tool
+observations are data, not higher-priority authority. Blocked or quarantined
+content is never injected. The MVP has no dedicated classifier that proves the
+declared kind matches the statement.
 
-**Residual risk**: Delimiters and developer instructions reduce but do not
-eliminate model susceptibility to embedded instructions. Candidate screening
-remains essential.
+**Residual risk**: A mislabeled instruction that evades the implemented
+detectors can be admitted as a fact. Delimiters and developer instructions
+reduce but do not eliminate model susceptibility to embedded instructions.
 
 ### TM-14: A direct user preference contains a secret
 
@@ -328,14 +348,16 @@ remains essential.
 password, private key, or synthetic credential.
 
 **Expected control**: Screen locally before candidate extraction or semantic
-review; replace detected material with a typed placeholder; apply block,
-redact, or quarantine policy; minimize separately protected raw-evidence
-retention; and keep the value out of telemetry, routine UI, and screenshots.
-Direct user origin does not bypass screening.
+review; replace recognized material with a typed placeholder; apply block,
+redact, or quarantine policy; retain no original evidence bytes; and keep the
+recognized value out of telemetry, routine UI, and screenshots. Direct user
+origin does not bypass screening. `EvidenceCaptured` still retains a bounded
+pattern-sanitized excerpt and raw-content digest.
 
-**Residual risk**: Pattern and entropy checks can miss unfamiliar secret
-formats. Any locally retained evidence depends on host and file protections and
-is not encrypted against a compromised operator account by default.
+**Residual risk**: Pattern checks can miss unfamiliar secret formats. An
+undetected value can remain in the signed excerpt and can reach the semantic
+provider. The SQLite data depends on host and file protections and is not
+encrypted against a compromised operator account by default.
 
 ### TM-15: A revoked memory remains in a stale materialized view
 
@@ -365,8 +387,10 @@ in-scope conditions retain their own controls and residual risk:
 | Malformed or missing active policy | Validate with the versioned Pydantic model; reject invalid activation; use only an intact last-known-good policy; otherwise fail closed for commits | Recovery requires operator action and reduces availability |
 | Native Codex memory is accidentally re-enabled | Installer writes the controlled configuration; `doctor` verifies effective use/generation state and hook trust; Control Room reports configuration drift | Configuration can change after a check; native-memory behavior is outside Verity's ledger if re-enabled |
 | Event deletion or omission | Verify contiguous sequence, prior-hash links, signatures, expected ledger head where available, and view replay | A consistently truncated tail cannot be proven from a self-contained ledger alone; see [the cryptographic limitation](./cryptographic-claims.md#what-omission-verification-can-and-cannot-prove) |
-| Forged or replayed Control Room mutation | Loopback peer restriction, strict Host/Origin, bearer capability for non-browser clients, minimum-length passphrase challenge, single-use 60-second nonce, constant-time proof check, bounded challenge issuance, failed-proof cooldown, 15-minute idle HttpOnly session and CSRF for the UI, JSON-only request, confirmation, reason, actor, and idempotency key | A weak operator-selected passphrase remains guessable; same-user malware that steals a capability, verifier, passphrase, or live browser session can act with local authority |
-| Intentional retention expiry of raw evidence | Record retention outcome and retain the signed digest/provenance event; never represent deleted evidence as still fully verifiable | Once content is deliberately expired, its digest cannot prove what unavailable bytes contained to a new verifier |
+| Forged or replayed Control Room mutation | Loopback peer restriction, strict Host/Origin, bearer capability for non-browser clients, minimum-length passphrase challenge, single-use 60-second nonce, constant-time proof check, bounded challenge issuance, failed-proof cooldown, 15-minute idle HttpOnly session and CSRF for the UI, JSON-only request, confirmation, reason, actor, and idempotency key | A weak operator-selected passphrase remains guessable; same-user malware that steals a capability, verifier, passphrase, or live browser session can act with local authority. The two-phase idempotency reservation can remain indeterminate after a process interruption; replay is refused and operator recovery may be required. |
+| Sanitized evidence retention | Original submitted bytes are not retained; bind their digest, permanently retain a bounded sanitized excerpt, and transiently queue full sanitized text under item/byte/age limits | Pattern sanitization is not exhaustive. Undetected sensitive text can remain in the signed excerpt or transient queue; the digest cannot reveal unavailable original bytes to a new verifier. |
+| Secret-bearing source label or stream-abort reason | Pattern-sanitize before signed persistence; reduce URL-like source labels to a host label and remove query/fragment data | Novel secret formats may evade pattern screening; retained safe metadata remains sensitive local data |
+| Runtime data or database path is a symbolic link, unsafe file type, unexpected owner, or overly permissive database file | Reject before SQLite use; create the database leaf with exclusive, no-follow semantics where supported and validate it again before connections | Same-user or host compromise remains outside scope; platform filesystem guarantees vary |
 
 ## Failure-Behavior Matrix
 
@@ -376,13 +400,17 @@ availability. It is fail-closed for the Verity memory trust boundary.
 | Failure | Memory commit | Session injection | Required signal and recovery |
 |---|---|---|---|
 | Daemon or local IPC unavailable | Refuse; never queue an unverified implicit commit | Return no Verity context; Codex may continue | Content-free health warning; recover daemon and rerun health checks |
-| Hook times out, exits nonzero, or emits invalid output | No commit from that hook invocation | No context from a failed `SessionStart` hook | Codex hook status; daemon records a failure only if reachable; doctor checks trust and effective config |
+| Hook times out, exits nonzero, or emits invalid output | No commit from that hook invocation | No context from a failed `SessionStart` hook | Codex hook status; daemon records a failure only if reachable; doctor checks trust, effective config, staged files, and the current verified Python runtime rather than executing a receipt-selected interpreter |
+| Evidence queue reaches its item or byte bound | Reject atomically before signed capture | Existing verified view only | Content-free resource-limit response; drain or repair the worker |
+| Queued evaluation exceeds three attempts or one hour | Append `EvidenceEvaluationFailed` and purge the full queued text | No memory from the failed evidence | Terminal safe error code and failed-queue count |
+| Queued sanitized text fails its signed digest check | Append an exact signed terminal failure when possible, purge text, and mark the ledger unhealthy; preserve the failure across restart | Disable injection | Sticky critical integrity state; investigate local storage before restoring service |
 | Ledger cannot open or append | Roll back and refuse | Use no view whose integrity cannot be established | Critical storage state; safe read-only audit if possible; repair before writes |
-| Ledger chain, payload, signature, key ID, or order fails verification | Disable all new commits | Disable all injection | Critical Control Room state, first invalid event, explicit operator repair path |
+| Ledger chain, payload, signature, key ID, order, or covered projection fails verification | Start or remain in read-only mode; disable signed writes and do not load detector plugins | Disable all injection | Content-safe Control Room status/policy/audit access, invalid policy-validation label, first invalid event where attributable, and explicit operator repair path |
 | Materialized view differs from replay | Disable commits that depend on the inconsistent view | Disable injection | Rebuild transactionally, then re-verify before re-enabling |
 | Active policy is malformed or unavailable and no valid last-known-good policy exists | Fail closed | Disable Verity injection when eligibility cannot be established | Validation error and policy hash/version; install or restore a valid policy |
+| Stored policy or evidence projection differs from its signed source event | Treat verification as failed; refuse new commits | Disable injection | Report content-free `policy_projection_drift` or `evidence_projection_drift` and first attributable event when available |
 | Proposed policy activation is invalid while a validated active policy remains intact | Reject activation; retain validated active policy | Continue only under the still-verified active policy and view | Append `PolicyActivationRejected` with safe issue codes where storage permits; show last-known-good status |
-| Detector timeout, exception, cancellation, or malformed result | Record failure; high-risk ambiguity quarantines; lower fallback only by explicit rule | Never inject quarantined result | Detector ID/version/error class only; no raw content |
+| Detector timeout, exception, cancellation, oversized output, or malformed result | Reject unusable output as a failure; high-risk ambiguity quarantines; lower fallback only by explicit rule | Never inject quarantined result | Detector ID/version/safe error class only; plugin free text and metadata are not reflected in routine detail |
 | Semantic timeout, refusal, API error, or invalid schema | Never silently use a fixture; high-risk ambiguity quarantines | Never inject quarantined result | Provider state, error class, prompt/model version; retry only within bounded policy |
 | Secret screening fails or finds prohibited material | Do not send content to semantic provider; block or quarantine | No raw secret injection | Safe category and placeholder metadata only |
 | Signing key missing, unreadable, or has unsafe permissions | Refuse new signed events and commits | Disable injection; otherwise a due TTL could remain active because `MemoryExpired` cannot be signed | Critical key health state; repair permissions or restore key through documented procedure |
@@ -402,10 +430,13 @@ provide confidentiality, establish factual truth, or withstand a fully
 compromised host. Shadow mode deliberately admits the configured shadow action
 and therefore must not be represented as protection.
 
-The release gate is evidence, not aspiration: adversarial fixtures must cover
-every abuse case above, tamper tests must alter payloads, events, order,
-omissions, and signatures, and end-to-end tests must prove that ineligible
-memory is absent from later session context.
+The release gate is evidence, not aspiration. Tests cover the demonstrated
+critical claims, including payload/event/order/omission/signature tampering and
+later-session exclusion. Some abuse cases above deliberately document residual
+or unimplemented coverage—especially general encoded-content handling,
+kind/content mismatch, and automatic policy-wide rescan—and must not be
+presented as fixture-proven protection merely because they appear in this
+model.
 
 ## Review Triggers
 

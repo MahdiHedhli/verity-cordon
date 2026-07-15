@@ -17,21 +17,22 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 
 - [ ] Working project installs and runs consistently on each claimed platform.
 - [x] Developer Tools is the selected category.
-- [ ] Offline path exercises real policy, ledger, view, API, and UI code.
+- [x] Offline path exercises real policy, ledger, view, API, and UI code.
 - [ ] Live path visibly exercises GPT-5.6 structured extraction and assessment.
-- [ ] Synthetic fixture reads no real environment and sends nothing externally.
-- [ ] Critical security, failure, and adversarial tests pass.
-- [ ] Control Room browser and accessibility smoke checks pass.
+- [x] Synthetic fixture reads no real environment and sends nothing externally.
+- [x] Critical security, failure, and adversarial tests pass.
+- [x] Control Room desktop browser, keyboard/focus accessibility, and
+  console-error smoke checks pass. No automated axe-core result is claimed.
 
 ## Repository
 
 - [ ] Public repository URL is live with relevant licensing.
 - [x] Apache-2.0 project license is selected.
-- [ ] `LICENSE`, `NOTICE`, and `THIRD_PARTY_NOTICES.md` are complete.
+- [x] `LICENSE`, `NOTICE`, and `THIRD_PARTY_NOTICES.md` are complete.
 - [x] Donor commit, license, baseline, and Verity contribution are documented.
-- [ ] README includes installation, sample data, supported platforms, and judge
+- [x] README includes installation, sample data, supported platforms, and judge
   test path without reconstructing the project.
-- [ ] README explains Codex collaboration, operator decisions, and GPT-5.6 use.
+- [x] README explains Codex collaboration, operator decisions, and GPT-5.6 use.
 - [ ] No private keys, API keys, bearer capabilities, raw secrets, or unsafe logs
   are tracked.
 - [ ] Final branch, commit, tags, and verification results are recorded.

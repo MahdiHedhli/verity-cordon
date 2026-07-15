@@ -197,10 +197,9 @@ strict Pydantic schemas and `store=False`.
 - No tools, conversation, previous response, or durable memory.
 - Evidence is sanitized locally first and supplied as untrusted data.
 - Input and output are bounded and schema validated.
-- Cache key binds the sanitized-content digest, source class, namespace, kind,
-  session/task scope, persistence request, authority/secrecy signals, model,
-  prompt, and schema versions. Text-identical content from a user and an
-  untrusted tool cannot share an assessment accidentally.
+- Semantic-result reuse is disabled in the MVP. The compatibility field
+  `cache_hit` remains `false`; a future cache would require signed,
+  provenance-sensitive binding before advisory output could be reused safely.
 - Deterministic policy remains the final authority.
 
 **Alternatives considered**: Treating the model as the policy engine or silently
@@ -265,7 +264,7 @@ Lockfiles, not this table, define the tested installation.
 | Ruff / mypy | 0.15.21 / 2.3.0 | Formatting, lint, and strict static checks. |
 | React / React DOM | 19.2.7 | Local Control Room. |
 | Vite | 8.1.4 | Lightweight frontend build. |
-| TypeScript | 7.0.2 | Strict UI typing. |
+| TypeScript | 6.0.3 | Strict UI typing. |
 | Vitest | 4.1.10 | UI unit tests. |
 
 ## Architecture Decisions
@@ -289,6 +288,31 @@ transaction. WAL mode improves readers; the ledger remains authoritative.
 Rejected for the local single-user vertical slice. A global chain makes
 deletion and reordering checks straightforward; `stream_id` still groups domain
 events.
+
+### Durable hook evidence queue
+
+**Decision**: A synchronous Codex command hook must not wait for candidate
+extraction or a remote semantic call. The daemon therefore sanitizes and bounds
+the request first, then atomically appends signed `EvidenceCaptured` and inserts
+the full sanitized text into a SQLite queue before returning `202 Accepted`.
+The event binds the sanitized-content digest, sanitizer version, and redaction
+metadata. A background worker rechecks that digest before evaluation and
+deletes the queue row in the same transaction as the outcome events.
+If extraction returns no candidates, `EvidenceEvaluationCompleted` supplies the
+signed terminal record for the successful drain.
+
+The queue defaults to 256 pending items and 16 MiB of pending sanitized text,
+with three attempts, exponential delay capped at five minutes, and a one-hour
+maximum age. A terminal error appends `EvidenceEvaluationFailed`, preserves
+content-safe metadata and the digest, and purges the full queued text. Queue
+digest corruption additionally marks the ledger unhealthy so injection and new
+commits stop.
+
+`EvidenceCaptured.safe_excerpt` is permanent event/projection data. It is a
+bounded pattern-sanitized excerpt, not a proof that the text is non-sensitive.
+`retention_state=digest_only` means the raw original bytes are not stored; it
+does not remove the excerpt. The sanitizer is deliberately compact and cannot
+recognize every secret format, so the local ledger remains sensitive data.
 
 ### Canonical event representation
 
@@ -319,9 +343,11 @@ activation. A malformed policy blocks new commits. No remote retrieval exists.
 ### UI integration
 
 **Decision**: Build the React/TypeScript Control Room as a separate lightweight
-app, then serve its committed production build from the loopback FastAPI daemon.
-All views consume the same public local API used by tests. This avoids a second
-production server and gives judges a single startup command.
+app, then serve its production build from the loopback FastAPI daemon. The
+source checkout is the judge distribution and `scripts/bootstrap.sh` creates
+the ignored build assets. All views consume the same local API used by tests.
+This avoids a second production server and gives judges a single startup
+command.
 
 ### Offline semantics
 
@@ -340,9 +366,13 @@ groups and exporter configuration remain deferred.
 
 - Codex does not document hook ordering, a stable transcript schema, or hooks
   for native memory operations.
-- Codex tool hooks do not cover every tool path; the demonstrated poisoned MCP
-  path is covered, but generalized interception is not claimed.
+- Codex tool hooks do not cover every tool path. The one-command offline demo
+  invokes the reviewed poisoned-docs fixture over bounded stdio and then feeds
+  its validated synthetic response directly to the core service; the hook
+  contract is tested separately, and generalized interception is not claimed.
 - GPT-5.6 currently has no dated immutable Sol snapshot in public docs, so live
   results are not bit-for-bit reproducible.
 - The MVP threat boundary excludes a compromised host, user account, Codex
   binary, or signing key.
+- macOS is the exercised local platform. Linux is an intended target but has
+  not yet been exercised in the recorded verification; Windows is unverified.

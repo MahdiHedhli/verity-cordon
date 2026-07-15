@@ -33,16 +33,54 @@ derived.
 | `session_id` | string | Required, opaque identifier, 8-128 characters. |
 | `task_id` | string/null | Opaque identifier, 8-128 characters when present. |
 | `source_class` | enum | `user_input`, `tool_output`, `agent_output`, `imported_file`, `prior_memory`, `compaction`, `session_summary`, `external_event`. Operator actions and system events use event-envelope source classes rather than candidate evidence classes. |
-| `source_name` | string/null | Tool or source label, never a credential-bearing URL. |
-| `safe_excerpt` | string | Redacted representation, bounded to 2,000 characters. |
-| `content_digest` | digest | SHA-256 over exact locally retained evidence bytes. |
+| `source_name` | string/null | Pattern-sanitized tool/source label. URL-like input is reduced to `url.<hostname>`; otherwise query and fragment suffixes are removed before bounded safe-character normalization and signed persistence. |
+| `safe_excerpt` | string | Pattern-sanitized representation, bounded to 2,000 characters and permanently bound by `EvidenceCaptured`. It is not guaranteed non-sensitive. |
+| `content_digest` | digest | SHA-256 over the exact original submitted bytes, which are not retained by the MVP. |
 | `content_size` | integer | Non-negative byte count. |
 | `retention_state` | enum | `digest_only`, `protected_local`, `expired`. |
 | `captured_at` | UTC time | Clock-provided. |
 | `metadata` | object | Bounded safe scalar values only. |
 
-Raw evidence, when retained, is stored separately and is not returned by routine
-API or list views. Demo mode uses synthetic content only.
+The MVP writes `retention_state=digest_only`: original submitted bytes are not
+stored. The signed capture payload and evidence projection still retain the
+bounded sanitized excerpt. Pattern-based sanitization is not exhaustive, so an
+unrecognized sensitive value can remain in that excerpt; the local ledger and
+backups must be handled as sensitive. Demo mode uses synthetic content only.
+
+## Pending Evidence Queue
+
+The hook-facing API acknowledges only after `EvidenceCaptured` and one bounded
+queue row commit atomically. This operational queue lets synchronous Codex hooks
+return before candidate extraction or semantic assessment.
+
+| Field | Type | Rule |
+|---|---|---|
+| `evidence_id` | UUIDv7 | Primary key and reference to the signed capture record. |
+| `state` | enum | `pending` or `failed`. |
+| `sanitized_content` | string/null | Full pattern-sanitized evidence while pending; null after terminal failure. |
+| `sanitized_content_digest` | digest | Must match both the queued text and the digest bound in `EvidenceCaptured.metadata`. |
+| `enqueued_at` | UTC time | Must equal the signed capture time. |
+| `attempts` | integer | Non-negative evaluation-attempt count. |
+| `next_attempt_at` | UTC time | Due time for bounded retry. |
+| `last_error_code` | string/null | Content-free queue/evaluation class. |
+| `failed_at` | UTC time/null | Required only in terminal failed state. |
+| `terminal_event_id` | UUIDv7/null | Required only in terminal failed state; references `EvidenceEvaluationFailed`. |
+
+Default admission limits are 256 pending items and 16 MiB of pending sanitized
+text. Evaluation receives at most three attempts and one hour of queue age;
+retry delay grows exponentially and is capped at five minutes. Successful
+outcome events and queue deletion commit together. A zero-candidate drain
+appends `EvidenceEvaluationCompleted` so successful consumption remains signed
+and auditable. A terminal evaluation error
+appends `EvidenceEvaluationFailed` and purges the full sanitized text while
+retaining content-safe metadata and its digest. A digest mismatch is also a
+ledger-health failure and disables new commits and injection. When a signed
+capture remains usable, the queue worker appends an exact-schema
+`EvidenceEvaluationFailed` terminal event with `queue_integrity_error`, purges
+the queued body, and links the failed row to that event. Verification binds the
+terminal failed row to the signed capture and failure events. The resulting
+integrity state remains fail-closed after restart; deleting or weakening the
+operational marker is not a supported recovery procedure.
 
 ## Memory Candidate
 
@@ -57,7 +95,7 @@ API or list views. Demo mode uses synthetic content only.
 | `session_id` | string | Originating session. |
 | `task_id` | string/null | Originating task. |
 | `confidence` | decimal | 0 through 1 inclusive. |
-| `durability_rationale` | string | Bounded explanation of future usefulness. |
+| `durability_rationale` | string | Bounded explanation of future usefulness; live model output is pattern-sanitized again before signed persistence. |
 | `persistence_requested` | boolean | Whether source explicitly requested durable reuse. |
 | `authority_signal` | enum | `none`, `implied`, `explicit`, or `unknown`; advisory extractor observation only. |
 | `secrecy_signal` | enum | `none`, `implied`, `explicit`, or `unknown`; records concealment language without granting authority. |
@@ -122,10 +160,10 @@ another.
 | `tool_hijack_risk` | decimal/null | 0 through 1 on success; null on failure. |
 | `cross_task_risk` | decimal/null | 0 through 1 on success; null on failure. |
 | `secret_risk` | decimal/null | 0 through 1 on success; null on failure. |
-| `rationale` | string/null | Bounded safe rationale on success; null on failure. |
+| `rationale` | string/null | Bounded, pattern-sanitized rationale on success; null on failure. Routine UI detail replaces it with a fixed safe summary. |
 | `recommended_disposition` | enum/null | `allow`, `redact`, `quarantine`, `block`; null on failure. |
-| `sanitized_content_digest` | digest | Cache and audit binding. |
-| `cache_hit` | boolean | Whether a safe digest-bound cached assessment was used. |
+| `sanitized_content_digest` | digest | Sanitized-input and audit binding. |
+| `cache_hit` | boolean | Reserved compatibility field; always `false` in the MVP because semantic reuse is disabled. |
 | `latency_ms` | integer | Non-negative. |
 | `failure` | object/null | Safe class (`timeout`, `unavailable`, `refusal`, `incomplete`, `invalid_schema`, `invalid_response`, or `internal_error`) and retryable flag. |
 | `assessed_at` | UTC time | Required. |
@@ -152,6 +190,15 @@ as a clean finding.
 The fields above form the validated `PolicyDocument`. A persisted
 `PolicyRecord` additionally contains `content_digest` computed from the
 validated canonical model and `activated_at` projected from `PolicyActivated`.
+At startup, signed history must verify before the persisted active policy can be
+used. If it does not, a configured or built-in `PolicyDocument` may be retained
+only to render content-safe read-only status with `validation_state=invalid`;
+it is not an active `PolicyRecord` and cannot authorize writes or injection.
+
+`limits.injection_token_budget` is enforced as the maximum UTF-8 byte length of
+the complete rendered context. This is a conservative token-count upper bound,
+not an exact model-specific tokenizer. The renderer omits whole records that do
+not fit and never truncates a record.
 
 ### Policy Rule
 
@@ -221,6 +268,8 @@ enforcement result.
 ### Active event types
 
 - `EvidenceCaptured`
+- `EvidenceEvaluationCompleted`
+- `EvidenceEvaluationFailed`
 - `MemoryCandidateCreated`
 - `DetectorVerdictRecorded`
 - `SemanticAssessmentRecorded`
@@ -277,6 +326,24 @@ the active row plus status `active`, `redacted`, `revoked`, `superseded`, or
 may appear in inventory and statistics but never in `active_memories` or
 session-start injection.
 
+## Targeted Rescan Lineage
+
+A confirmed rescan addresses one active `memory_id`. It verifies that memory's
+signed commit and original `MemoryCandidateCreated` event plus the latest signed
+active policy. Current sanitization produces a fresh candidate with a new
+`candidate_id`; its signed payload preserves the evidence references, links the
+original candidate event in `durability_rationale`, records a bounded sanitized
+operator reason, and identifies the rescan sanitizer version as its deterministic
+extractor version.
+
+The new candidate event, detector results, optional semantic assessment, and
+policy decision append atomically. If an enforcement decision is `redact`,
+`quarantine`, or `block`, the same transaction appends `MemoryRevoked` for the
+original active memory and updates only that materialized record. An allow
+decision leaves active memory unchanged but retains the complete signed rescan
+decision history. Rescan is targeted; policy activation does not enumerate or
+reevaluate every historical candidate automatically.
+
 ## Quarantine Projection
 
 Quarantine rows hold candidate ID, decision ID, safe statement,
@@ -309,7 +376,7 @@ replaced during replay; event rows may not.
 | `overlap_tail` | bytes | Internal bounded incremental-scan state. |
 | `content_digest` | digest/null | Final buffer digest at terminal transition. |
 | `started_at` / `updated_at` | UTC time | Required. |
-| `terminal_reason` | string/null | Safe reason code. |
+| `terminal_reason` | string/null | Bounded safe reason code; operator-provided abort text is pattern-sanitized before event and projection persistence. |
 
 Allowed transitions:
 
@@ -372,17 +439,33 @@ direct database access to prove verification, never production commands.
 - `policies(policy_id, version, content_digest UNIQUE, validated_json,
   source_yaml, activation_event_id, PRIMARY KEY(policy_id, version))`
 
-### Rebuildable projections
+`evidence.protected_content` is a reserved schema column and is always null in
+the MVP; no protected raw-evidence store is implemented.
+
+### Rebuildable projections and operational indexes
 
 - `active_memories(memory_id PRIMARY KEY, ..., last_event_sequence)`
 - `memory_inventory(memory_id PRIMARY KEY, status, ..., last_event_sequence)`
 - `quarantined_memories(candidate_id PRIMARY KEY, ..., resolution_event_id)`
-- `semantic_cache(cache_key PRIMARY KEY, sanitized_content_digest,
-  source_class, namespace, kind, session_id, task_id, persistence_requested,
-  authority_signal, secrecy_signal, model, prompt_version, schema_version,
-  assessment_json, created_at)`
+- `pending_evidence(evidence_id PRIMARY KEY, state, sanitized_content,
+  sanitized_content_digest, enqueued_at, attempts, next_attempt_at,
+  last_error_code, failed_at, terminal_event_id)`
+- `idempotency_keys(operation, idempotency_key, request_digest,
+  response_json, created_at, PRIMARY KEY(operation, idempotency_key))`
+- `streams(stream_id PRIMARY KEY, state, metadata_json, buffer_bytes,
+  chunk_count, content_digest, started_at, updated_at, terminal_reason)`
 
-`semantic_cache` is an optimization and never authorizes memory independently.
+Semantic assessment reuse is intentionally disabled. The compatibility field
+`cache_hit` is always false; enabling a future cache requires signed,
+provenance-sensitive binding so cached advisory output cannot silently change a
+policy decision.
+
+`pending_evidence` and `idempotency_keys` are operational indexes, not memory
+trust authorities. A Control Room mutation reserves its idempotency key before
+acting and writes the response afterward. If the process stops between those
+steps, the indeterminate reservation is refused on retry. This safe-availability
+tradeoff avoids blindly repeating a trust-changing operation but may require
+local operator recovery.
 
 ## Invariants
 
@@ -398,7 +481,19 @@ direct database access to prove verification, never production commands.
 8. A revoked memory is absent after replay but its earlier events remain.
 9. A stream has at most one terminal commit and no active memory before it.
 10. Policy activation references a validated immutable policy digest.
-11. Semantic failure is not represented as a clean semantic assessment.
-12. Telemetry and routine UI representations contain no raw secret or evidence.
-13. A successful full verification has a valid expected-head sidecar or supplied
+11. Evidence and policy projection rows, including the single active-policy
+    marker, reproduce their signed capture and activation events.
+12. Semantic failure is not represented as a clean semantic assessment.
+13. Telemetry and routine UI representations contain no recognized raw secret
+    or original evidence bytes; sanitizer false negatives remain a documented
+    residual risk.
+14. A successful full verification has a valid expected-head sidecar or supplied
     checkpoint; without one, terminal completeness is explicitly unproven.
+15. Hook acknowledgement implies a signed capture event and bounded pending row,
+    not completed candidate evaluation.
+16. A queued full sanitized body is deleted with successful outcomes or purged
+    on terminal failure; a failed row contains no full sanitized body.
+17. A terminal failed queue row exactly reproduces its signed capture and
+    `EvidenceEvaluationFailed` identity, error class, attempt count, failure
+    time, and terminal-event link; a recorded queue-integrity failure keeps the
+    store unhealthy after restart.

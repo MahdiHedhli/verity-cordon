@@ -32,9 +32,9 @@ hackathon demonstration.
 
 **Status**: Partially deferred.
 
-**Hackathon treatment**: Define stable detector boundaries and implement
-detector entry-point discovery with one small reference plugin only if the core
-vertical slice remains healthy. Do not publish a collection of packages.
+**Hackathon treatment**: Stable detector boundaries, allow-listed entry-point
+discovery, and one small reference plugin are implemented in the single Verity
+repository. A multi-package plugin ecosystem remains deferred.
 
 ## Additional Agent Integrations
 
@@ -75,8 +75,8 @@ identity, enrollment, rollback, and tenant isolation.
 
 **Status**: Partially deferred.
 
-**Hackathon treatment**: Instrument the core with privacy-safe span and metric
-interfaces. Do not build a full exporter ecosystem.
+**Hackathon treatment**: The core implements privacy-safe span and metric
+interfaces. A full exporter ecosystem remains deferred.
 
 ### VC-FUT-017 — SIEM-Specific Integrations
 
@@ -109,8 +109,8 @@ events. Clearly document the local-host threat boundary.
 
 **Status**: Deferred.
 
-**Hackathon treatment**: Generate JSON Schema for policies so existing editors
-can provide completion and diagnostics.
+**Hackathon treatment**: The repository includes generated JSON Schema for
+policies so existing editors can provide completion and diagnostics.
 
 ## Managed Commercial Platform
 

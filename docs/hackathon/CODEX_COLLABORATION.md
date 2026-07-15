@@ -5,13 +5,15 @@
 Codex served as the execution partner for repository preflight, primary-source
 research, Spec Kit initialization, specification and architecture, security
 implementation, tests, documentation, UI construction, local browser
-verification, and repository publication.
+verification, and repository publication preparation.
 
 The majority of core product work was performed in one primary Codex thread so
 the required session record represents the actual project. Bounded subagents
-were used only for official-rule and Spec Kit research, current Codex surface
-research, donor-source inspection, contract drafting, and an isolated security
-documentation pass.
+were used for official-rule and Spec Kit research, current Codex surface
+research, donor-source inspection, contract drafting, isolated review, and the
+Codex plugin/hook integration implementation and verification in a temporary
+configuration. The primary thread reviewed and integrated that bounded work.
+No public repository publication is claimed complete yet.
 
 ## Where Codex Accelerated the Work
 

@@ -118,11 +118,21 @@ where the library makes that practical. A missing payload, duplicate key,
 non-finite number, schema-invalid value, or digest mismatch invalidates the
 event.
 
-Evidence content stored outside the event payload follows the same binding
-principle: the event's `evidence_references` contain the expected SHA-256 digest
-for each referenced evidence record. Routine ledger verification may avoid
-displaying that content, but full verification must resolve and recompute every
-retained referenced payload required by policy.
+`EvidenceCaptured` includes a bounded pattern-sanitized `safe_excerpt`, the
+SHA-256 digest of the original submitted bytes, and the digest of the full
+sanitized text. Original submitted bytes are not retained by the MVP. Event
+`evidence_references` and the evidence projection must repeat the signed
+raw-content digest exactly. Because those original bytes are unavailable after
+capture, a later verifier can prove that the recorded digest was not changed;
+it cannot independently recompute what the original bytes contained.
+
+The transient SQLite queue stores the full sanitized text. Before evaluation,
+the worker recomputes its digest and compares it with both the queue column and
+the value signed by `EvidenceCaptured`. Successful outcome commit deletes the
+row; a zero-candidate result appends `EvidenceEvaluationCompleted` in the same
+transaction. Terminal `EvidenceEvaluationFailed` purges the text. This queue
+check is an evaluation-time integrity control, not a long-term content-retention
+claim.
 
 ## Event Hash Construction
 
@@ -205,8 +215,11 @@ implicitly:
 4. For event 1, require the all-zero genesis link. For each later event, require
    `previous_event_hash` to equal the immediately preceding event's verified
    hash.
-5. Resolve all required event and evidence payloads. Recompute each
-   `payload_digest` with `VC-CJ-1` and SHA-256.
+5. Resolve every retained event payload and recompute each `payload_digest` with
+   `VC-CJ-1` and SHA-256. Verify each evidence projection against its signed
+   `EvidenceCaptured` payload and identity columns, including its bounded safe
+   excerpt and metadata; recompute an evidence-content digest only when retained
+   content actually exists.
 6. Remove only `event_hash` and `signature`, canonicalize the remaining event
    body with `VC-CJ-1`, recompute SHA-256, and compare it to `event_hash`.
 7. Resolve the public key named by `signing_key_id`, recompute the key ID from
@@ -215,16 +228,23 @@ implicitly:
 8. Confirm the final verified sequence and hash against the expected head or
    independently retained checkpoint when one is supplied.
 9. Replay valid domain events into a fresh in-memory or temporary materialized
-   view. Compare it with the stored active and quarantined views, including
-   status, policy version, and revocation/supersession state.
+   view. Compare it with stored active, inventory, and quarantined views. Compare
+   the active and historical policy projection with signed `PolicyActivated`
+   events, and compare candidate, detector, semantic, and decision projections
+   with their signed event payloads. Verify every terminal pending-evidence row
+   against its exact signed capture and `EvidenceEvaluationFailed` events,
+   including identity, error class, attempt count, failure time, purged-content
+   state, and terminal-event link.
 10. Return overall failure and the first attributable invalid sequence, event
     ID, check class, key ID, and safe reason. Never print raw payload content or
     key material.
 
 Any failure disables Verity memory injection and new commits until an explicit
 repair or recovery process succeeds and the entire verification passes.
-Read-only audit access may remain available when it can avoid exposing unsafe
-content.
+On daemon restart, covered corruption produces an explicit read-only runtime:
+content-safe status, policy, and audit reads remain available, the fallback
+policy is labeled invalid and cannot authorize writes or injection, and detector
+plugins are not loaded.
 
 ## What Omission Verification Can and Cannot Prove
 
@@ -272,8 +292,8 @@ is verified by deterministic replay of the signed event history:
 
 1. Start with an empty view.
 2. Apply eligible commit or approval events in global sequence.
-3. Apply redaction, revocation, supersession, explicit `MemoryExpired`, and
-   relevant policy migration events as defined by their versioned schemas.
+3. Apply redaction, revocation, any schema-valid reserved supersession event,
+   and explicit `MemoryExpired` events as defined by their versioned schemas.
    Replay never decides expiration from the verifier's current wall clock.
 4. Exclude quarantined, blocked, invalid, expired, revoked, and superseded
    entries.
@@ -289,10 +309,10 @@ replacement and before injection resumes.
 
 - Generate one Ed25519 installation key with the operating system's secure
   random source.
-- Prefer an operating-system keychain when practical. A documented local-file
-  fallback stores the private key outside Git and the repository with
-  user-read/write-only permissions (`0600` on POSIX systems) in a user-only
-  directory.
+- The current MVP stores the private key in a documented local file outside
+  Git and the repository, with user-read/write-only permissions (`0600` on
+  POSIX systems) in a user-only directory. Operating-system keychain support is
+  deferred.
 - Export only the raw public key or a standard public representation, key ID,
   fingerprint, algorithm, and creation metadata.
 - Refuse new signed events if the private key is missing, unreadable, replaced,
@@ -345,8 +365,9 @@ When the corresponding verification tests pass, Verity Cordon may say:
 - Covered payload alteration, event alteration, reordering, interior omission,
   invalid signatures, and materialized-view drift are detected by the verified
   procedure.
-- Revocation and supersession are new signed events rather than destructive
-  historical edits.
+- Revocation is a new signed event rather than a destructive historical edit.
+  `MemorySuperseded` is a reserved contract event that replay can exclude, but
+  the MVP exposes no supersession workflow.
 
 ## Prohibited or Unsupported Cryptographic Claims
 

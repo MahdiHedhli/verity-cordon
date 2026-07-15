@@ -4,7 +4,7 @@
 
 **Created**: 2026-07-15
 
-**Status**: Approved for planning
+**Status**: Implemented local MVP; final release and publication gates pending
 
 **Input**: Build Verity Cordon, a tamper-evident memory firewall for Codex,
 as a complete OpenAI Build Week Developer Tools submission.
@@ -153,6 +153,13 @@ modes and compare recorded and applied actions.
 false-positive candidate, semantic failure fallback, cross-session
 shadow-admission labeling, and decision-event tamper detection.
 
+**Implemented scope**: A confirmed targeted rescan loads one active memory's
+verified candidate history, derives and signs a fresh sanitized rescan
+candidate, runs the current detector/semantic/policy path, and atomically
+appends a revocation when the enforcement action is unsafe. The offline demo
+uses this path for the earlier shadow admission. Policy activation does not
+automatically discover or sweep every historical memory.
+
 ---
 
 ### User Story 5 - Verify Ledger Integrity (Priority: P5)
@@ -247,8 +254,15 @@ verify flows, then optionally run the explicitly labeled live path.
 3. **Given** an unavailable live provider, **When** live mode runs, **Then** it
    fails safely and never silently substitutes a fixture.
 4. **Given** the synthetic poisoned documentation tool, **When** it runs, **Then**
-   it binds only to loopback, reads no real environment values, sends no network
-   traffic externally, and clearly identifies itself as inert demo code.
+   it uses bounded stdin/stdout only, opens no network listener, reads no real
+   environment values, sends no network traffic externally, and clearly
+   identifies itself as inert demo code.
+
+**Offline integration note**: The deterministic demo invokes the real stdio
+fixture and calls `MemoryService.session_start_context` to assert approved-only
+rendering. It labels that result as a simulated `SessionStart`; it does not
+claim to launch Codex. The installed hook boundary is exercised separately by
+contract tests and isolated Codex CLI verification.
 
 **Security Test Matrix**: The judge path includes benign seed data, the
 malicious tool fixture, a false-positive trap, offline/live dependency failure,
@@ -329,8 +343,11 @@ cross-session injection behavior, and an isolated ledger-tamper demonstration.
 - **FR-016**: Manual approve, block, and revoke actions MUST require confirmation,
   actor identity, and a reason, and MUST append auditable events.
 - **FR-017**: Approved memory supplied to Codex MUST be delimited, typed,
-  provenance-aware, budgeted, and accompanied by instructions that facts and
-  tool observations are not higher-priority authority.
+  provenance-aware, and accompanied by instructions that facts and tool
+  observations are not higher-priority authority. The rendered UTF-8 byte
+  length MUST NOT exceed the configured `injection_token_budget`; this is a
+  conservative token-count upper bound rather than an exact model tokenizer.
+  Whole records that do not fit MUST be omitted, never truncated.
 - **FR-018**: The Codex integration MUST use current documented memory controls
   and lifecycle hooks, disable native memory generation and use for the
   controlled demo plane, and MUST NOT edit Codex-generated memory files as its
@@ -352,9 +369,9 @@ cross-session injection behavior, and an isolated ledger-tamper demonstration.
 - **FR-023**: The live demo MUST use the current verified GPT-5.6 model and
   structured outputs, clearly label live results, bound retries and timeouts,
   and fail safely without silent fixture fallback.
-- **FR-024**: The synthetic poisoned-tool fixture MUST be loopback-only, use only
-  synthetic values, read no real process environment, make no external request,
-  and document its inert purpose.
+- **FR-024**: The synthetic poisoned-tool fixture MUST use bounded stdio only,
+  open no network listener, use only synthetic values, read no real process
+  environment, make no external request, and document its inert purpose.
 - **FR-025**: Privacy-safe statistics MUST report decision counts, revocations,
   semantic timeouts, detector failures, ledger state, and evaluation latency
   without raw memory or prompt content.
@@ -371,7 +388,10 @@ cross-session injection behavior, and an isolated ledger-tamper demonstration.
 - **SFR-001**: No dependency failure, malformed output, hook failure, or service
   outage may cause unverified memory to be committed or injected.
 - **SFR-002**: Ledger verification failure MUST disable injection and new commits,
-  expose a critical state, and retain safe read-only audit access.
+  expose a critical state, and retain safe read-only audit access. Startup with
+  an invalid ledger MUST NOT load detector plugins or treat a fallback policy as
+  validated; any policy summary used to render the degraded UI MUST be labeled
+  invalid and MUST NOT authorize writes or injection.
 - **SFR-003**: High-risk ambiguous candidates MUST default to quarantine after
   detector or semantic failure; lower-risk fallback requires explicit policy.
 - **SFR-004**: New commits MUST fail closed when the active policy is invalid;
@@ -387,8 +407,11 @@ cross-session injection behavior, and an isolated ledger-tamper demonstration.
   interaction states, and require confirmation for trust-changing actions.
 - **SFR-008**: All in-scope abuse cases in the threat model MUST map to a control,
   test or documented residual risk.
-- **SFR-009**: Raw evidence retention MUST be minimized, local, and separately
-  protected; safe representations MUST be used for routine operator views.
+- **SFR-009**: The MVP MUST NOT retain original evidence bytes. It MUST bind
+  their digest, keep only a bounded pattern-sanitized excerpt in permanent
+  capture history, bound and purge the transient full sanitized queue body, and
+  use content-safe representations for routine operator views. Sanitizer false
+  negatives MUST remain an explicit residual risk.
 - **SFR-010**: A fully compromised host, compromised user account or signing
   key, malicious OS or Codex binary, hardware attack, remote multi-tenant attack,
   perfect factual truth determination, and side-channel resistance MUST remain
@@ -429,6 +452,19 @@ cross-session injection behavior, and an isolated ledger-tamper demonstration.
   state, and auditable outcome.
 - **Signing Key**: Per-installation Ed25519 identity represented publicly by key
   ID and fingerprint; the private component never enters Git.
+
+## Clarifications
+
+### Session 2026-07-15
+
+- The final formal clarification pass found no unresolved
+  `[NEEDS CLARIFICATION]` markers and no material ambiguity that required an
+  operator decision before implementation.
+- The directive already fixed the active feature, threat boundary, supported
+  platform claim, local-only architecture, donor relationship, public-claim
+  limits, and scope-cut order. Implementation assumptions that did not alter
+  ownership or public claims are recorded in this specification, the plan,
+  research, ADRs, and threat model.
 
 ## Non-Goals
 
@@ -483,9 +519,9 @@ certification.
 
 ## Assumptions
 
-- The primary supported judge platforms are macOS and Linux with Python 3.12+
-  and a current Node.js LTS runtime; Windows is documented as unverified unless
-  exercised.
+- The exercised judge platform is macOS with Python 3.12+ and a compatible
+  Node.js runtime. Linux is an intended local target but is not yet recorded as
+  exercised; Windows is unverified.
 - SQLite is sufficient for the single-user local demonstration and remains the
   authoritative local event store for this feature.
 - Codex local memories remain disabled for the controlled demo plane; operators

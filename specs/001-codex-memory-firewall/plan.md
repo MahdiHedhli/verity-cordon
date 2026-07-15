@@ -13,14 +13,17 @@ Supported Codex hooks capture selected user/tool/turn evidence and inject only a
 bounded, typed active-memory view at `SessionStart`. Evidence is sanitized,
 split into atomic candidates, evaluated by deterministic detectors and an
 optional isolated GPT-5.6 semantic provider, and decided by deterministic
-versioned policy. Every lifecycle decision is appended to a signed SHA-256 and
-Ed25519 event chain in SQLite; active memory is a rebuildable materialized view.
-A loopback daemon, CLI, React Control Room, synthetic poisoned-tool fixture, and
-offline fixture provider form the judge-ready vertical slice.
+versioned policy. Hook capture is acknowledged after a signed evidence event and
+bounded sanitized queue row are durable; evaluation runs in the async daemon.
+Every lifecycle decision is appended to a signed SHA-256 and Ed25519 event chain
+in SQLite; active memory is a rebuildable materialized view. A loopback daemon,
+CLI, React Control Room, synthetic poisoned-tool fixture, and offline fixture
+provider form the judge-ready vertical slice.
 
 ## Technical Context
 
-**Language/Version**: Python 3.12-3.14; TypeScript 7; Node.js 22 LTS
+**Language/Version**: Python 3.12+; TypeScript 6.0.3; Node.js `^20.19.0` or
+`>=22.13.0`
 
 **Primary Dependencies**: Pydantic 2.13, FastAPI 0.139, aiosqlite 0.22,
 cryptography 49, OpenAI Python 2.45, Typer 0.26, Uvicorn 0.51,
@@ -29,18 +32,20 @@ OpenTelemetry API 1.43; React 19.2, Vite 8.1, Vitest 4.1
 **Storage**: Local SQLite in WAL mode; restrictive local Ed25519 key file and
 capability-token file outside Git; YAML policy validated by Pydantic
 
-**Testing**: pytest, pytest-asyncio, pytest-cov, mypy, Ruff; Vitest, Testing
-Library, axe-core; browser smoke verification against the built Control Room
+**Testing**: pytest, pytest-asyncio, pytest-cov, mypy, Ruff; Vitest and Testing
+Library; manual desktop browser, keyboard/focus accessibility, and console-error
+smoke verification against the built Control Room
 
-**Target Platform**: macOS and Linux desktop/local Codex hosts; Windows is
-documented as unverified unless exercised
+**Target Platform**: Single-user local Codex hosts. macOS is exercised; Linux is
+an intended target but is not yet recorded as exercised; Windows is unverified.
 
 **Project Type**: Installable Python daemon/CLI/Codex plugin with a local
 single-page web application served by the daemon
 
 **Performance Goals**: 95% of bundled deterministic fixture evaluations under
 250 ms; critical verification suite under five minutes; hook client deadline
-three seconds; UI interaction response under one second for bundled data
+three seconds; responsive local Control Room navigation verified by browser
+smoke, without claiming a hard UI latency SLO for the MVP
 
 **Constraints**: Loopback-only by default; offline demo requires no API key;
 secret scanning precedes remote calls; no undocumented Codex interception;
@@ -76,11 +81,12 @@ by the same loopback daemon, avoiding a second production service.
 
 ```text
 Supported Codex lifecycle hook (thin command client)
-        │ JSON over bounded loopback HTTP
+        │ bounded authenticated loopback JSON
         ▼
 verityd / FastAPI on 127.0.0.1:8765
         │
-        ├─ evidence capture and local secret sanitization
+        ├─ local secret sanitization + signed evidence capture
+        ├─ bounded SQLite sanitized queue + background worker
         ├─ candidate extractor (fixture or isolated GPT-5.6)
         ├─ concurrent deterministic detector bundle
         ├─ semantic risk assessor when policy requires it
@@ -106,20 +112,29 @@ verityd / FastAPI on 127.0.0.1:8765
   passphrase over HTTP. The browser never receives the
   bearer capability or session cookie value. None of these values is logged or
   committed. Passphrases require at least 12 characters; challenges are
-  limited to 20 per minute, one-time, and expire after 60 seconds; proof checks use constant-time
-  comparison; five failures in five minutes trigger a five-minute global
-  cooldown; and sessions expire after 15 minutes idle.
-- Read endpoints never return raw retained evidence or credentials. The daemon
-  may expose safe candidate representations, digests, IDs, and findings.
+  limited to 20 per minute, one-time, and expire after 60 seconds; proof checks
+  use constant-time comparison; five failures in five minutes trigger a
+  five-minute global cooldown; and sessions expire after 15 minutes idle.
+- Read endpoints never return original evidence bytes or credentials recognized
+  by the sanitizer. The daemon may expose pattern-sanitized candidate
+  representations, digests, IDs, and findings; sanitizer false negatives remain
+  a residual risk.
+- Every API response is marked `Cache-Control: no-store` and `Pragma: no-cache`.
+- Runtime data directories and the database leaf must be owned by the current
+  user on platforms that expose ownership, have restrictive permissions, and
+  be directories/regular files rather than symbolic links or unexpected types.
 - The OpenAI API is outside the local trust boundary. Only sanitized, bounded
   evidence is sent with `store=False`, no tools, no prior response, and no
   durable memory.
-- A semantic cache key includes sanitized digest and provenance-sensitive
-  source, namespace, kind, session/task, persistence, authority, and secrecy
-  inputs plus provider/prompt/schema versions; identical text from different
-  trust contexts is not interchangeable.
+- Semantic assessment reuse is disabled in the MVP. Reusing an unsigned cached
+  advisory result could change a later policy decision, so every live
+  assessment is fresh and `cache_hit` remains `false`. A future cache requires
+  signed provenance-sensitive binding before it can be enabled safely.
 - The signing key establishes tamper evidence only while the host, user account,
   and key remain uncompromised.
+- Browser mutation idempotency uses a durable pre-action reservation. A process
+  interruption can leave an indeterminate reservation that is refused on retry;
+  this favors safe availability loss over potentially replaying a trust change.
 
 ### Async protocols
 
@@ -135,15 +150,30 @@ policy evaluation so concurrency cannot change the decision input.
 
 ### Evidence and semantic flow
 
-1. Validate source event, size, structure, and source class.
-2. Persist a safe evidence record and digest through the ledger transaction.
-3. Detect and redact obvious credentials before extraction or semantic calls.
-4. Extract zero or more atomic candidates with fixture or live provider.
-5. Run deterministic detectors concurrently.
-6. Invoke semantic assessment only when the active policy requires it.
+1. Validate source event, size, structure, and source class; pattern-sanitize
+   source labels and strip URL query/fragment data before signed persistence.
+2. Screen and redact recognized credentials locally.
+3. Atomically append `EvidenceCaptured` and enqueue the bounded full sanitized
+   text, then return `202 Accepted` to the hook.
+4. In the daemon background, verify the queue digest and extract zero or more
+   atomic candidates with fixture or live provider.
+5. Run deterministic detectors concurrently after fixed result-size/schema
+   bounds and pattern sanitization of plugin free text.
+6. Invoke semantic assessment only when the active policy requires it; bound
+   and pattern-sanitize model-originated statements and rationale again before
+   signed persistence.
 7. Apply deterministic policy to sanitized candidate and versioned findings.
-8. Append decision and outcome events; atomically update eligible derived view.
-9. Expose safe details and statistics; never log raw content by default.
+8. Append decision and outcome events, or `EvidenceEvaluationCompleted` when no
+   candidate is extracted; update eligible derived views and delete the queued
+   full text in one transaction.
+9. Retry bounded evaluation failures; on the attempt/age limit append
+   `EvidenceEvaluationFailed` and purge the queued text.
+10. Expose content-safe details and statistics; never log original content.
+
+`EvidenceCaptured` permanently binds the raw submitted-byte digest and includes
+a bounded pattern-sanitized `safe_excerpt`. `retention_state=digest_only` means
+the original raw bytes are absent, not that the excerpt is absent. Sanitization
+is not exhaustive, so local ledger data and backups remain sensitive.
 
 ### Ledger and materialization
 
@@ -161,9 +191,11 @@ policy evaluation so concurrency cannot change the decision input.
   uniqueness constraints remain the second line of defense.
 - Verification recomputes payload and event digests, key IDs, signatures, chain
   links, contiguous sequence, an externally stored or supplied signed expected
-  head, and a replayed view. Any failure disables commits and injection until
-  repaired or an isolated clean store is selected. Without an expected head,
-  terminal completeness is reported as unproven, never fully verified.
+  head, a replayed view, and the evidence, active-policy, candidate, detector,
+  semantic, and decision projections against their signed source events. Any
+  failure disables commits and injection until repaired or an isolated clean
+  store is selected. Without an expected head, terminal completeness is
+  reported as unproven, never fully verified.
 - Revocation is a new event referencing one committed memory event. Rebuild
   replays history deterministically and compares canonical rows with the stored
   view before replacement.
@@ -189,20 +221,40 @@ policy evaluation so concurrency cannot change the decision input.
   `PolicyActivated` and leaves the last-known-good policy active. If no valid
   last-known-good policy exists, both new commits and injection fail closed.
   Successful activation appends `PolicyActivated` with the validated digest.
+  Startup and on-demand verification require the policy rows, active marker,
+  activation event link, validated content, and digest to reproduce the signed
+  activation history.
 
 ### Codex integration
 
 - The plugin sets native `memories = false` and defense-in-depth generation/use
   flags for its controlled environment. `doctor` verifies effective state.
 - `UserPromptSubmit`, supported `PostToolUse`, compaction markers, and `Stop`
-  deliver bounded evidence envelopes to the daemon. The unstable transcript
-  file is not parsed for core correctness.
+  deliver bounded evidence envelopes to the daemon. A hook receives `202` only
+  after signed capture and bounded queue admission; it does not wait for model
+  work. The unstable transcript file is not parsed for core correctness.
 - `SessionStart` asks for eligible memory and prints only the documented JSON
   `additionalContext` response. Memory is typed and delimited, facts are not
   elevated to system authority, operational instructions need stronger trust,
-  and the result fits a configurable character/token budget.
+  and the rendered UTF-8 byte length does not exceed the configured
+  `injection_token_budget`. Byte count is used as a conservative upper bound on
+  byte-tokenizer tokens; it is not an exact model-specific tokenizer result.
+  Whole records that do not fit are omitted rather than truncated.
 - Hook definitions use short explicit timeouts and do not rely on ordering with
   other hooks. An unavailable daemon yields no memory, not raw fallback.
+
+### Retroactive targeted rescan
+
+`verity memory rescan <MEMORY_ID>` is a confirmed one-memory operation. It first
+verifies the ledger, active view, original signed candidate, commit event, and
+signed current policy. The service applies the current sanitizer, creates a new
+candidate ID whose signed payload links the original candidate event and
+content-safe operator reason, then runs the current detector bundle, optional
+semantic provider, and deterministic policy. Candidate, finding, assessment,
+decision, and any `MemoryRevoked` event commit in one transaction. An unsafe
+enforcement action removes only the target from the active view; an allow
+decision records the new evaluation without mutating active memory. This is not
+an automatic policy-wide discovery or sweep.
 
 ### Transactional streaming
 
@@ -212,6 +264,8 @@ runs incremental structural, size, secret, and overlapping pattern checks.
 and can commit exactly once. `abort`, block, timeout, cancellation, and resource
 limit failures produce an auditable terminal event and no active memory. Buffer
 content is not readable through memory APIs before successful commit.
+Operator-supplied abort reasons are pattern-sanitized and bounded before they
+enter an event or projection.
 
 ### Observability
 
@@ -227,12 +281,15 @@ derives counts and latency aggregates without exporting raw prompts or content.
 |---|---|---|---|
 | Daemon unavailable | No commit | Continue without Verity memory | Hook health warning without content |
 | Hook timeout or invalid output | No implicit commit | No fallback injection | Codex hook failure plus doctor result |
+| Evidence queue at item/byte capacity | Reject before partial capture | Existing verified view only | Content-free resource-limit response |
+| Queued evaluation exhausts retries or age | Append `EvidenceEvaluationFailed`; purge full queued text | No memory from the failed evidence | Safe error class and terminal event |
+| Queued sanitized digest mismatch | Append a signed terminal failure when possible, purge queued text, and mark the ledger unhealthy; the failure remains sticky across restart | Disabled | Critical integrity state without content |
 | Detector timeout/exception | Failure finding; high-risk defaults quarantine | Ineligible result excluded | Candidate detail and failure metric |
 | Semantic timeout/refusal/schema error | Policy fallback; high-risk defaults quarantine | Ineligible result excluded | Provider state and timeout count |
 | OpenAI unavailable | Live run fails safely; no fixture substitution | Previously verified active view may inject | Live provider degraded |
 | Proposed policy validation failure | Append safe rejection when possible; retain an intact last-known-good policy, otherwise fail closed | Continue only under the still-valid last-known-good policy; with no valid policy, inject nothing | Rejection event or content-free critical policy status |
 | Ledger append interruption | Transaction rolls back; no partial event/view | Existing verified view only | Storage error event where possible |
-| Ledger corruption | Refuse all new commits | Disabled | Critical state, first invalid event |
+| Ledger corruption or signed-projection drift | Start or remain in read-only mode; refuse all new commits and do not load detector plugins | Disabled | Content-safe status/policy/audit access, invalid policy-validation label, and first invalid event where attributable |
 | Missing/unsafe signing key | Refuse signed append | Disabled; a due TTL could not be made an explicit signed expiry event | Key health failure |
 | Materialized-view drift | Refuse commit until rebuild | Disabled | Consistency failure and rebuild action |
 | Plugin detector crash | Failure result; remaining detectors continue | Policy determines eligibility | Plugin ID and error class only |
@@ -259,7 +316,7 @@ specs/001-codex-memory-firewall/
 ```text
 src/verity_cordon/
 ├── core/          # models, enums, protocols, errors, clock
-├── daemon/        # FastAPI app, dependencies, mutation authorization
+├── daemon/        # FastAPI app, durable worker, static serving, authorization
 ├── codex/         # hook envelopes, thin client, installer, injection format
 ├── ledger/        # SQLite schema/store, append, verify, replay
 ├── memory/        # candidate lifecycle, materialized view, revocation
@@ -273,8 +330,7 @@ src/verity_cordon/
 
 apps/control-room/
 ├── src/           # React views, components, API client, accessible actions
-├── tests/
-└── dist/          # committed judge-ready production build
+└── dist/          # ignored production build created by bootstrap
 
 tests/
 ├── unit/

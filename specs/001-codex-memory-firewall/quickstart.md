@@ -1,220 +1,264 @@
 # Quickstart: Codex Memory Firewall
 
-This guide is the acceptance path for the active feature. Commands are run from
-the repository root. The offline path uses synthetic data and recorded semantic
-fixtures; it never needs an OpenAI API key.
+This is the acceptance path for `001-codex-memory-firewall`. Run commands from
+the repository root. The supported judge distribution is a source checkout;
+`bootstrap.sh` builds the Control Room assets because `apps/control-room/dist/`
+is not committed.
 
-## Supported Judge Platforms
+## Platform Status
 
-- macOS 14 or later on Apple Silicon or Intel
-- Current Linux distributions on x86_64 or arm64
-- Python 3.12 through 3.14
-- Node.js 22 LTS is needed only to rebuild the Control Room; the committed
-  production assets support the normal offline judge path without rebuilding it
-- Windows is not claimed as verified for the hackathon build
+- Python 3.12 or newer
+- `uv`
+- Node.js `^20.19.0` or `>=22.13.0` with npm
+- macOS is the locally exercised platform
+- Linux is an intended local target but is not yet recorded as exercised
+- Windows is not claimed as verified
 
-## Fast Offline Path
+## Bootstrap
 
 ```bash
 ./scripts/bootstrap.sh
+```
+
+Bootstrap performs a frozen Python dependency sync, checks that the installed
+package and `verity` entry point work without `PYTHONPATH`, installs the locked
+frontend dependencies, and builds the frontend. It creates no signing key,
+database, passphrase, or capability.
+
+## Offline Demonstration
+
+```bash
+export VERITY_DATA_DIR=.verity-demo
 ./scripts/demo-offline.sh
 ```
 
-The demo prints a loopback URL, normally `http://127.0.0.1:8765`. It initializes
-an isolated data directory, verifies its signing key and empty ledger, seeds one
-legitimate fact plus the synthetic poisoned-documentation scenario, and starts
-the real daemon and Control Room.
+Create a local Control Room passphrase of at least 12 characters when prompted.
+The passphrase is not echoed or printed. The default script run resets only the
+ignored `.verity-demo` directory, executes the full synthetic sequence, and
+serves the Control Room at `http://127.0.0.1:8765`.
 
-Expected overview state:
+Offline mode requires no OpenAI API key. It uses:
 
-- Semantic provider: `Recorded fixture`
-- Ledger: `Verified`
-- One legitimate active memory
-- One synthetic persistent instruction with explicit policy outcome
-- No real environment values, credentials, or external network calls
+- the recorded fixture candidate extractor and semantic adjudicator;
+- the real deterministic detector and policy pipeline;
+- the real SQLite event ledger, SHA-256 chain, Ed25519 signatures, and expected
+  head;
+- the real active/quarantine views, revocation, and rebuild logic;
+- the real daemon API and built Control Room.
 
-Stop the demo with `Ctrl-C`. Its isolated data is disposable and ignored by Git.
+The sequence is deterministic:
 
-## Demonstrate Shadow Mode
+1. Activate shadow policy.
+2. Submit a synthetic poisoned-document response.
+3. Record `actual_action=allow` and `would_have_action=quarantine` for its
+   persistent operational instruction.
+4. Activate enforcement policy and evaluate the same synthetic response.
+5. Quarantine the enforcement-mode poisoned candidate.
+6. Rescan the earlier shadow-admitted memory under the current enforcement
+   policy and atomically revoke it when that decision is unsafe.
+7. Rebuild the active view and preserve unrelated legitimate memory.
+8. Render a simulated `SessionStart` through the real memory service and assert
+   that approved memory is present while the poisoned instruction is absent.
+9. Verify the ledger and materialized view.
+
+For stage reliability, the command launches only the reviewed fixture at
+`examples/poisoned-docs-mcp/` under a minimal environment, exchanges bounded
+MCP-style JSON-RPC over stdio, validates its identity and inert safety flag, and
+then sends the returned synthetic response directly into the core memory
+service. It does not launch Codex or require MCP client configuration.
+
+Inspect the demo state from another terminal:
 
 ```bash
-uv run verity demo offline --scenario poisoned-docs --mode shadow --no-serve
-uv run verity memory list --all
+export VERITY_DATA_DIR=.verity-demo
+uv run verity status
+uv run verity memory list
+uv run verity policy show
+uv run verity ledger verify
 ```
 
-Expected result:
-
-- `actual_action`: `allow`
-- `would_have_action`: `quarantine`
-- `shadow_mode`: `true`
-- The synthetic malicious operational instruction is active but labeled
-  `shadow_admitted`.
-- No exfiltration or external tool call occurs.
-
-Render the exact approved-memory payload that a supported `SessionStart` hook
-would receive:
+Run without serving the UI:
 
 ```bash
-uv run verity codex-hook session-start --simulate
+VERITY_DEMO_NO_SERVE=1 ./scripts/demo-offline.sh
 ```
 
-The output is JSON with a delimited developer-context block. This step is a
-deterministic harness over the same adapter contract used by the real hook.
+## Inspect, Revoke, and Rebuild
 
-## Demonstrate Enforcement
+The CLI intentionally provides no undocumented filter or reset flags. List all
+content-safe inventory records, then inspect a selected identifier:
 
 ```bash
-uv run verity demo offline --scenario poisoned-docs --mode enforce --reset --no-serve
-uv run verity memory list --all
-uv run verity codex-hook session-start --simulate
+export VERITY_DATA_DIR=.verity-demo
+uv run verity memory list
+uv run verity memory show <MEMORY_ID>
 ```
 
-Expected result:
-
-- The legitimate project fact is active.
-- The persistent operational instruction is quarantined.
-- The injection payload contains the legitimate fact and excludes the poisoned
-  instruction.
-
-## Revoke and Replay
-
-List shadow-admitted memory and copy the synthetic malicious memory ID:
+Append a reasoned revocation and replay the view:
 
 ```bash
-uv run verity memory list --status active --shadow-admitted
-uv run verity memory revoke <MEMORY_ID> --reason "New policy identifies persistent tool instruction"
+uv run verity memory revoke <MEMORY_ID> \
+  --reason "Confirmed synthetic demo finding" \
+  --yes
+uv run verity memory rebuild --dry-run
 uv run verity memory rebuild
 uv run verity ledger verify
 ```
 
-Expected result:
+`--dry-run` compares replay with stored projections without replacing them. A
+normal rebuild replaces derived projections and then verifies them. Revocation
+does not delete historical events.
 
-- A new `MemoryRevoked` event exists.
-- The target memory is absent from the active view.
-- The unrelated legitimate memory remains.
-- Rebuilt and stored views match.
-- The ledger verifies.
-
-The Control Room exposes the same flow with a preview and confirmation step.
-
-## Inspect Decisions and Ledger
+Export only public verification material when needed:
 
 ```bash
-uv run verity status
-uv run verity memory list --all
-uv run verity policy show
-uv run verity ledger verify
-uv run verity ledger export-public-key --output .verity-demo/public-key.json
+uv run verity ledger export-public-key \
+  --output .verity-demo/public-key.json
 ```
 
-Routine output contains safe statements, IDs, digests, actions, versions, and
-failure classes. It does not print private keys, bearer capabilities, raw
-credentials, or retained evidence.
+Routine CLI output contains content-safe representations, identifiers, digests,
+actions, and error classes. It does not print private keys, OpenAI keys, browser
+passphrases, or mutation capabilities.
+
+To re-evaluate one active memory with the current sanitizer, detector bundle,
+semantic provider when required, and active policy, use the confirmed targeted
+rescan path:
+
+```bash
+uv run verity memory rescan <MEMORY_ID> \
+  --reason "Evaluate this memory under the current enforcement policy" \
+  --yes
+```
+
+The rescan records a new actual and would-have policy decision. Under an
+enforcement policy, if the actual action is redact, quarantine, or block, the
+same transaction appends a `MemoryRevoked` event and removes only that memory
+from the active view. It is a one-memory operation, not an automatic
+policy-wide sweep.
+
+## Policy Commands
+
+```bash
+uv run verity policy validate \
+  src/verity_cordon/policies/default-enforce.yaml
+uv run verity policy show
+uv run verity policy activate \
+  src/verity_cordon/policies/default-shadow.yaml \
+  --reason "Synthetic shadow evaluation" \
+  --yes
+```
+
+Activation requires `--yes` and appends `PolicyActivated`. Invalid activation
+does not replace an intact last-known-good policy. If no valid policy is
+available, commits and injection fail closed.
 
 ## Live GPT-5.6 Path
 
-Copy placeholders only and set the real key in your local shell or untracked
-`.env` file:
+Set `OPENAI_API_KEY` in the local shell or another untracked secret source
+without printing it. Do not commit a populated `.env`.
 
 ```bash
-cp .env.example .env
-```
-
-Set `OPENAI_API_KEY` locally without echoing it, then run:
-
-```bash
+export VERITY_DATA_DIR=.verity-live-demo
 ./scripts/demo-live.sh
 ```
 
-Live mode uses the configured `gpt-5.6` alias through the Responses API. It
-records the requested alias, returned model, prompt version, schema version, and
-provider state. Obvious secrets are redacted before the request. Responses use
-structured Pydantic output, `store=False`, no tools, no durable model memory,
-bounded input, a short timeout, and one retry.
+Live mode is implemented to use the configured `gpt-5.6` alias through the
+official async Responses API with Pydantic structured output, `store=False`, no
+tools, no prior response, bounded input, a strict timeout, and one bounded
+retry. It records requested and returned model identifiers and never silently
+falls back to fixtures.
 
-If the key or API is unavailable, live mode reports a live-provider failure and
-applies policy fallback. It never silently replaces the live provider with a
-fixture.
+Deterministic secret screening precedes the request, but pattern-based
+sanitization is not exhaustive. `store=False` is not a Zero Data Retention
+claim. The repository does not yet record a successful credentialed live API
+run, so fixture results must not be described as live GPT-5.6 results.
 
 ## Codex Integration
 
-Inspect planned changes without modifying user configuration:
-
-```bash
-uv run verity install-codex --dry-run
-```
-
-Install the project plugin and controlled memory configuration:
+Preview the exact changes. A preview intentionally exits with status 2 so it
+cannot be confused with an applied installation:
 
 ```bash
 uv run verity install-codex
-uv run verity doctor
 ```
 
-The installer:
+After reviewing the preview and hook definition:
 
-1. Creates a timestamped backup before any user-level configuration mutation.
-2. Disables native local memory generation and use for the controlled plane.
-3. Enables hooks and installs the Verity plugin/hook definitions.
-4. Never edits Codex-generated memory files as its primary control mechanism.
-5. Requires the operator to inspect and trust the hook definition in Codex.
+```bash
+uv run verity install-codex --yes
+uv run verity doctor --confirm-hook-trust
+```
 
-Start a new Codex session after reviewing hooks. Use `verity doctor` to verify
-effective memory flags, plugin state, daemon reachability, policy, key,
-capability-file permissions, ledger, and Control Room assets.
+The installer creates a backup, registers a private local plugin marketplace,
+installs Verity's reviewed command hooks, enables hooks, and disables native
+Codex local-memory generation and use. It does not edit Codex-generated memory
+files.
 
-Remove only Verity-managed integration entries with:
+The thin adapter forwards selected `UserPromptSubmit`, `PostToolUse`,
+`PreCompact`, `PostCompact`, and `Stop` fields under a strict deadline. The
+daemon returns `202 Accepted` after a signed `EvidenceCaptured` event and
+bounded sanitized queue row are durably committed; model evaluation occurs in
+the daemon background, not the hook process. `SessionStart` injects only a
+healthy, verified, typed, delimited active view. Failure yields no Verity memory
+rather than raw fallback.
+
+The installer and hook contract were exercised with Codex CLI 0.144.4 against
+an isolated temporary configuration. Hook coverage remains limited to
+documented surfaces.
+
+Preview and then apply removal:
 
 ```bash
 uv run verity uninstall-codex
+uv run verity uninstall-codex --yes
 ```
 
-The uninstaller does not delete the event ledger, signing key, or unrelated
-Codex configuration.
+The uninstaller preserves the Verity ledger, signing key, and unrelated Codex
+configuration.
 
-## Policy Validation
-
-```bash
-uv run verity policy validate src/verity_cordon/policies/default.yaml
-uv run verity policy show
-uv run verity policy activate src/verity_cordon/policies/default.yaml
-```
-
-Activation appends `PolicyActivated`. Invalid policy leaves the last-known-good
-policy untouched and blocks new commits when no valid policy is available.
-
-## Transactional Stream Acceptance
+## Transactional Streaming Acceptance
 
 ```bash
 uv run pytest -q tests/adversarial/test_streaming.py
 ```
 
-The suite proves uncommitted invisibility, split-chunk detection, complete final
-scan, no partial commit after block/abort/cancellation, resource limits,
-double-commit rejection, and concurrent stream isolation.
+This suite covers uncommitted invisibility, split-chunk detection, complete
+final scanning, block/abort/cancellation safety, resource limits, terminal-state
+enforcement, no partial commit, and concurrent stream isolation.
 
-## Critical Verification
+## Verification
 
 ```bash
 ./scripts/verify.sh
 ```
 
-The script runs formatting checks, lint, static types, backend tests, security
-and contract tests, evaluation fixtures, frontend type/lint/tests/build, and the
-offline end-to-end path. The exact commands and results are also recorded in
-the final handoff; no unexecuted gate is described as passing.
+The script is configured to check the installed CLI without `PYTHONPATH`, audit
+Python and npm dependencies, check formatting/lint/types, validate OpenAPI, run
+backend and example tests with coverage, run frontend type/lint/component tests
+and a production build, and check the saved evaluation report.
+
+Desktop browser behavior, keyboard/focus accessibility, and console errors are
+verified separately with a manual browser smoke; `verify.sh` does not claim an
+automated axe-core gate.
+
+The saved fixture report covers 14 original synthetic samples: 5/5 benign
+allowed and 9/9 risky protected, with 0 false positives and 0 false negatives
+for that fixture only. Its 226-event ledger verified with a consistent
+materialized view. See `evals/results/latest.md`; these are not universal or
+live-model accuracy claims.
 
 ## Clean-Checkout Acceptance
 
-To validate without disturbing the primary workspace:
+This publication gate remains pending until the final public URL and commit are
+available:
 
 ```bash
 git clone <PUBLIC_REPOSITORY_URL> verity-cordon-judge
 cd verity-cordon-judge
 ./scripts/bootstrap.sh
+export VERITY_DATA_DIR=.verity-demo
 ./scripts/demo-offline.sh
 ```
 
-Replace the placeholder with the final public URL after publication. The
-repository remains the testing source of truth; the final demo video and real
-`/feedback` Session ID are operator submission actions.
+The public YouTube video, Devpost submission, and real `/feedback` Session ID
+remain operator actions and are not represented as complete here.

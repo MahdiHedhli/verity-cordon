@@ -49,6 +49,8 @@
     "event_type": {
       "enum": [
         "EvidenceCaptured",
+        "EvidenceEvaluationCompleted",
+        "EvidenceEvaluationFailed",
         "MemoryCandidateCreated",
         "DetectorVerdictRecorded",
         "SemanticAssessmentRecorded",
@@ -174,7 +176,7 @@
     },
     "payload": {
       "type": "object",
-      "description": "Event-specific payload. It MUST contain only finite JSON values and is independently canonicalized and hashed. Raw credentials, API keys, bearer capabilities, signing keys, and unredacted protected evidence are prohibited; evidence content is stored separately under local protection and referenced by identifier and digest.",
+      "description": "Event-specific payload. It MUST contain only finite JSON values and is independently canonicalized and hashed. Recognized credentials, API keys, bearer capabilities, signing keys, and original evidence bytes are prohibited. EvidenceCaptured may retain a bounded pattern-sanitized excerpt plus original-content and sanitized-content digests; sanitizer false negatives remain a documented residual risk.",
       "additionalProperties": {
         "$ref": "#/$defs/jsonValue"
       }

@@ -14,8 +14,9 @@ info:
     trust-changing or state-changing operation requires either a
     per-installation bearer capability for non-browser clients or an
     origin-bound HttpOnly Control Room session plus a CSRF header. Bearer
-    capabilities, session cookies, raw signing keys, raw secrets, and
-    unredacted evidence are never response fields.
+    capabilities, session cookies, raw signing keys, recognized raw secrets,
+    and original evidence bytes are never response fields. Pattern sanitization
+    is not an exhaustive confidentiality boundary.
   contact:
     name: Verity Cordon
   license:
@@ -91,7 +92,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/StatisticsResponse"
   /ui/challenge:
-    get:
+    post:
       tags: [Control Room]
       operationId: getControlRoomChallenge
       summary: Obtain a short-lived local browser authentication challenge
@@ -100,6 +101,13 @@ paths:
         a loopback peer. It returns public PBKDF2 parameters and a one-time
         nonce. Possession of this challenge does not authorize mutations.
       security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
       responses:
         "200":
           description: A short-lived one-time challenge.
@@ -157,8 +165,9 @@ paths:
       operationId: captureHookEvidence
       summary: Capture normalized evidence from a supported Codex hook
       description: >-
-        Returns after durable local capture or queue admission. Semantic
-        evaluation is asynchronous and never runs in the hook process.
+        Returns only after a signed EvidenceCaptured event and bounded sanitized
+        SQLite queue row commit atomically. Candidate extraction and semantic
+        evaluation are asynchronous and never run in the hook process.
       security:
         - LocalMutationCapability: []
       parameters:
@@ -398,6 +407,13 @@ paths:
           ControlRoomCsrf: []
       parameters:
         - $ref: "#/components/parameters/MemoryId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
       responses:
         "200":
           description: Content-safe revocation impact preview.
@@ -935,6 +951,8 @@ components:
       type: string
       enum:
         - EvidenceCaptured
+        - EvidenceEvaluationCompleted
+        - EvidenceEvaluationFailed
         - MemoryCandidateCreated
         - DetectorVerdictRecorded
         - SemanticAssessmentRecorded
@@ -980,6 +998,9 @@ components:
         daemon:
           type: string
           enum: [healthy, degraded, read_only, unavailable]
+          description: >-
+            read_only means content-safe status and audit reads remain available,
+            but signed writes and memory injection are disabled.
         mode:
           $ref: "#/components/schemas/Mode"
         policy:
@@ -997,7 +1018,15 @@ components:
     DecisionCounts:
       type: object
       additionalProperties: false
-      required: [total_candidates, allowed, redacted, quarantined, blocked, revoked]
+      required:
+        - total_candidates
+        - allowed
+        - redacted
+        - quarantined
+        - blocked
+        - revoked
+        - pending_evidence
+        - failed_evidence
       properties:
         total_candidates: {type: integer, minimum: 0}
         allowed: {type: integer, minimum: 0}
@@ -1005,6 +1034,8 @@ components:
         quarantined: {type: integer, minimum: 0}
         blocked: {type: integer, minimum: 0}
         revoked: {type: integer, minimum: 0}
+        pending_evidence: {type: integer, minimum: 0}
+        failed_evidence: {type: integer, minimum: 0}
     StatisticsResponse:
       type: object
       additionalProperties: false
@@ -1640,6 +1671,10 @@ components:
         validation_state:
           type: string
           enum: [valid, invalid, last_known_good]
+          description: >-
+            invalid is returned by the read-only startup runtime when signed
+            history cannot authorize the displayed configured or built-in
+            fallback policy; that policy MUST NOT authorize writes or injection.
     RawPolicyDocument:
       type: object
       maxProperties: 64

@@ -21,7 +21,7 @@ judge-friendly product experience
 
 - [x] CHK006 Does the required flow cover attack capture, shadow outcome, enforcement, new-session injection, revocation, replay, and verification? [Completeness, Spec US1-US7]
 - [x] CHK007 Is shadow mode prohibited from being presented as active protection? [Clarity, Spec FR-007]
-- [x] CHK008 Is the poisoned tool clearly constrained to synthetic, inert, loopback-only behavior? [Safety, Spec FR-024]
+- [x] CHK008 Is the poisoned tool clearly constrained to synthetic, inert, stdio-only behavior with no network listener? [Safety, Spec FR-024]
 - [x] CHK009 Are the exact GPT-5.6 runtime contributions distinguished from Codex development collaboration? [Clarity, Spec US7]
 - [x] CHK010 Is deterministic policy authority retained in the live semantic narrative? [Consistency, Spec FR-005/FR-006]
 
