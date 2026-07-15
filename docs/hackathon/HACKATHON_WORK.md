@@ -48,6 +48,7 @@ renamed codebase.
 | `c70db72` | Pinned release verification to the bootstrapped environment and enforced the declared Node engine | Complete |
 | `79a12d0` | Recorded fresh-clone and Control Room browser acceptance evidence | Complete |
 | `a831e3e` | Closed subscription schema, hook-trust, runbook, screenshot, and release-audit gaps | Complete |
+| `e458786` | Aligned runtime status and semantic-failure contracts after post-merge review | Complete |
 
 The feature-001 branch was fast-forwarded into `main` without rewriting history
 or force-pushing. At this pre-PR checkpoint, Sprint 002 remained on its public
@@ -388,6 +389,17 @@ captioned as fixture-backed, and produced zero browser console warnings or
 errors. It is a product screenshot, not fabricated live-provider or Desktop-app
 evidence.
 
+PR #1 merged Sprint 002 into public `main` at
+`e7074276ad40ee60a889e540c22a07659744097e`. Two late automated review findings
+then exposed real public-contract drift: the runtime status response had three
+fields absent from its closed OpenAPI schema, and the semantic failure JSON
+Schema omitted six runtime failure classes. Commit `e458786` centralized the
+provider-isolation mapping, aligned both contracts and the frontend type, and
+added executable equality and response-validation regressions. The complete
+post-fix gate passed 509 backend tests, 13 isolated example/plugin tests, 10
+frontend tests, 80% backend coverage, dependency audits, production build, and
+the 20-fixture evaluation.
+
 ## New Work versus Prior Art
 
 Verity Cordon's implemented contribution is an async-first local daemon, a
@@ -418,8 +430,6 @@ submission-checklist item remain intentionally unchecked.
 
 ## Open Issues and Operator Actions
 
-- Review and merge `codex/002-desktop-subscription-defense` into public `main`;
-  no pull request or merge is represented as complete.
 - Exercise the credentialed live GPT-5.6 path if a suitable local key is
   available; otherwise disclose it as unexercised.
 - Perform and time the operator-visible Codex Desktop app rehearsal; automated
@@ -442,14 +452,16 @@ evidence.
 ## Sprint 002 Handoff Snapshot
 
 - **Public repository**: `https://github.com/MahdiHedhli/verity-cordon`
-- **Branch**: `codex/002-desktop-subscription-defense`
+- **Branch**: `codex/002-contract-alignment`
 - **Pre-closure public branch head**:
   `d54532e12a478226939a30ce3b4e8da9beb181eb`
 - **Locally verified release implementation commit**:
   `a831e3e20bbdc656b3d8199ad75ab76eeb3a7c3d`
+- **Locally verified contract-alignment commit**:
+  `e458786`
 - **Prior clean-checkout implementation/evidence checkpoint**:
   `79a12d0c8058d579664c90740a8bd44ae3359c68`
-- **Automated verification**: 506 backend tests, 13 isolated example/plugin
+- **Automated verification**: 509 backend tests, 13 isolated example/plugin
   tests, 10 frontend tests, 80% backend coverage, schema/OpenAPI validation,
   dependency audits, type checks, lint, production build, and 20 fixture
   evaluations with 0 fixture-scoped false positives and 0 fixture-scoped false
@@ -478,7 +490,7 @@ evidence.
   restarting Desktop; verify `/mcp` and a benign hook canary; run and time the
   documented attack,
   enforcement, clean-task, revocation, and ledger sequence; immediately tear
-  down the user-wide fixture; review and merge the feature branch; record and
-  upload the under-three-minute public video; run `/feedback` in this primary
+  down the user-wide fixture; record and upload the under-three-minute public
+  video; run `/feedback` in this primary
   task; enter the real Session ID; test public links logged out; and submit
   before 2026-07-21 17:00 PT
