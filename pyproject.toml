@@ -50,6 +50,7 @@ dev = [
   "pytest-cov>=7.1,<8",
   "pytest-timeout>=2.4,<3",
   "ruff>=0.15.21,<0.16",
+  "types-pyyaml>=6.0.12,<7",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -95,4 +96,3 @@ exclude_also = [
   "if TYPE_CHECKING:",
   "if __name__ == .__main__.:",
 ]
-

@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0.0",
+  "provider": "verity-fixture-v1",
+  "description": "Synthetic deterministic expectations; no model output or secrets.",
+  "profiles": {
+    "benign": {
+      "risk_score": 0.06,
+      "recommended_disposition": "allow"
+    },
+    "persistent_or_authority_risk": {
+      "risk_score": 0.97,
+      "recommended_disposition": "quarantine"
+    }
+  }
+}

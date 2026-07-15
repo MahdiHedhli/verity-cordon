@@ -9,7 +9,14 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 Identifier = Annotated[
     str,
@@ -23,7 +30,11 @@ Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        validate_assignment=True,
+    )
 
 
 class Action(StrEnum):
@@ -305,6 +316,26 @@ class SemanticAssessment(StrictModel):
     failure: SemanticFailure | None = None
     assessed_at: str
 
+    @model_validator(mode="after")
+    def validate_provider_outcome(self) -> SemanticAssessment:
+        score_fields = (
+            self.risk_score,
+            self.exfiltration_risk,
+            self.tool_hijack_risk,
+            self.cross_task_risk,
+            self.secret_risk,
+        )
+        if self.provider_state == ProviderState.FAILED:
+            if self.failure is None:
+                raise ValueError("failed semantic assessment requires failure metadata")
+            if any(value is not None for value in score_fields):
+                raise ValueError("failed semantic assessment must not contain risk scores")
+            if self.recommended_disposition is not None or self.rationale is not None:
+                raise ValueError("failed semantic assessment must not claim a disposition")
+        elif self.failure is not None or self.risk_score is None:
+            raise ValueError("successful semantic assessment requires a score and no failure")
+        return self
+
 
 class PolicyDecision(StrictModel):
     decision_id: Identifier
@@ -446,4 +477,3 @@ def format_utc(value: datetime | None = None) -> str:
         fraction = f"{current.microsecond:06d}".rstrip("0")
         return f"{base}.{fraction}Z"
     return f"{base}Z"
-
