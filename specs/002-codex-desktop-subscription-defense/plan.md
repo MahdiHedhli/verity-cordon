@@ -27,6 +27,10 @@ signed event history. Demo-only MCP configuration is separate from normal
 product installation, previewed, confirmation-gated, receipt-bound,
 drift-aware, and reversible.
 
+The exercised Codex `0.144.4` surface stores this MCP entry in user-wide
+`$CODEX_HOME/config.toml`; a dedicated workspace is an operator exposure-control
+convention, not project-local scoping.
+
 ## Technical Context
 
 **Language/Version**: Python 3.12+; TypeScript 6.0.3; Node.js `^20.19.0` or
@@ -66,7 +70,13 @@ search, or broad environment; no claim that the Codex child is tool-free; any
 tool event, malformed or oversized output, timeout, rate limit, missing
 subscription authentication, or child cleanup failure is explicit and cannot
 admit high-risk memory; synthetic data only; normal installation must not add
-the attack fixture
+the attack fixture.
+
+Desktop mutation constraints additionally require the app and unrelated tasks
+to be closed, an explicit hook-trust assertion, an exact digest from a separate
+preview, a private operation lock for cooperating Verity processes, and an
+expected whole-config SHA-256 head. Non-cooperating config writers remain a
+documented residual risk.
 
 **Scale/Scope**: One local operator and one child process per bounded semantic
 operation for the hackathon path; one dedicated demo MCP entry; additive
@@ -258,17 +268,37 @@ explicit operation:
 
 1. Resolve and validate the selected Codex config, Python runtime, and fixture
    source without mutating state.
-2. Show the exact MCP entry, staging destination, artifact digests, existing
-   value, and teardown plan.
-3. Require `--yes` to stage the reviewed fixture and update only the dedicated
-   `mcp_servers.verity_cordon_poisoned_docs` entry.
-4. Atomically create a restrictive receipt containing original entry state,
-   applied value, canonical hashes, runtime identity, and receipt version.
-5. Refuse setup or teardown on symlinks, unsafe ownership/modes, digest drift,
-   config drift, ambiguous partial state, or an unreadable receipt.
-6. `verity demo desktop-teardown --yes` restores or removes only the recorded
-   entry and staged demo artifacts. It never changes the Verity ledger, key,
-   memory view, normal plugin, or unrelated Codex configuration.
+2. Show the exact demo MCP entry, staging destination, artifact/runtime
+   digests, existing config head, and teardown plan. If normal integration is
+   not ready, direct the operator to its separate installer preview rather than
+   duplicating that delta.
+3. Require `--yes`, an explicit hook-trust assertion, and the exact SHA-256
+   digest copied from a separately completed preview before staging the fixture
+   or updating `mcp_servers.verity_cordon_poisoned_docs`.
+4. Under a private operation lock, stage only the digest-verified fixture and
+   atomically write a restrictive `prepared` receipt before changing Codex
+   configuration. Replace config only while its whole-file digest equals the
+   expected head, then advance the receipt to `installed`.
+5. Refuse setup or teardown on symlinks, unsafe ownership/modes, strict runtime
+   identity failure, digest drift, config drift, ambiguous partial state, or an
+   unreadable receipt.
+6. Recover `prepared` setup and `removing` teardown only when receipt, entry,
+   artifacts, runtime, and expected digest describe one exact forward state.
+7. Confirmed `verity demo desktop-teardown` with `--confirm-hook-trust`, `--yes`,
+   and `--expected-preview-digest <sha256>` removes only the recorded entry and
+   digest-matching staged artifacts. It may proceed when normal integration
+   health is degraded, avoiding a stranded user-wide synthetic entry, but never
+   weakens its own exact-state checks.
+8. Keep completed receipts in `removed`; before a subsequent setup, archive an
+   exact digest-matching removed receipt by installation ID and reject archive
+   conflicts.
+
+The Verity operation lock coordinates Verity setup/teardown processes only.
+Codex Desktop and editors do not participate. The operator flow therefore
+closes every other Desktop task, quits Desktop around each confirmed mutation,
+uses a fresh preview immediately before apply, reopens only the synthetic demo
+workspace while installed, and performs digest-confirmed teardown immediately
+afterward. The MCP `cwd` does not make the user-wide table project-local.
 
 The MCP fixture remains bounded stdio. It provides
 `get_release_guidance` and an inert `demo_artifact_sink`. The sink accepts only
@@ -283,6 +313,11 @@ mode, a receipt-bound staged script and private empty cwd, `enabled=true`,
 and prompt approval. It supplies no MCP environment or environment-variable
 forwarding. Codex Desktop must be restarted after setup or teardown, as required
 by the documented host-config reload behavior.
+
+The fixture probe pins and rechecks absolute regular runtimes under the owner
+and ancestor mode rules. On POSIX it uses a new session and process-group
+termination. Windows remains unverified and does not inherit the tested POSIX
+descendant-cleanup claim.
 
 ### Desktop decision gate
 
@@ -325,8 +360,10 @@ not Verity results.
 | Temp-file or cleanup safety failure | Fail closed and retain only content-safe diagnostics |
 | Hook unexpectedly loads in child | `VERITY_SEMANTIC_CHILD` causes immediate no-op; observed recursion is a test failure |
 | Demo sink receives unexpected data | Reject call without storage or external side effect |
-| Demo setup interruption | Normal install remains unchanged; partial receipt/state is reported and teardown refuses guessing |
+| Demo setup or teardown interruption | Normal install remains unchanged; `prepared`/`removing` state resumes only when exact receipt-bound state agrees, otherwise recovery refuses guessing |
 | Config or staged artifact drift | Setup/teardown refuses overwrite and reports content-free drift codes |
+| Normal integration becomes unhealthy before teardown | Report degraded product health but permit only separately digest-confirmed, exact receipt-bound demo cleanup |
+| Codex Desktop or another writer races config mutation | Expected-head check rejects observed drift; close Desktop and require a fresh preview because the external writer does not cooperate with the Verity lock |
 | Daemon, ledger, policy, or view unhealthy | No memory injection and no new commit; read-only audit where safe |
 | Desktop unavailable | Offline fixture demo exercises the real policy, ledger, view, revocation, and UI |
 

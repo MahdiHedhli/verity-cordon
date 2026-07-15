@@ -98,31 +98,20 @@
       ]
     },
     "backup_path": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/absolutePath"
-        },
-        {
-          "type": "null"
-        }
-      ]
+      "type": "null",
+      "description": "Reserved compatibility field. Demo setup never copies the pre-existing Codex configuration because it may contain unrelated secrets."
     },
     "backup_sha256": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/sha256Hex"
-        },
-        {
-          "type": "null"
-        }
-      ]
+      "type": "null",
+      "description": "Reserved compatibility field. config_before_sha256 is the only retained pre-mutation evidence."
     },
     "managed_entry_original": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "present",
-        "digest"
+        "digest",
+        "parent_table_present"
       ],
       "properties": {
         "present": {
@@ -130,6 +119,9 @@
         },
         "digest": {
           "type": "null"
+        },
+        "parent_table_present": {
+          "type": "boolean"
         }
       }
     },
@@ -232,10 +224,10 @@
       "then": {
         "properties": {
           "backup_path": {
-            "$ref": "#/$defs/absolutePath"
+            "type": "null"
           },
           "backup_sha256": {
-            "$ref": "#/$defs/sha256Hex"
+            "type": "null"
           }
         }
       },
@@ -350,6 +342,7 @@
     "dateTime": {
       "type": "string",
       "format": "date-time",
+      "pattern": "Z$",
       "maxLength": 64
     },
     "absolutePath": {

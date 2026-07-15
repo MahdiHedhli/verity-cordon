@@ -1382,6 +1382,7 @@ components:
         - semantic_assessment
         - policy_decision
         - event_ids
+        - event_references
         - ledger_verified
       properties:
         candidate:
@@ -1403,7 +1404,22 @@ components:
           uniqueItems: true
           items:
             $ref: "#/components/schemas/Identifier"
+        event_references:
+          type: array
+          items:
+            $ref: "#/components/schemas/CandidateEventReference"
         ledger_verified: {type: boolean}
+    CandidateEventReference:
+      type: object
+      additionalProperties: false
+      required: [event_id, sequence_number, event_type, occurred_at]
+      properties:
+        event_id:
+          $ref: "#/components/schemas/Identifier"
+        sequence_number: {type: integer, minimum: 1}
+        event_type:
+          $ref: "#/components/schemas/EventType"
+        occurred_at: {type: string, format: date-time}
     PolicyDecision:
       type: object
       additionalProperties: false

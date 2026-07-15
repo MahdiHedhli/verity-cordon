@@ -53,7 +53,7 @@ flowchart TD
     S -->|signed capture, sanitized queue, then 202| Q[(Bounded SQLite evidence queue)]
     Q --> X[Candidate extraction]
     X --> F[Concurrent deterministic detectors]
-    F --> G[Optional isolated GPT-5.6 assessment]
+    F --> G[Optional structured GPT-5.6 assessment]
     G --> P[Versioned deterministic policy]
     P --> L[(SHA-256 chain + Ed25519 signed events)]
     L --> M[(Rebuildable active memory view)]
@@ -116,6 +116,9 @@ The sequence is automatic:
 
 - Admit the synthetic persistent instruction in shadow mode while recording
   the stricter would-have action.
+- Verify that memory is present in a new-session context, then independently
+  invoke the inert sink with its two fixed markers. This offline step is an
+  explicit simulation and does not claim a causal agent-to-tool-call path.
 - Re-evaluate the same synthetic evidence under enforcement and quarantine the
   poisoned candidate.
 - Rescan the earlier shadow-admitted memory under the enforcement policy and
@@ -143,6 +146,8 @@ VERITY_DEMO_NO_SERVE=1 ./scripts/demo-offline.sh
 
 The full acceptance guide is in
 [`specs/001-codex-memory-firewall/quickstart.md`](specs/001-codex-memory-firewall/quickstart.md).
+The Codex Desktop-primary sprint path is in
+[`specs/002-codex-desktop-subscription-defense/quickstart.md`](specs/002-codex-desktop-subscription-defense/quickstart.md).
 
 ## Memory Control Room
 
@@ -195,6 +200,16 @@ Retention claim. The repository's recorded verification does not yet claim a
 successful credentialed live API run; offline fixture results are labeled
 separately and are not live-model evidence.
 
+As a separate, explicitly lower-isolation option, the Codex subscription
+provider runs a bounded ephemeral Codex child under supported ChatGPT sign-in.
+It requires no `OPENAI_API_KEY`, forwards only an allow-listed environment,
+rejects observed tool events or malformed output, and never silently falls
+back to fixtures or the direct API. The UI labels this path
+`agentic_sandboxed`; it does not inherit the direct Responses API provider's
+no-tools claim. One sanitized `gpt-5.6-luna` assessment completed through this
+path on the recorded development host. Model access and limits remain
+subscription- and workspace-dependent.
+
 ## Codex Integration
 
 Verity Cordon uses documented Codex plugin, hook, and local-memory controls. It
@@ -246,6 +261,43 @@ Removal preserves the Verity ledger, signing key, and unrelated Codex settings.
 See the versioned
 [`Codex hook contract`](specs/001-codex-memory-firewall/contracts/codex-hook-contract.md).
 
+### Codex Desktop subscription demonstration
+
+Codex Desktop is the primary interactive demo surface. After the normal Verity
+integration is installed and `verity doctor --confirm-hook-trust` is ready,
+preview the separate synthetic MCP fixture without changing state:
+
+```bash
+export VERITY_DATA_DIR="$PWD/.verity-desktop-demo"
+export VERITY_SEMANTIC_PROVIDER=codex_subscription
+export VERITY_CODEX_MODEL=gpt-5.6-luna
+export VERITY_CONFIRM_HOOK_TRUST=1
+./scripts/demo-desktop.sh
+```
+
+The helper prints the explicit confirmation commands. Confirmed setup requires
+the SHA-256 preview digest copied from that separate review, is receipt-bound,
+adds only `mcp_servers.verity_cordon_poisoned_docs`, stages one digest-verified
+local script, and requires an explicit assertion that the normal hook was
+reviewed. On the exercised Codex `0.144.4` surface, this MCP table lives in
+`$CODEX_HOME/config.toml` and is user-wide. A dedicated workspace and the
+fixture's private `cwd` are operational precautions, not project-local scoping.
+Close every other Desktop task and quit Desktop before confirmed setup; restart
+only into the dedicated rehearsal and avoid unrelated work while the fixture is
+installed. Start `uv run verity serve` in one terminal before running
+`verity demo desktop-status` in another; status intentionally fails unless the
+fixture, daemon, ledger, policy, materialized view, and Control Room are all
+ready. Its inert sink accepts only two fixed synthetic markers and performs no
+external transmission. It is not an outbound information-flow control.
+
+After the rehearsal, quit Desktop, preview teardown, confirm that exact digest,
+and apply it immediately before restarting Desktop. Teardown removes only the
+exact managed MCP entry and digest-matching staged artifact; it preserves
+unrelated Codex configuration, the normal Verity plugin, ledger, signing key,
+policies, and memory history. An unhealthy normal integration does not block
+this exact receipt-bound cleanup, preventing the synthetic user-wide entry from
+being stranded.
+
 ## Useful CLI Commands
 
 ```bash
@@ -271,9 +323,9 @@ uv run verity ledger export-public-key --output .verity-demo/public-key.json
 
 [`examples/poisoned-docs-mcp/`](examples/poisoned-docs-mcp/) is a deliberately
 malicious, synthetic MCP-style fixture over stdio. It opens no network socket,
-reads no environment variables or user files, invokes no external tool, and
-transmits nothing. The string `demo_artifact_sink` is inert; no sink is
-implemented.
+reads no environment variables or user files, invokes no external process, and
+transmits nothing. Its implemented `demo_artifact_sink` is inert and accepts
+only the two fixed synthetic markers defined by the versioned demo contract.
 
 The fixture is separately tested and can also be connected to an MCP client for
 a live local capture demonstration. The one-command offline path invokes it as
@@ -305,7 +357,9 @@ Important limits:
   targeted rescan re-evaluates one active memory and can atomically revoke that
   exact memory; it does not discover or sweep every historical memory.
 - A sanitized `safe_excerpt` remains in the signed local history and may contain
-  undetected sensitive text. Treat the data directory and backups as sensitive.
+  undetected sensitive text. Treat the data directory and normal-installer
+  backups as sensitive. The Desktop demo itself stores only a config digest,
+  never a whole-config backup.
 - The in-process detector plugin boundary is trusted code, not a sandbox.
 - Detector results cross fixed count/text/byte/serialized-size bounds and
   secret sanitization before policy or signed persistence. Routine UI detail
@@ -347,10 +401,10 @@ commits and SessionStart injection. Queue integrity failures are terminally
 recorded where possible, purge the queued body, and remain fail-closed across a
 restart rather than silently returning to service.
 
-The saved deterministic evaluation covers 14 original Apache-2.0 synthetic
-fixtures: all 5 benign fixtures were allowed, all 9 risky fixtures were
+The saved deterministic evaluation covers 20 original Apache-2.0 synthetic
+fixtures: all 7 benign fixtures were allowed, all 13 risky fixtures were
 protected, with 0 false positives and 0 false negatives in that fixture only.
-The 226-event ledger verified and its materialized view was consistent. These
+The 326-event ledger verified and its materialized view was consistent. These
 numbers are fixture performance, not universal accuracy or live GPT-5.6
 performance. See [`evals/results/latest.md`](evals/results/latest.md).
 
@@ -362,8 +416,11 @@ no automated axe-core claim is made.
 ## Build Week Provenance and Prior Art
 
 The clean hackathon baseline is commit `ef2c80d`, created on 2026-07-15 during
-the OpenAI Build Week submission period. The only active Spec Kit feature is
-[`001-codex-memory-firewall`](specs/001-codex-memory-firewall/). Work history and
+the OpenAI Build Week submission period. The preserved implementation baseline
+is [`001-codex-memory-firewall`](specs/001-codex-memory-firewall/); the only
+active sprint feature is
+[`002-codex-desktop-subscription-defense`](specs/002-codex-desktop-subscription-defense/).
+Work history and
 remaining submission actions are recorded in
 [`docs/hackathon/HACKATHON_WORK.md`](docs/hackathon/HACKATHON_WORK.md).
 
@@ -373,6 +430,14 @@ was inspected as Apache-2.0 prior art at commit
 clean-room project, not a rename or OWASP-branded product. See the
 [source-backed comparison](docs/hackathon/BASELINE_COMPARISON.md) and
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+The delayed-trigger demonstration is informed by the
+[Trojan Hippo paper](https://arxiv.org/abs/2605.01970) and
+[`debesheedas/trojan-hippo-benchmark`](https://github.com/debesheedas/trojan-hippo-benchmark)
+at inspected commit `a67d3261338120c606fcf6afda2547f622809922`. Verity does
+not vendor, execute, reproduce, or claim results from that benchmark. Its
+fixture, fixed synthetic markers, inert local sink, and tests are original
+clean-room materials.
 
 ## How Codex and GPT-5.6 Contributed
 
@@ -386,11 +451,13 @@ integrated the majority of core work. Details and the required real `/feedback`
 placeholder are in
 [`docs/hackathon/CODEX_COLLABORATION.md`](docs/hackathon/CODEX_COLLABORATION.md).
 
-At runtime, GPT-5.6 is used only in explicit live mode for structured candidate
-extraction and semantic risk assessment after local sanitization. It has no
-tools or Verity memory and cannot grant trust. Deterministic versioned policy
-always makes the final action decision. Offline mode uses clearly labeled
-recorded fixtures.
+At runtime, GPT-5.6 is used only in explicit live modes for structured candidate
+extraction and semantic risk assessment after local sanitization. The direct
+Responses API path has no tools or Verity memory. The separate subscription
+path is labeled `agentic_sandboxed`, rejects observed tool activity, requires no
+API key, and never silently substitutes another provider. Neither path can
+grant trust: deterministic versioned policy always makes the final action
+decision. Offline mode uses clearly labeled recorded fixtures.
 
 ## Roadmap and License
 

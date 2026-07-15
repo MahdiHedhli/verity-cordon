@@ -15,33 +15,61 @@ Running the normal installer MUST NOT install or enable the demo MCP server.
 The supported operations are conceptually:
 
 ```text
-verity demo desktop-setup
-verity demo desktop-setup --yes
-verity demo desktop-teardown
-verity demo desktop-teardown --yes
+verity demo desktop-setup --confirm-hook-trust
+verity demo desktop-setup --confirm-hook-trust \
+  --expected-preview-digest <sha256> --yes
+verity demo desktop-teardown --confirm-hook-trust
+verity demo desktop-teardown --confirm-hook-trust \
+  --expected-preview-digest <sha256> --yes
 ```
 
-Without `--yes`, both commands are read-only previews. Preview MUST NOT create
+Without `--yes`, both commands are read-only previews. A confirmed mutation
+MUST include the exact SHA-256 digest copied from a separately completed
+preview; the command MUST NOT generate and self-confirm a new preview in one
+unreviewable step. Preview MUST NOT create
 directories, stage files, back up or rewrite Codex configuration, write a
 receipt, start the fixture, call the sink, or change Verity history.
 
+`--confirm-hook-trust` is an operator assertion that the separately installed
+normal Verity hook definition has been reviewed and trusted. It is not a
+discovery result, an implicit approval, or a substitute for the normal
+integration doctor.
+
 The setup preview shows:
 
-- normal Verity integration readiness and, when not ready, the exact separate
-  plugin/hook/memory-control changes that `verity install-codex` would propose;
+- normal Verity integration readiness and, when not ready, a content-safe
+  direction to run the separate `verity install-codex` preview; the demo
+  preview does not duplicate or embed that installer's configuration delta;
 - the Codex config path and digest, with user paths redacted in routine logs;
 - the one MCP entry to add, including command, arguments, tool allow list,
   timeouts, and approval policy;
 - staged artifact relative paths, byte sizes, and SHA-256 digests;
 - resolved Codex and Python runtime versions and digests;
-- receipt and backup destinations; and
+- receipt and private staging destinations; and
 - the statement that the fixture is synthetic, local stdio only, and separate
   from the normal product installation.
 
 Setup with `--yes` requires the normal integration doctor to be ready. If it is
-not ready, setup stops after the combined preview and instructs the operator to
+not ready, setup stops after the demo preview and instructs the operator to
 confirm the normal installer separately. It never silently installs hooks,
 changes native-memory controls, or trusts a plugin on the operator's behalf.
+
+## User-Wide Configuration Scope
+
+For the exercised Codex `0.144.4` surface, the managed MCP table is written to
+`$CODEX_HOME/config.toml`. It is therefore visible user-wide to Codex clients
+that load that configuration. Choosing a dedicated demo workspace and setting
+the MCP `cwd` reduce accidental use operationally; neither creates a
+project-local registration or a security boundary.
+
+Before confirmed setup or teardown, the operator MUST close every other Codex
+Desktop task and fully quit Codex Desktop. Desktop MUST remain closed while the
+configuration mutation runs. After setup, reopen Desktop only for the dedicated
+synthetic rehearsal and do not use unrelated workspaces or tasks until the demo
+entry has been removed. After the rehearsal, quit Desktop again, perform a fresh
+teardown preview, confirm that exact preview digest, apply teardown immediately,
+and restart Desktop. This minimizes the period in which the synthetic server is
+available through user-wide configuration.
 
 ## Managed Codex Configuration
 
@@ -122,8 +150,9 @@ stops. Source and tests MUST make this inert boundary obvious.
 
 After explicit confirmation, setup performs this ordered transaction:
 
-1. Re-read bounded Codex config with no-follow semantics and verify it still
-   matches the previewed digest.
+1. Require the explicit hook-trust assertion, re-read bounded Codex config with
+   no-follow semantics, and verify it still matches the separately previewed
+   digest.
 2. Verify normal integration receipt, staged plugin artifacts, effective memory
    controls, and hook trust/doctor state without reading auth content.
 3. Resolve and verify the current Codex and Python executables. The Python
@@ -132,8 +161,9 @@ After explicit confirmation, setup performs this ordered transaction:
 4. Create a private `0700` staging directory and copy only the fixture server
    using atomic `0600` writes. Reject symlinks and verify source/destination
    SHA-256 and byte size.
-5. Write a private config backup when the config existed. The backup is
-   recovery evidence, not a future whole-file restore strategy.
+5. Record only the pre-mutation config SHA-256 and existence bit. Never copy
+   the full Codex config into demo state because unrelated MCP entries may
+   contain credentials.
 6. Atomically write a `prepared` receipt conforming to
    `desktop-demo-receipt.schema.json` before changing Codex configuration.
 7. Add only the reserved MCP table through parsed TOML and atomically replace
@@ -151,6 +181,9 @@ to editing generated memories or an undocumented Desktop file.
 
 The receipt is write-ahead state:
 
+All receipt timestamps are canonical UTC RFC 3339 strings ending in `Z`;
+non-UTC offsets and timezone-free values are invalid.
+
 - `prepared` plus no managed entry: setup may be retried or staged artifacts
   may be removed after their digests verify.
 - `prepared` plus the exact managed entry: setup may verify artifacts and
@@ -159,8 +192,21 @@ The receipt is write-ahead state:
 - config mutation with no valid receipt: report unreceipted state and make no
   automatic removal; the operator receives a bounded manual recovery path.
 
-Recovery never restores the entire backup over a newer config and never deletes
-an unknown directory recursively.
+Recovery never stores or restores a whole-config backup and never deletes an
+unknown directory recursively.
+
+Teardown uses the same write-ahead discipline. An `installed` receipt advances
+to `removing` before the managed entry is changed. If interrupted, a later
+confirmed teardown may finish only when the entry is either still the exact
+receipt-bound value or is already absent, and every remaining artifact is
+receipt-bound and digest-valid. Any different state is drift and is not guessed
+away.
+
+A successfully removed receipt remains in state `removed`. Before a later
+installation reuses the active receipt path, the exact digest-matching removed
+receipt is archived under its installation ID. An identical pre-existing
+archive is accepted, so the archive step is repeatable; a conflicting archive
+or drifted removed receipt stops setup.
 
 ## Doctor and Runtime Readiness
 
@@ -180,10 +226,21 @@ The probe never invokes `demo_artifact_sink` and never includes the dormant
 instruction or raw child response in routine output. A Desktop task is not
 claimed protected until its captured evidence reaches a signed terminal state.
 
+Runtime trust requires resolved absolute executable paths, regular executable
+targets, expected owner and ancestor ownership/modes, pinned SHA-256 and size,
+and a fresh identity check. A receipt-selected runtime is never trusted merely
+because it appears in the receipt. On POSIX, the bounded probe starts a new
+session and terminates its process group. Windows remains unverified: its
+fallback terminates the direct child and does not support the same tested
+descendant process-group guarantee.
+
 ## Teardown Transaction
 
 Teardown preview displays the exact receipt, managed MCP entry, and staged
-artifacts it proposes to remove. With confirmation it:
+artifacts it proposes to remove. It also reports normal-integration health, but
+an unhealthy normal integration does not block exact receipt-bound teardown:
+leaving the user-wide synthetic fixture installed would be the less safe
+failure. With a separately confirmed teardown digest it:
 
 1. validates the receipt and updates it atomically to `removing`;
 2. re-reads current config and compares the managed entry independently of the
@@ -196,6 +253,14 @@ artifacts it proposes to remove. With confirmation it:
 6. records the post-teardown config digest and updates the receipt to
    `removed`; and
 7. instructs the operator to restart Codex Desktop.
+
+Confirmed setup and teardown are serialized against other cooperating Verity
+demo operations by a private operation lock. Each config replacement also
+requires the expected whole-config SHA-256 head observed by that operation.
+Codex Desktop and arbitrary editors do not participate in the Verity lock; a
+non-cooperating writer can still race a point-in-time check. Closing Desktop and
+other Codex tasks, using a fresh preview, applying immediately, and refusing any
+digest mismatch are required operational controls for that residual risk.
 
 Teardown does not uninstall the normal Verity plugin, re-enable Codex native
 memory, remove hooks, delete the normal integration receipt, erase demo ledger
@@ -229,12 +294,13 @@ of universal prompt-injection prevention.
 
 | Failure | Required behavior |
 |---|---|
-| Normal integration not ready | Show separate product-install preview; do not apply demo setup. |
+| Normal integration not ready during setup/readiness | Direct the operator to the separate product-install preview; do not apply demo setup or report ready. |
+| Normal integration not ready during teardown | Report degraded product health, but permit only exact receipt-bound teardown with its separately confirmed digest. |
 | Reserved MCP name already exists | Refuse; do not read or copy the entry into a receipt. |
 | Config changed after preview | Abort before mutation and require a new preview. |
-| Unsafe config, backup, receipt, staging, source, or executable path | Refuse with a content-safe class. |
+| Unsafe config, receipt, staging, source, or executable path | Refuse with a content-safe class. |
 | Artifact or runtime digest drift | Disable demo readiness; do not start or remove drifted code automatically. |
-| Interrupted setup | Reconcile only the receipt-bound exact state described above. |
+| Interrupted setup or teardown | Reconcile only the receipt-bound exact `prepared` or `removing` state described above. |
 | Fixture startup/probe failure | Codex server is required and demo doctor is unhealthy; no protection claim. |
 | Sink receives non-synthetic data | Reject without storing, hashing arbitrary body content, or transmitting it. |
 | Managed config drift during teardown | Refuse automatic removal; preserve current config and receipt. |
@@ -243,6 +309,11 @@ of universal prompt-injection prevention.
 
 No warning may contain raw TOML, existing MCP values, paths in routine logs,
 tool output, memory content, hook capability, auth state, or exception trace.
+
+The desktop-demo receipt is private, schema-validated local recovery state, not
+an Ed25519-signed event. Its SHA-256 bindings detect the tested drift only while
+the verifier and host remain trustworthy. Memory decisions, revocation, and
+protection claims rely on the separate signed event ledger.
 
 ## Required Contract Tests
 
@@ -253,6 +324,12 @@ tool output, memory content, hook capability, auth state, or exception trace.
 - config drift between preview/apply and managed-entry drift at teardown;
 - unrelated TOML changes survive setup and teardown;
 - interrupted setup at every mutation boundary is reconcilable;
+- interrupted teardown in `removing` is exactly resumable, and repeat setup
+  archives a digest-matching `removed` receipt without overwriting conflicts;
+- normal-integration failure prevents setup/readiness but does not strand an
+  otherwise exact, receipt-bound user-wide fixture during teardown;
+- cooperating demo mutations serialize under the operation lock, expected
+  config-head drift is rejected, and non-cooperating-writer risk is documented;
 - symlink, permissions, path containment, source/runtime/artifact digest, and
   unsafe recursive-cleanup checks;
 - fixture exposes exactly two allow-listed tools over bounded stdio;

@@ -162,6 +162,19 @@ cannot be independently verified MUST NOT be used as security evidence.
 7. Repository publication and submission actions MUST preserve credential
    safety and report the exact remote, branch, commit, and verification state.
 
+## Feature 002 Consistency Sync *(Non-Normative)*
+
+The 2026-07-15 Spec Kit analysis selected only
+`002-codex-desktop-subscription-defense` and compared its four user stories,
+requirements, measurable outcomes, plan, data model, contracts, checklists,
+task graph, implementation, tests, and public claims against Constitution
+v1.1.0. All 93 feature checklist items are complete; no deferred `VC-FUT-*`
+capability entered the active task graph; and no unresolved critical or
+high-severity inconsistency remained after convergence. The still-open clean
+checkout, browser/manual Desktop rehearsal, and final handoff tasks are release
+evidence gates, not exceptions to a constitutional MUST. This report changes no
+normative principle and therefore does not amend the constitution version.
+
 ## Governance
 
 This constitution supersedes informal project practices. Amendments require a

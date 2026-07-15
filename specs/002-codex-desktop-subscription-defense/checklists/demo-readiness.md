@@ -15,7 +15,7 @@ reversible, judge-friendly, and honest about manual evidence
 - [x] CHK003 Are explicit confirmation, restrictive staging, artifact digests, original values, runtime identity, receipt version, and teardown scope required? [Completeness, Spec Key Entities and FR-020]
 - [x] CHK004 Is teardown required to preserve unrelated Codex configuration, the normal plugin, ledger, key, and memory history? [Consistency, Spec FR-021]
 - [x] CHK005 Are interrupted setup and drift behavior defined to refuse guessing or destructive overwrite? [Recovery, Spec Edge Cases]
-- [x] CHK006 Is a dedicated demo workspace required so routine operator tasks do not inherit the attack fixture accidentally? [Safety, Quickstart Safety Boundary]
+- [x] CHK006 Is the exercised MCP entry identified as user-wide, with a dedicated workspace described only as an organizational precaution plus requirements to close unrelated tasks, quit Desktop around mutation, and tear down immediately? [Safety, Quickstart Safety Boundary]
 
 ## Attack Narrative
 

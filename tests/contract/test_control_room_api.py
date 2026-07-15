@@ -8,6 +8,7 @@ import hmac
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -140,6 +141,80 @@ async def test_health_status_and_statistics_are_content_safe(tmp_path) -> None:
     assert status.json()["ledger"] == "verified"
     assert status.json()["mode"] == "enforce"
     assert statistics.json()["counts"]["total_candidates"] == 0
+
+
+@pytest.mark.asyncio
+async def test_readiness_is_read_only_and_never_probes_subscription_auth(tmp_path) -> None:
+    class ForbiddenSubscriptionRunner:
+        def __init__(self) -> None:
+            self.auth_calls = 0
+
+        async def check_chatgpt_auth(self) -> str:
+            self.auth_calls += 1
+            raise AssertionError("readiness must not inspect subscription auth")
+
+    client, runtime = await app_client(tmp_path)
+    runner = ForbiddenSubscriptionRunner()
+    runtime.subscription_runner = runner
+    before = await runtime.event_store.list_events()
+    async with client:
+        response = await client.get("/api/v1/readiness")
+    after = await runtime.event_store.list_events()
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert response.json() == {
+        "schema_version": "1.0.0",
+        "ready": True,
+        "daemon_ready": True,
+        "ledger_verified": True,
+        "policy_valid": True,
+        "memory_view_consistent": True,
+        "policy": {
+            "policy_id": "verity.default",
+            "version": "1.0.0",
+            "mode": "enforce",
+            "digest": runtime.memory_service.policy_engine.policy.content_digest,
+            "validation_state": "valid",
+        },
+    }
+    assert runner.auth_calls == 0
+    assert after == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("verification_update", "policy_state", "failed_component"),
+    [
+        ({"verified": False}, "valid", "ledger_verified"),
+        ({"materialized_view_consistent": False}, "valid", "memory_view_consistent"),
+        ({}, "invalid", "policy_valid"),
+    ],
+)
+async def test_readiness_fails_closed_for_invalid_protection_components(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    verification_update: dict[str, bool],
+    policy_state: str,
+    failed_component: str,
+) -> None:
+    client, runtime = await app_client(tmp_path)
+    verification = await runtime.event_store.verify()
+    monkeypatch.setattr(
+        runtime.event_store,
+        "verify",
+        AsyncMock(return_value=verification.model_copy(update=verification_update)),
+    )
+    runtime.policy_validation_state = cast(Any, policy_state)
+
+    async with client:
+        response = await client.get("/api/v1/readiness")
+
+    assert response.status_code == 200
+    assert response.json()["ready"] is False
+    assert response.json()[failed_component] is False
+    assert response.json()["policy"]["validation_state"] == policy_state
 
 
 @pytest.mark.asyncio
@@ -561,6 +636,13 @@ async def test_bearer_hook_attack_decision_and_session_injection(tmp_path) -> No
     assert any(item["status"] == "quarantined" for item in candidates.json()["items"])
     assert detail.status_code == 200
     assert detail.json()["event_ids"]
+    assert [item["event_id"] for item in detail.json()["event_references"]] == detail.json()[
+        "event_ids"
+    ]
+    assert all(
+        {"event_id", "sequence_number", "event_type", "occurred_at"} == set(item)
+        for item in detail.json()["event_references"]
+    )
     assert detail.json()["ledger_verified"] is True
     assert detail.json()["policy_decision"]["reason"]
     assert "occurred_at" in events.json()["items"][0]

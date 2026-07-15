@@ -123,8 +123,9 @@ the fixture without changing unrelated Codex configuration or Verity history.
 **Acceptance Scenarios**:
 
 1. **Given** a supported local Codex installation, **When** the operator
-   previews Desktop demo setup, **Then** every proposed plugin, hook, memory, and
-   fixture configuration change is shown before confirmation.
+   previews Desktop demo setup, **Then** the exact demo-only fixture change is
+   shown before confirmation and any normal-integration readiness failure
+   directs the operator to run the separate `verity install-codex` preview.
 2. **Given** confirmed setup, **When** the operator starts a new Desktop task,
    **Then** the Verity plugin and the explicitly installed synthetic demo tool
    are available through documented Codex surfaces.
@@ -149,6 +150,10 @@ the fixture without changing unrelated Codex configuration or Verity history.
   reaches a terminal signed outcome.
 - Demo setup is interrupted after one configuration mutation but before its
   receipt is complete.
+- Demo teardown is interrupted after its receipt enters `removing`, or a later
+  setup encounters a prior `removed` receipt/archive.
+- Codex Desktop or another non-cooperating writer changes the user-wide config
+  while a confirmed operation is running.
 - The synthetic sink receives unexpected content, a non-synthetic value, or a
   request to read local files or process environment data.
 - Subscription usage is rate limited or exhausted during a live demonstration.
@@ -210,12 +215,14 @@ the fixture without changing unrelated Codex configuration or Verity history.
   subscription-backed assessments.
 - **FR-018**: The Control Room MUST show provider identity, isolation class,
   authentication readiness without credential content, terminal evaluation
-  state, actual action, would-have action, and delayed-attack timeline.
+  state, actual action, would-have action, and a neutral decision-and-recovery
+  timeline that identifies delayed-attack effects when they are actually present.
 - **FR-019**: The Desktop flow MUST wait for or visibly report a terminal signed
   evidence outcome before claiming that a fresh task is protected.
 - **FR-020**: Demo-only MCP or tool setup MUST be separate from normal product
   installation, previewable, confirmation-gated, receipt-bound, drift-aware,
-  and reversible.
+  and reversible. Mutation MUST require the exact digest from a separately
+  reviewed preview and an explicit operator hook-trust assertion.
 - **FR-021**: Desktop setup and teardown MUST preserve unrelated Codex
   configuration and MUST preserve the Verity ledger, signing key, and memory
   history.
@@ -242,7 +249,7 @@ the fixture without changing unrelated Codex configuration or Verity history.
   unsupported authentication, rate limits, timeout, cancellation, malformed or
   oversized output, observed tool activity, child-process termination, daemon
   outage, invalid policy, corrupted history, stale view, and interrupted demo
-  setup.
+  setup or teardown.
 - **SFR-003**: The subscription provider MUST be documented as a lower-isolation
   agentic provider and MUST NOT inherit the direct API provider's `no tools` or
   request-storage claims.
@@ -262,6 +269,11 @@ the fixture without changing unrelated Codex configuration or Verity history.
 - **SFR-009**: Every security-sensitive story MUST include benign, malicious,
   false-positive, dependency-failure, cross-session, and tamper coverage where
   applicable.
+- **SFR-010**: Desktop documentation MUST state that the exercised
+  `$CODEX_HOME/config.toml` MCP entry is user-wide, not project-local. Confirmed
+  operations MUST serialize cooperating Verity mutations, reject expected-head
+  drift, recover only exact `prepared`/`removing` states, and leave the
+  non-cooperating-writer race explicit.
 
 ### Key Entities
 
@@ -270,7 +282,8 @@ the fixture without changing unrelated Codex configuration or Verity history.
   schema versions, timing, and explicit failure class.
 - **Desktop Demo Installation**: The reviewed demo-only configuration scope,
   original values, staged artifact digests, runtime identity, confirmation,
-  receipt version, and teardown state.
+  preview digest, receipt version, write-ahead state, archived removed receipt,
+  and teardown state.
 - **Delayed Attack Scenario**: The synthetic benign fact, dormant instruction,
   trigger, safe sink marker, source provenance, expected policy outcome, and
   attribution metadata.
@@ -315,6 +328,9 @@ the fixture without changing unrelated Codex configuration or Verity history.
 - The primary exercised platform remains macOS with a current Codex Desktop app
   and local Codex runtime; Linux remains an intended secondary target and
   Windows remains unverified unless this sprint records otherwise.
+- The exercised Codex `0.144.4` demo MCP configuration is user-wide in
+  `$CODEX_HOME/config.toml`. A dedicated workspace and MCP `cwd` minimize
+  exposure operationally but do not enforce project-local scope.
 - A Desktop user may need a one-time supported Codex login even when already
   signed into another OpenAI surface; the product does not assume or copy
   credentials between products.

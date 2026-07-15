@@ -200,6 +200,31 @@ def create_app(runtime: Runtime) -> FastAPI:
     async def health() -> dict[str, str]:
         return {"schema_version": "1.0.0", "status": "alive"}
 
+    @app.get("/api/v1/readiness")
+    async def protection_readiness() -> dict[str, Any]:
+        """Report protection readiness without probing semantic credentials."""
+
+        policy = runtime.memory_service.policy_engine.policy
+        verification = await runtime.event_store.verify()
+        daemon_ready = runtime.event_store.healthy
+        ledger_verified = verification.verified
+        policy_valid = runtime.policy_validation_state == "valid"
+        memory_view_consistent = verification.materialized_view_consistent
+        return {
+            "schema_version": "1.0.0",
+            "ready": bool(
+                daemon_ready and ledger_verified and policy_valid and memory_view_consistent
+            ),
+            "daemon_ready": daemon_ready,
+            "ledger_verified": ledger_verified,
+            "policy_valid": policy_valid,
+            "memory_view_consistent": memory_view_consistent,
+            "policy": _policy_summary(
+                policy,
+                validation_state=runtime.policy_validation_state,
+            ),
+        }
+
     @app.get("/api/v1/status")
     async def product_status() -> dict[str, Any]:
         policy = runtime.memory_service.policy_engine.policy

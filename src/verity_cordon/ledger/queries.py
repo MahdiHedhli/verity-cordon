@@ -634,6 +634,15 @@ class LedgerQueries:
                 ),
             },
             "event_ids": [event.event_id for event in lifecycle_events],
+            "event_references": [
+                {
+                    "event_id": event.event_id,
+                    "sequence_number": event.sequence_number,
+                    "event_type": event.event_type.value,
+                    "occurred_at": event.occurred_at,
+                }
+                for event in lifecycle_events
+            ],
             "ledger_verified": verification.verified,
         }
 

@@ -160,9 +160,11 @@ final-output file are regular no-follow targets with mode `0600` under `io`,
 not under the child working directory. No temporary path is the Verity
 repository, a user project, home directory, or Codex data directory.
 
-The process is started in a new process group/session. Stdin, stdout, and
-stderr are pipes. No file descriptor other than the required standard streams
-is inherited.
+On POSIX, the process is started in a new process group/session. Stdin, stdout,
+and stderr are pipes. No file descriptor other than the required standard
+streams is inherited. Windows remains unverified: the current fallback
+terminates the direct child and does not provide the same tested descendant
+process-group accounting or cleanup guarantee.
 
 ## Prompt Envelope
 
@@ -311,11 +313,13 @@ Default operational bounds are:
 
 Stdout and stderr MUST be drained concurrently so a full pipe cannot deadlock
 the child. On timeout, cancellation, malformed event, tool activity, output
-overflow, or parent error, Verity sends termination to the child process group,
-waits the bounded grace period, kills the group if needed, and reaps the child.
-Cancellation is re-raised only after this cleanup and is also represented as a
-content-safe failed assessment when the surrounding evaluation contract
-requires a terminal record.
+overflow, or parent error, Verity sends termination to the POSIX child process
+group, waits the bounded grace period, kills the group if needed, and reaps the
+child. The unverified Windows fallback terminates/kills only the direct child
+and MUST NOT inherit the POSIX descendant-cleanup claim. Cancellation is
+re-raised only after cleanup and is also represented as a content-safe failed
+assessment when the surrounding evaluation contract requires a terminal
+record.
 
 The private temporary tree is removed in `finally` after handles are closed.
 Cleanup errors are content-safe health warnings and cannot convert a failed
@@ -394,7 +398,8 @@ paths, or final model text.
 - oversized line, aggregate stdout, stderr, and final file;
 - duplicate keys, malformed schema, model refusal, nonzero exit, timeout, and
   cancellation;
-- process-group descendant cleanup;
+- POSIX process-group descendant cleanup and the explicit unverified Windows
+  residual;
 - recursion marker short-circuits every installed hook event without daemon I/O;
 - no fallback to fixture or direct API; and
 - historical `live_openai` and `recorded_fixture` events still replay without

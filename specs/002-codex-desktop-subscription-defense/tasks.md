@@ -151,15 +151,21 @@ enforcement, rebuild, and verify that the benign fact remains.
 
 ### Tests for User Story 3
 
-- [ ] T034 [P] [US3] Add a failing shadow/recovery matrix covering benign unrelated memory, malicious poison, a false-positive trap, dependency failure, cross-session activation, tampered history, revocation, and rebuild in `tests/end_to_end/test_desktop_shadow_recovery.py`
-- [ ] T035 [P] [US3] Add failing UI coverage for shadow-not-protection, delayed-attack timeline, and post-revocation state in `apps/control-room/src/routes/CandidateDetailPage.test.tsx`
+- [x] T034 [P] [US3] Add a failing shadow/recovery matrix covering benign unrelated memory, malicious poison, a false-positive trap, dependency failure, cross-session activation, tampered history, revocation, and rebuild in `tests/end_to_end/test_desktop_shadow_recovery.py`
+- [x] T035 [P] [US3] Add failing UI coverage for shadow-not-protection, a neutral decision-and-recovery timeline, delayed-attack effects when present, and post-revocation state in `apps/control-room/src/routes/CandidateDetailPage.test.tsx`
 
 ### Implementation for User Story 3
 
-- [ ] T036 [US3] Extend demo orchestration with the two fixed sink markers and safe delayed-attempt metadata in `src/verity_cordon/demo.py`
-- [ ] T037 [US3] Present actual/would-have action, shadow warning, related events, and revocation outcome as a concise delayed-attack timeline in `apps/control-room/src/routes/CandidateDetailPage.tsx`
-- [ ] T038 [US3] Make the complete US3 security matrix pass without adding outbound information-flow-control claims in `tests/end_to_end/test_desktop_shadow_recovery.py`
-- [ ] T039 [US3] Update the under-three-minute Desktop-primary narrative in `docs/hackathon/DEMO_SCRIPT.md`
+- [x] T036 [US3] Extend demo orchestration with the two fixed sink markers and safe delayed-attempt metadata in `src/verity_cordon/demo.py`
+- [x] T037 [US3] Present actual/would-have action, shadow warning, typed related events, and revocation outcome as a concise decision-and-recovery timeline in `apps/control-room/src/routes/CandidateDetailPage.tsx`
+- [x] T038 [US3] Make the complete US3 security matrix pass without adding outbound information-flow-control claims in `tests/end_to_end/test_desktop_shadow_recovery.py`
+- [x] T039 [US3] Update the under-three-minute Desktop-primary narrative in `docs/hackathon/DEMO_SCRIPT.md`
+
+**US3 verification (2026-07-15)**:
+
+- `uv run pytest -q tests/end_to_end/test_desktop_shadow_recovery.py` — 4 passed, covering shadow admission, the fixed inert sink attempt, enforcement, selective revocation/rebuild, dependency failure, cross-task activation, false-positive handling, and tampered history.
+- Control Room lint/type checks and 6 Vitest files / 10 tests passed; the candidate detail view presents a neutral four-step decision-and-recovery timeline, shows real signed event types, and never labels shadow admission as protection.
+- The Desktop-primary narration is 2:55 by its explicit cue sheet and keeps the fixed synthetic sink separate from any outbound information-flow-control claim.
 
 **Checkpoint**: One shadow-admitted poison can be removed without destructive
 history rewrite or loss of unrelated approved memory.
@@ -178,19 +184,25 @@ Verity history remain.
 
 ### Tests for User Story 4
 
-- [ ] T040 [P] [US4] Add failing receipt-schema sample and state-transition tests in `tests/contract/test_desktop_demo_receipt.py`
-- [ ] T041 [P] [US4] Add failing benign install, malicious/false-positive drift, dependency failure, restart/new-task, receipt/config tamper, preview, confirmation, reserved-name, interrupted-setup, symlink, mode, digest, and teardown tests in `tests/contract/test_desktop_demo_setup.py`
-- [ ] T042 [P] [US4] Add a failing bounded fixture-probe and normal-installer-separation test in `tests/end_to_end/test_desktop_demo_contract.py`
+- [x] T040 [P] [US4] Add failing receipt-schema sample and state-transition tests in `tests/contract/test_desktop_demo_receipt.py`
+- [x] T041 [P] [US4] Add failing benign install, malicious/false-positive drift, dependency failure, restart/new-task, receipt/config tamper, preview, confirmation, reserved-name, interrupted-setup, symlink, mode, digest, and teardown tests in `tests/contract/test_desktop_demo_setup.py`
+- [x] T042 [P] [US4] Add a failing bounded fixture-probe and normal-installer-separation test in `tests/end_to_end/test_desktop_demo_contract.py`
 
 ### Implementation for User Story 4
 
-- [ ] T043 [US4] Implement preview/apply/reconcile/status/teardown with no-follow paths, atomic TOML mutation, strict receipt validation, and exact-entry drift checks in `src/verity_cordon/codex/demo_installer.py`
-- [ ] T044 [US4] Export Desktop demo integration types and functions without changing normal installer behavior in `src/verity_cordon/codex/__init__.py`
-- [ ] T045 [US4] Add `verity demo desktop-setup`, `desktop-status`, and `desktop-teardown` with explicit confirmation and content-safe output in `src/verity_cordon/cli/main.py`
-- [ ] T046 [P] [US4] Add the non-automating Desktop startup/rehearsal helper in `scripts/demo-desktop.sh`
-- [ ] T047 [US4] Make the temporary-home Desktop setup and bounded-probe end-to-end tests pass in `tests/end_to_end/test_desktop_demo_contract.py`
-- [ ] T048 [P] [US4] Update the judge path and explicit restart/new-task/manual-smoke boundary in `specs/002-codex-desktop-subscription-defense/quickstart.md` and `README.md`
-- [ ] T049 [US4] Re-run the existing no-key offline demo acceptance test and prove normal `install-codex` never stages the attack fixture in `tests/end_to_end/test_demo.py` and `tests/contract/test_codex_hooks.py`
+- [x] T043 [US4] Implement preview/apply/reconcile/status/teardown with no-follow paths, atomic TOML mutation, strict receipt validation, and exact-entry drift checks in `src/verity_cordon/codex/demo_installer.py`
+- [x] T044 [US4] Export Desktop demo integration types and functions without changing normal installer behavior in `src/verity_cordon/codex/__init__.py`
+- [x] T045 [US4] Add `verity demo desktop-setup`, `desktop-status`, and `desktop-teardown` with explicit confirmation and content-safe output in `src/verity_cordon/cli/main.py`
+- [x] T046 [P] [US4] Add the non-automating Desktop startup/rehearsal helper in `scripts/demo-desktop.sh`
+- [x] T047 [US4] Make the temporary-home Desktop setup and bounded-probe end-to-end tests pass in `tests/end_to_end/test_desktop_demo_contract.py`
+- [x] T048 [P] [US4] Update the judge path and explicit restart/new-task/manual-smoke boundary in `specs/002-codex-desktop-subscription-defense/quickstart.md` and `README.md`
+- [x] T049 [US4] Re-run the existing no-key offline demo acceptance test and prove normal `install-codex` never stages the attack fixture in `tests/end_to_end/test_demo.py` and `tests/contract/test_codex_hooks.py`
+
+**US4 verification (2026-07-15)**:
+
+- The receipt, setup, and bounded-probe contract set passed 33 tests against temporary Codex homes, including zero-side-effect preview, explicit confirmation, interruption recovery, config/artifact/runtime drift, exact teardown, and normal-installer separation.
+- The complete repository gate passed 437 backend tests, 13 isolated example/plugin tests, and 6 frontend files / 10 tests. The existing no-key offline demo acceptance remained green.
+- `scripts/demo-desktop.sh` is intentionally non-automating: it performs a read-only preview and prints the exact confirmation, restart/new-task, status, service, and teardown commands.
 
 **Checkpoint**: The Desktop fixture can be installed and removed safely while
 the normal plugin, unrelated Codex config, ledger, and offline judge path remain
@@ -203,15 +215,27 @@ intact.
 **Purpose**: Propagate the implemented boundaries, run the complete quality
 gate, and leave only honest operator-owned submission work.
 
-- [ ] T050 [P] Update delayed-poisoning abuse cases, subscription-child trust boundary, MCP/sink boundary, failures, and residual risks in `docs/security/threat-model.md` and `docs/security/trust-boundaries.md`
-- [ ] T051 [P] Update the exact provider and demo cryptographic/non-cryptographic claims in `docs/security/cryptographic-claims.md` and `docs/product/positioning.md`
-- [ ] T052 [P] Record Trojan Hippo attribution and clean-room non-reuse status in `docs/hackathon/BASELINE_COMPARISON.md` and `THIRD_PARTY_NOTICES.md`
-- [ ] T053 [P] Update subscription runtime use, Desktop demo, Codex collaboration, limitations, testing, and submission language in `README.md`, `docs/hackathon/CODEX_COLLABORATION.md`, `docs/hackathon/SUBMISSION_DRAFT.md`, and `docs/hackathon/SUBMISSION_CHECKLIST.md`
-- [ ] T054 Run the curated evaluation, report fixture-only metrics, and update `evals/results/latest.json` and `evals/results/latest.md`
+- [x] T050 [P] Update delayed-poisoning abuse cases, subscription-child trust boundary, MCP/sink boundary, failures, and residual risks in `docs/security/threat-model.md` and `docs/security/trust-boundaries.md`
+- [x] T051 [P] Update the exact provider and demo cryptographic/non-cryptographic claims in `docs/security/cryptographic-claims.md` and `docs/product/positioning.md`
+- [x] T052 [P] Record Trojan Hippo attribution and clean-room non-reuse status in `docs/hackathon/BASELINE_COMPARISON.md` and `THIRD_PARTY_NOTICES.md`
+- [x] T053 [P] Update subscription runtime use, Desktop demo, Codex collaboration, limitations, testing, and submission language in `README.md`, `docs/hackathon/CODEX_COLLABORATION.md`, `docs/hackathon/SUBMISSION_DRAFT.md`, and `docs/hackathon/SUBMISSION_CHECKLIST.md`
+- [x] T054 Run the curated evaluation, report fixture-only metrics, and update `evals/results/latest.json` and `evals/results/latest.md`
+
+**Phase 7 convergence evidence through T054 (2026-07-15)**:
+
+- The delayed-attack, subscription-child, fixed synthetic sink, Desktop installer, unsigned-receipt, signed-ledger, and residual-risk boundaries are explicit across the security and positioning documents; the focused security matrix passed 41 tests.
+- Trojan Hippo is attributed at inspected commit `a67d3261338120c606fcf6afda2547f622809922` as threat-model inspiration only. No benchmark code, dataset, prompts, implementation, or reported result was copied or executed.
+- `uv run python evals/runners/run_fixture_evaluation.py` recorded 20 original synthetic samples: 7/7 benign allowed, 13/13 risky protected, 0 fixture-scoped false positives, 0 fixture-scoped false negatives, 326 verified events, and a consistent materialized view. `uv run python evals/runners/run_fixture_evaluation.py --check` and the three evaluation-runner tests passed.
 - [ ] T055 Run Ruff, mypy, tracked backend unit/contract/integration/adversarial/end-to-end tests with coverage, frontend lint/type/test/build, schema/OpenAPI validation, dependency audit, and `./scripts/verify.sh` from a clean checkout; record exact outcomes in `docs/hackathon/HACKATHON_WORK.md`
 - [ ] T056 Perform browser smoke/accessibility checks and a timed manual Codex Desktop attack-enforcement-clean-task-revocation-ledger rehearsal; record elapsed time and clearly separate automated from manual evidence in `docs/hackathon/HACKATHON_WORK.md`
-- [ ] T057 Run Spec Kit consistency analysis and convergence, append and complete any remaining build tasks in `specs/002-codex-desktop-subscription-defense/tasks.md`, and update the constitution sync report in `.specify/memory/constitution.md`
+- [x] T057 Run Spec Kit consistency analysis and convergence, append and complete any remaining build tasks in `specs/002-codex-desktop-subscription-defense/tasks.md`, and update the constitution sync report in `.specify/memory/constitution.md`
 - [ ] T058 Record branch, final commit, tests, known limitations, deferred roadmap confirmation, submission status, exact operator actions, and the real `/feedback` reminder in `docs/hackathon/HACKATHON_WORK.md`
+
+**T057 Spec Kit analysis/convergence (2026-07-15)**:
+
+- Prerequisite discovery selected only `002-codex-desktop-subscription-defense`; all 93 feature checklist items are complete and no `VC-FUT-*` capability appears in the active task graph.
+- Cross-artifact analysis covered 4 user stories, 26 functional requirements, 10 security/failure requirements, 10 measurable outcomes, the plan, data model, contracts, checklists, and task graph. The review found no unresolved critical or high-severity inconsistency after the Desktop readiness, path, receipt, fixture-probe, config-secret, typed-event, and claims remediations.
+- Convergence found no remaining unbuilt implementation requirement, so no new implementation task was appended. T055, T056, and T058 remain release-evidence/operator handoff work rather than product gaps.
 
 ---
 

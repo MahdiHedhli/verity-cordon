@@ -15,8 +15,6 @@ import shutil
 import signal
 import stat
 import tempfile
-from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Literal, NoReturn
@@ -31,6 +29,15 @@ from jsonschema.exceptions import (
 from pydantic import Field, ValidationError
 
 from verity_cordon.core.errors import ConfigurationError, SemanticProviderError
+from verity_cordon.core.executable_trust import (
+    path_identity,
+    recheck_path_chain,
+    recheck_trusted_executable,
+    resolve_trusted_executable,
+    same_open_identity,
+    same_path_identity,
+    snapshot_trusted_directory,
+)
 from verity_cordon.core.models import (
     MemoryCandidate,
     MemoryKind,
@@ -97,170 +104,6 @@ def _raise_failure(
         message,
         failure_class=failure_class,
         retryable=retryable,
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class _PathIdentity:
-    path: Path
-    device: int
-    inode: int
-    owner: int
-    mode: int
-    size: int
-    modified_ns: int
-
-
-@dataclass(frozen=True, slots=True)
-class _ExecutableIdentity:
-    source_chain: tuple[_PathIdentity, ...]
-    target_chain: tuple[_PathIdentity, ...]
-    digest: str
-
-
-def _path_chain(path: Path, *, include_self: bool = True) -> list[Path]:
-    current = path if include_self else path.parent
-    values: list[Path] = []
-    while True:
-        values.append(current)
-        if current.parent == current:
-            break
-        current = current.parent
-    values.reverse()
-    return values
-
-
-def _identity(path: Path) -> _PathIdentity:
-    details = path.lstat()
-    return _PathIdentity(
-        path=path,
-        device=details.st_dev,
-        inode=details.st_ino,
-        owner=details.st_uid,
-        mode=stat.S_IMODE(details.st_mode),
-        size=details.st_size,
-        modified_ns=details.st_mtime_ns,
-    )
-
-
-def _validate_ancestor(path: Path, *, allow_symlink: bool = False) -> _PathIdentity:
-    details = path.lstat()
-    if stat.S_ISLNK(details.st_mode):
-        if not allow_symlink:
-            raise ConfigurationError("A trusted subscription path must not be a symbolic link.")
-    elif not stat.S_ISDIR(details.st_mode) and not stat.S_ISREG(details.st_mode):
-        raise ConfigurationError("A trusted subscription path has an unsupported file type.")
-    if os.name != "nt":
-        if details.st_uid not in {0, os.geteuid()} or stat.S_IMODE(details.st_mode) & 0o022:
-            raise ConfigurationError("A trusted subscription path has unsafe ownership or mode.")
-    return _identity(path)
-
-
-def _snapshot_directory(path: Path, *, current_user_only: bool) -> tuple[_PathIdentity, ...]:
-    if not path.is_absolute() or path.is_symlink():
-        raise ConfigurationError("A subscription authentication directory is unsafe.")
-    try:
-        details = path.lstat()
-    except OSError as exc:
-        raise ConfigurationError("A subscription authentication directory is unavailable.") from exc
-    if not stat.S_ISDIR(details.st_mode):
-        raise ConfigurationError("A subscription authentication path is not a directory.")
-    if os.name != "nt":
-        if current_user_only and details.st_uid != os.geteuid():
-            raise ConfigurationError("A subscription authentication directory has an unsafe owner.")
-        if details.st_uid not in {0, os.geteuid()} or stat.S_IMODE(details.st_mode) & 0o022:
-            raise ConfigurationError(
-                "A subscription authentication directory has unsafe permissions."
-            )
-    try:
-        return tuple(_validate_ancestor(item) for item in _path_chain(path))
-    except OSError as exc:
-        raise ConfigurationError("A subscription authentication path is unavailable.") from exc
-
-
-def _sha256_file(path: Path) -> str:
-    digest = sha256()
-    try:
-        with path.open("rb") as handle:
-            while chunk := handle.read(1024 * 1024):
-                digest.update(chunk)
-    except OSError as exc:
-        raise ConfigurationError("The Codex executable cannot be verified.") from exc
-    return digest.hexdigest()
-
-
-def _snapshot_executable(source: Path) -> tuple[Path, _ExecutableIdentity]:
-    if not source.is_absolute():
-        raise ConfigurationError("The Codex executable path must be absolute.")
-    try:
-        source_details = source.lstat()
-        source_chain = tuple(
-            _validate_ancestor(item, allow_symlink=item == source) for item in _path_chain(source)
-        )
-        resolved = source.resolve(strict=True) if stat.S_ISLNK(source_details.st_mode) else source
-        target_chain = tuple(_validate_ancestor(item) for item in _path_chain(resolved))
-        target_details = resolved.lstat()
-    except ConfigurationError:
-        raise
-    except OSError as exc:
-        raise ConfigurationError("The Codex executable is unavailable.") from exc
-    if not stat.S_ISREG(target_details.st_mode) or not os.access(resolved, os.X_OK):
-        raise ConfigurationError("The Codex executable must be a regular executable file.")
-    if os.name != "nt" and stat.S_IMODE(target_details.st_mode) & 0o022:
-        raise ConfigurationError("The Codex executable has unsafe permissions.")
-    return resolved, _ExecutableIdentity(
-        source_chain=source_chain,
-        target_chain=target_chain,
-        digest=_sha256_file(resolved),
-    )
-
-
-def _resolve_executable(explicit: Path | None) -> tuple[Path, _ExecutableIdentity]:
-    if explicit is not None:
-        return _snapshot_executable(explicit)
-    entries = os.environ.get("PATH", "").split(os.pathsep)
-    if not entries or any(not entry or not Path(entry).is_absolute() for entry in entries):
-        raise ConfigurationError("PATH must contain only non-empty absolute entries.")
-    for entry in entries:
-        candidate = Path(entry) / "codex"
-        if candidate.exists() or candidate.is_symlink():
-            return _snapshot_executable(candidate)
-    raise ConfigurationError("The Codex executable is unavailable.")
-
-
-def _same_identity(left: _PathIdentity, right: _PathIdentity) -> bool:
-    return (
-        left.path == right.path
-        and left.device == right.device
-        and left.inode == right.inode
-        and left.owner == right.owner
-        and left.mode == right.mode
-    )
-
-
-def _same_open_identity(expected: _PathIdentity, observed: os.stat_result) -> bool:
-    return (
-        expected.device == observed.st_dev
-        and expected.inode == observed.st_ino
-        and expected.owner == observed.st_uid
-        and expected.mode == stat.S_IMODE(observed.st_mode)
-    )
-
-
-def _recheck_chain(snapshot: tuple[_PathIdentity, ...]) -> bool:
-    try:
-        return all(_same_identity(item, _identity(item.path)) for item in snapshot)
-    except OSError:
-        return False
-
-
-def _chains_match(
-    left: tuple[_PathIdentity, ...],
-    right: tuple[_PathIdentity, ...],
-) -> bool:
-    return len(left) == len(right) and all(
-        _same_identity(left_item, right_item)
-        for left_item, right_item in zip(left, right, strict=True)
     )
 
 
@@ -441,13 +284,25 @@ class CodexSubscriptionRunner:
             self.model = model_identifier(sanitizer, model)
         except InvalidModelOutput:
             raise ConfigurationError("The configured Codex model identifier is invalid.") from None
-        self.executable_path, self._executable_identity = _resolve_executable(executable)
+        self.executable_path, self._executable_identity = resolve_trusted_executable(
+            "codex",
+            executable,
+            executable_label="Codex executable",
+            ancestor_label="trusted subscription",
+        )
         self.home = Path(home)
         self.codex_home = Path(codex_home) if codex_home is not None else self.home / ".codex"
-        self._home_identity = _snapshot_directory(self.home, current_user_only=True)
-        self._codex_home_identity = _snapshot_directory(
+        self._home_identity = snapshot_trusted_directory(
+            self.home,
+            current_user_only=True,
+            directory_label="subscription authentication directory",
+            ancestor_label="trusted subscription",
+        )
+        self._codex_home_identity = snapshot_trusted_directory(
             self.codex_home,
             current_user_only=True,
+            directory_label="subscription authentication directory",
+            ancestor_label="trusted subscription",
         )
         self.semantic_timeout_seconds = float(semantic_timeout_seconds)
         self.auth_timeout_seconds = float(auth_timeout_seconds)
@@ -481,19 +336,15 @@ class CodexSubscriptionRunner:
         return self._executable_identity.digest
 
     def _recheck_trust(self) -> None:
-        try:
-            _, current = _snapshot_executable(self.executable_path)
-            executable_ok = (
-                _chains_match(current.target_chain, self._executable_identity.target_chain)
-                and current.digest == self._executable_identity.digest
-                and _recheck_chain(self._executable_identity.source_chain)
-            )
-            homes_ok = _recheck_chain(self._home_identity) and _recheck_chain(
-                self._codex_home_identity
-            )
-        except ConfigurationError:
-            executable_ok = False
-            homes_ok = False
+        executable_ok = recheck_trusted_executable(
+            self.executable_path,
+            self._executable_identity,
+            executable_label="Codex executable",
+            ancestor_label="trusted subscription",
+        )
+        homes_ok = recheck_path_chain(self._home_identity) and recheck_path_chain(
+            self._codex_home_identity
+        )
         if not executable_ok or not homes_ok:
             self.last_failure_class = "executable_drift"
             _raise_failure(
@@ -784,7 +635,7 @@ class CodexSubscriptionRunner:
             os.close(schema_descriptor)
         final_descriptor = os.open(final_path, flags, 0o600)
         os.close(final_descriptor)
-        final_identity = _identity(final_path)
+        final_identity = path_identity(final_path)
         arguments = [
             "--ask-for-approval",
             "untrusted",
@@ -859,13 +710,13 @@ class CodexSubscriptionRunner:
                 max_line_bytes=self.max_jsonl_line_bytes,
             )
             try:
-                current_final = _identity(final_path)
+                current_final = path_identity(final_path)
             except OSError:
                 _raise_failure(
                     "Codex subscription final output is unsafe.",
                     failure_class="invalid_response",
                 )
-            if not _same_identity(current_final, final_identity) or current_final.mode != 0o600:
+            if not same_path_identity(current_final, final_identity) or current_final.mode != 0o600:
                 _raise_failure(
                     "Codex subscription final output is unsafe.",
                     failure_class="invalid_response",
@@ -876,7 +727,7 @@ class CodexSubscriptionRunner:
             try:
                 descriptor = os.open(final_path, read_flags)
                 details = os.fstat(descriptor)
-                if not stat.S_ISREG(details.st_mode) or not _same_open_identity(
+                if not stat.S_ISREG(details.st_mode) or not same_open_identity(
                     final_identity,
                     details,
                 ):

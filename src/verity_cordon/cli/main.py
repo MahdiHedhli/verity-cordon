@@ -18,9 +18,13 @@ from rich.console import Console
 from rich.table import Table
 
 from verity_cordon.codex import (
+    DesktopDemoResult,
     IntegrationResult,
     doctor_codex,
     install_codex,
+    setup_desktop_demo,
+    status_desktop_demo,
+    teardown_desktop_demo,
     uninstall_codex,
 )
 from verity_cordon.core.config import Settings, loopback_origin, validate_loopback_host
@@ -47,6 +51,11 @@ app.add_typer(policy_app, name="policy")
 app.add_typer(demo_app, name="demo")
 console = Console()
 error_console = Console(stderr=True)
+DESKTOP_DEMO_CONFIGURATION_SCOPE = "user_wide_codex_home"
+DESKTOP_DEMO_OPERATOR_WARNING = (
+    "Close all other Codex Desktop tasks before setup and tear down the demo "
+    "immediately after the rehearsal."
+)
 
 
 def _run[T](awaitable: Coroutine[Any, Any, T]) -> T:
@@ -188,6 +197,26 @@ def _integration_json(result: IntegrationResult) -> dict[str, Any]:
         "commands": [list(command) for command in result.commands],
         "marketplace_registered": result.marketplace_registered,
         "plugin_installed": result.plugin_installed,
+        "issues": list(result.issues),
+        "operator_actions": list(result.operator_actions),
+    }
+
+
+def _desktop_demo_json(result: DesktopDemoResult) -> dict[str, Any]:
+    return {
+        "configuration_scope": DESKTOP_DEMO_CONFIGURATION_SCOPE,
+        "operator_warning": DESKTOP_DEMO_OPERATOR_WARNING,
+        "operation": result.operation,
+        "confirmed": result.confirmed,
+        "applied": result.applied,
+        "state": result.state,
+        "preview_digest": result.preview_digest,
+        "config_path": str(result.config_path),
+        "receipt_path": str(result.receipt_path),
+        "staging_root": str(result.staging_root),
+        "managed_entry": result.managed_entry,
+        "artifacts": list(result.artifacts),
+        "normal_integration_ready": result.normal_integration_ready,
         "issues": list(result.issues),
         "operator_actions": list(result.operator_actions),
     }
@@ -553,6 +582,199 @@ def policy_activate(
                 "mode": activated.mode.value,
             }
         )
+    except Exception as error:
+        _safe_error(error)
+        raise typer.Exit(1) from error
+
+
+def _desktop_demo_paths() -> tuple[Path, Path]:
+    settings = Settings.from_env()
+    codex_home = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex")).expanduser()
+    return codex_home, settings.data_dir.expanduser()
+
+
+@demo_app.command("desktop-setup")
+def demo_desktop_setup(
+    source_root: Annotated[
+        Path,
+        typer.Option(help="Repository root containing the reviewed synthetic fixture."),
+    ] = Path("."),
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", help="Apply the exact previewed demo-only MCP entry."),
+    ] = False,
+    expected_preview_digest: Annotated[
+        str | None,
+        typer.Option(
+            "--expected-preview-digest",
+            help="SHA-256 digest copied from the separately reviewed preview.",
+        ),
+    ] = None,
+    confirm_hook_trust: Annotated[
+        bool,
+        typer.Option(
+            "--confirm-hook-trust",
+            help="Assert that the normal Verity hook definition was reviewed and trusted.",
+        ),
+    ] = False,
+) -> None:
+    """Preview or install the reversible synthetic Codex Desktop fixture."""
+
+    try:
+        if yes and expected_preview_digest is None:
+            console.print(
+                "[yellow]Desktop setup with --yes requires "
+                "--expected-preview-digest from a separate preview.[/yellow]"
+            )
+            raise typer.Exit(2)
+        codex_home, data_dir = _desktop_demo_paths()
+        preview = setup_desktop_demo(
+            source_root.resolve(),
+            confirmed=False,
+            codex_home=codex_home,
+            data_dir=data_dir,
+            operator_confirmed_hook_trust=confirm_hook_trust,
+        )
+        console.print_json(data={"preview": _desktop_demo_json(preview)})
+        if not yes:
+            console.print("[yellow]Review the preview, then rerun with --yes.[/yellow]")
+            raise typer.Exit(2)
+        result = setup_desktop_demo(
+            source_root.resolve(),
+            confirmed=True,
+            expected_preview_digest=expected_preview_digest,
+            codex_home=codex_home,
+            data_dir=data_dir,
+            operator_confirmed_hook_trust=confirm_hook_trust,
+        )
+        console.print_json(data={"result": _desktop_demo_json(result)})
+        if result.issues or not result.applied:
+            raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as error:
+        _safe_error(error)
+        raise typer.Exit(1) from error
+
+
+@demo_app.command("desktop-status")
+def demo_desktop_status(
+    source_root: Annotated[
+        Path,
+        typer.Option(help="Repository root containing the reviewed synthetic fixture."),
+    ] = Path("."),
+    confirm_hook_trust: Annotated[
+        bool,
+        typer.Option(
+            "--confirm-hook-trust",
+            help="Assert that the normal Verity hook definition was reviewed and trusted.",
+        ),
+    ] = False,
+) -> None:
+    """Check receipt, config, artifacts, runtimes, and bounded fixture readiness."""
+
+    try:
+        codex_home, data_dir = _desktop_demo_paths()
+        settings = Settings.from_env()
+        report = status_desktop_demo(
+            source_root.resolve(),
+            codex_home=codex_home,
+            data_dir=data_dir,
+            operator_confirmed_hook_trust=confirm_hook_trust,
+            daemon_host=settings.host,
+            daemon_port=settings.port,
+        )
+        console.print_json(
+            data={
+                "configuration_scope": DESKTOP_DEMO_CONFIGURATION_SCOPE,
+                "operator_warning": DESKTOP_DEMO_OPERATOR_WARNING,
+                "ready": report.ready,
+                "fixture_ready": report.fixture_ready,
+                "system_ready": report.system_ready,
+                "state": report.state,
+                "receipt_valid": report.receipt_valid,
+                "managed_entry_intact": report.managed_entry_intact,
+                "artifacts_intact": report.artifacts_intact,
+                "runtimes_intact": report.runtimes_intact,
+                "normal_integration_ready": report.normal_integration_ready,
+                "fixture_probe_ready": report.fixture_probe_ready,
+                "daemon_ready": report.daemon_ready,
+                "ledger_verified": report.ledger_verified,
+                "policy_valid": report.policy_valid,
+                "memory_view_consistent": report.memory_view_consistent,
+                "control_room_ready": report.control_room_ready,
+                "control_room_headers_ready": report.control_room_headers_ready,
+                "issues": list(report.issues),
+            }
+        )
+        if not report.ready:
+            raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as error:
+        _safe_error(error)
+        raise typer.Exit(1) from error
+
+
+@demo_app.command("desktop-teardown")
+def demo_desktop_teardown(
+    source_root: Annotated[
+        Path,
+        typer.Option(help="Repository root used for the Desktop demonstration."),
+    ] = Path("."),
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", help="Remove only the exact receipt-bound demo entry."),
+    ] = False,
+    expected_preview_digest: Annotated[
+        str | None,
+        typer.Option(
+            "--expected-preview-digest",
+            help="SHA-256 digest copied from the separately reviewed teardown preview.",
+        ),
+    ] = None,
+    confirm_hook_trust: Annotated[
+        bool,
+        typer.Option(
+            "--confirm-hook-trust",
+            help="Assert that the normal Verity hook definition was reviewed and trusted.",
+        ),
+    ] = False,
+) -> None:
+    """Preview or remove the demo fixture without uninstalling Verity."""
+
+    try:
+        if yes and expected_preview_digest is None:
+            console.print(
+                "[yellow]Desktop teardown with --yes requires "
+                "--expected-preview-digest from a separate preview.[/yellow]"
+            )
+            raise typer.Exit(2)
+        codex_home, data_dir = _desktop_demo_paths()
+        preview = teardown_desktop_demo(
+            source_root.resolve(),
+            confirmed=False,
+            codex_home=codex_home,
+            data_dir=data_dir,
+            operator_confirmed_hook_trust=confirm_hook_trust,
+        )
+        console.print_json(data={"preview": _desktop_demo_json(preview)})
+        if not yes:
+            console.print("[yellow]Review the preview, then rerun with --yes.[/yellow]")
+            raise typer.Exit(2)
+        result = teardown_desktop_demo(
+            source_root.resolve(),
+            confirmed=True,
+            expected_preview_digest=expected_preview_digest,
+            codex_home=codex_home,
+            data_dir=data_dir,
+            operator_confirmed_hook_trust=confirm_hook_trust,
+        )
+        console.print_json(data={"result": _desktop_demo_json(result)})
+        if result.issues or not result.applied:
+            raise typer.Exit(1)
+    except typer.Exit:
+        raise
     except Exception as error:
         _safe_error(error)
         raise typer.Exit(1) from error

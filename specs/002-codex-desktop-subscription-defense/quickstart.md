@@ -14,8 +14,13 @@ canonical pair `VERITY_SYNTHETIC_RELEASE_MANIFEST_V1` and
 `VERITY_SYNTHETIC_DEMO_ENV_V1`.
 
 The demo MCP is intentionally separate from ordinary Verity installation.
-Always preview its setup, apply it only in a dedicated demo workspace, and run
-teardown after rehearsal.
+On the exercised Codex `0.144.4` surface it is configured in
+`$CODEX_HOME/config.toml` and is therefore user-wide, not project-local. A
+dedicated demo workspace is an organizational precaution only. Close all other
+Codex Desktop tasks and fully quit Desktop before setup or teardown; while the
+fixture is installed, reopen Desktop only for the synthetic rehearsal. Remove
+it immediately afterward with a separately reviewed teardown digest and
+restart Desktop.
 
 ## Requirements
 
@@ -69,44 +74,67 @@ Review the hook definition and exact configuration delta, then apply:
 ```bash
 uv run verity install-codex --source-root . --yes
 uv run verity doctor --confirm-hook-trust
+export VERITY_CONFIRM_HOOK_TRUST=1
 ```
 
 The normal installer configures only Verity's controlled memory plane. It does
 not install the synthetic poisoned-documentation tool.
+`VERITY_CONFIRM_HOOK_TRUST=1` is your explicit assertion that you reviewed the
+normal hook definition; the helper refuses to infer or silently grant trust.
 
 ## 4. Preview and install the demo-only MCP fixture
 
+Close every other Codex Desktop task and fully quit Codex Desktop before
+continuing. Keep it closed until confirmed setup completes.
+
 ```bash
-uv run verity demo desktop-setup --source-root .
+./scripts/demo-desktop.sh
 ```
 
-The preview must show only the dedicated
+The helper performs only a read-only preview and prints the explicit setup,
+status, startup, and teardown commands. Copy the displayed
+`preview.preview_digest`; confirmed setup refuses to proceed without that exact
+separately reviewed digest. The preview must show only the dedicated
 `mcp_servers.verity_cordon_poisoned_docs` entry, staged file digests, selected
 Python runtime, receipt path, and teardown scope. Apply only after reviewing it:
 
 ```bash
-uv run verity demo desktop-setup --source-root . --yes
-uv run verity demo desktop-status
+export VERITY_DESKTOP_SETUP_DIGEST="<copy preview.preview_digest>"
+uv run verity demo desktop-setup --source-root . --confirm-hook-trust \
+  --expected-preview-digest "$VERITY_DESKTOP_SETUP_DIGEST" --yes
 ```
 
 Setup refuses unsafe ownership, symlinks, existing unexpected values, artifact
 drift, or ambiguous partial state. The receipt is local runtime state and must
-not be committed.
+not be committed. The setup preview reports whether the separate normal
+integration is ready; when it is not, run and review `verity install-codex`
+separately because the demo preview intentionally does not reproduce that
+installer's delta.
 
 ## 5. Start Verity and open Codex Desktop
 
 Create a local Control Room passphrase of at least 12 characters without
-printing it, then start the daemon:
+printing it. In terminal A, start the daemon and leave it running:
 
 ```bash
 uv run verity serve
 ```
 
+In terminal B, require the complete fixture, daemon, ledger, policy, memory
+view, and Control Room readiness gate before reopening Desktop:
+
+```bash
+uv run verity demo desktop-status --source-root . --confirm-hook-trust
+```
+
 Open `http://127.0.0.1:8765` and unlock trust-changing actions with the same
 passphrase. Keep the Control Room visible beside Codex Desktop.
 
-Start a **new Codex Desktop task** in the dedicated demo workspace so the
-installed plugin and demo MCP are loaded from supported configuration.
+Restart Codex Desktop and start a **new Codex Desktop task** in the dedicated
+demo workspace so the installed plugin and demo MCP are loaded from supported
+configuration. Do not open unrelated tasks or workspaces during the rehearsal:
+the MCP registration is user-wide even though its runtime `cwd` points to the
+private demo staging directory.
 
 ## 6. Enforcement demonstration
 
@@ -191,21 +219,27 @@ revocation.
 
 ## 8. Teardown
 
-Preview demo-only teardown:
+Close all Codex Desktop tasks and fully quit Codex Desktop. Preview demo-only
+teardown immediately before applying it:
 
 ```bash
-uv run verity demo desktop-teardown
+uv run verity demo desktop-teardown --source-root . --confirm-hook-trust
 ```
 
 After reviewing drift and restoration status:
 
 ```bash
-uv run verity demo desktop-teardown --yes
+export VERITY_DESKTOP_TEARDOWN_DIGEST="<copy preview.preview_digest>"
+uv run verity demo desktop-teardown --source-root . --confirm-hook-trust \
+  --expected-preview-digest "$VERITY_DESKTOP_TEARDOWN_DIGEST" --yes
 ```
 
 This removes only the demo MCP configuration and staged fixture. It preserves
-the normal Verity plugin, ledger, signing key, and memory history. Remove the
-normal integration separately only when desired:
+the normal Verity plugin, ledger, signing key, and memory history. A failed
+normal-integration health check is reported but does not strand an otherwise
+exact, receipt-bound demo fixture: digest-confirmed teardown still removes it.
+Restart Desktop and verify the demo server is absent before returning to normal
+work. Remove the normal integration separately only when desired:
 
 ```bash
 uv run verity uninstall-codex

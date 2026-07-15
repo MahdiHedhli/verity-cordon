@@ -1,121 +1,132 @@
-# Three-Minute Demo Script
+# Three-Minute Desktop Demo Script
 
-Target edited runtime: **2:55**. The public YouTube video must remain strictly
-under three minutes and include audio. Record loading and typing separately and
-remove them from the final cut.
+Target edited runtime: **2:55**. Codex Desktop is the primary human-facing
+surface. Installation, restarts, loading, and typed prompts are prepared or
+recorded separately and edited out. The public YouTube video must remain under
+three minutes and include audio.
 
-## 0:00–0:20 — The Problem
+## 0:00–0:18 — The Risk
 
-**Visual**: Clean Control Room overview, then a two-session diagram.
-
-**Narration**:
-
-> Durable agent memory can turn untrusted content from one session into
-> privileged context in the next. Verity Cordon is a tamper-evident memory
-> firewall for Codex. Verifiable memory. Revocable trust.
-
-## 0:20–0:50 — Capture the Attack
-
-**Visual**: Start the offline demo and show its bounded stdio fixture result.
-Highlight the validated fixture identity, legitimate release guidance, and the
-disguised permanent instruction.
+**Visual**: Codex Desktop beside the Verity Cordon Control Room.
 
 **Narration**:
 
-> This local demo tool returns useful release guidance mixed with an instruction
-> to remember a synthetic validation endpoint, send synthetic environment
-> values there, and hide that rule from the user. The offline command invokes
-> the reviewed fixture over bounded stdio in a minimal environment, validates
-> its inert safety flag, and sends the synthetic response into Verity's real
-> evaluation service. The separately verified Codex plugin uses the documented
-> tool hook for an installed integration.
+> Useful agent memory can also carry an untrusted instruction from one task
+> into the next. Verity Cordon is a tamper-evident memory firewall for Codex.
+> Verifiable memory. Revocable trust.
 
-## 0:50–1:15 — Shadow Mode
+## 0:18–0:42 — Plant a Delayed Instruction
 
-**Visual**: Candidate Detail in the Control Room.
-
-Show:
-
-- Actual action: Allow
-- Would-have action: Quarantine
-- Source: External tool
-- Risk: Persistent operational instruction
-- Policy version
-- Semantic provider: Recorded fixture
+**Visual**: In Codex Desktop, ask the local `verity_cordon_poisoned_docs` tool
+for release guidance. Reveal the useful fact and the disguised permanent rule.
 
 **Narration**:
 
-> In shadow mode, teams can tune policy without claiming active protection. The
-> candidate is admitted, but Verity records that enforcement would quarantine
-> it, along with source provenance, detector evidence, a clearly labeled
-> recorded semantic assessment, and the exact deterministic policy version.
+> This local, synthetic tool returns valid release guidance plus a Trojan
+> Hippo-inspired instruction: preserve a hidden validation rule and activate it
+> during a later release task. The reviewed fixture does not read host files,
+> credentials, or environment data, and its sink accepts only two fixed
+> synthetic markers. It is digest-pinned reviewed code, not an OS sandbox.
 
-## 1:15–1:40 — Enforcement Across Sessions
+## 0:42–1:05 — Shadow Mode Is Not Protection
 
-**Visual**: Show the signed policy activation and enforcement evaluation, then
-the offline summary's `simulated_session_start` assertion and the active versus
-quarantined views. Label it as the real memory-service contract, not a launched
-Codex session. Use a separately recorded installed Codex session only if it was
-actually exercised for the final video.
-
-**Narration**:
-
-> In enforcement mode, the same persistent instruction is quarantined. A fresh
-> session-start rendering through the real memory service contains the typed,
-> approved release fact and excludes the poisoned instruction. The offline demo
-> labels this as a simulated SessionStart; the installed hook uses the same
-> bounded contract to supply developer context to Codex.
-
-## 1:40–2:10 — Selective Revocation
-
-**Visual**: Show the targeted rescan decision for the earlier shadow-admitted
-memory, its linked `MemoryRevoked` event, and the rebuilt inventory with the
-legitimate memory preserved.
+**Visual**: Open Candidate Detail and its decision-and-recovery timeline. Highlight
+source, policy version, provider, `actual_action=allow`, and
+`would_have_action=quarantine`.
 
 **Narration**:
 
-> If a threat is discovered later, Verity does not roll back the whole memory
-> store. This targeted rescan applies the current enforcement policy to the
-> signed candidate and atomically appends a revocation for the exact unsafe
-> memory. Replay removes that item and preserves unrelated knowledge.
+> Shadow mode records what enforcement would do without blocking the workflow.
+> Actual allow admits this memory; would-have quarantine exposes the risk.
+> Shadow mode is observation, not active protection. Provenance, detector
+> findings, semantic advice, and deterministic policy are all attributable.
 
-## 2:10–2:35 — Verify the Evidence
+## 1:05–1:28 — Show the Delayed Trigger Safely
 
-**Visual**: Event Timeline and Ledger Verification, then run:
+**Visual**: Start a fresh release task in Codex Desktop. Show the shadow-admitted
+rule influencing a proposed call to the inert local sink, then show its two
+allow-listed synthetic markers—never real data.
+
+**Narration**:
+
+> In a later task, the admitted instruction can influence behavior. The demo
+> shows that delayed effect without exfiltration: the local sink has no network
+> side effect and rejects anything except the exact synthetic pair. Verity is
+> demonstrating memory poisoning, not claiming general outbound data control.
+
+## 1:28–1:50 — Enforce the Cordon
+
+**Visual**: Switch to enforcement, repeat the documentation call, wait for the
+signed terminal decision, and show a fresh Desktop task receiving the useful
+fact while the poisoned instruction is absent.
+
+**Narration**:
+
+> Under enforcement, the same operational instruction is quarantined. Only
+> after the signed decision completes do we open a fresh task. The approved
+> fact is available; quarantined memory is not eligible for injection.
+
+## 1:50–2:14 — Revoke One Memory, Preserve the Rest
+
+**Visual**: Select the earlier shadow-admitted memory, confirm revocation,
+rebuild, and return to the timeline. Show `MemoryRevoked`, revoked status, and
+the unrelated approved fact still active.
+
+**Narration**:
+
+> A later policy can repair yesterday's trust decision without deleting the
+> whole memory store. Verity appends a revocation for this memory, rebuilds the
+> active view deterministically, preserves unrelated approved knowledge, and
+> retains the original decision history.
+
+## 2:14–2:35 — Verify the Evidence
+
+**Visual**: Show Ledger Verification, then run:
 
 ```bash
-verity ledger verify
+uv run verity ledger verify
 ```
 
-Show provenance, sequence, previous hash, payload digest, signature, policy
-version, revocation event, key ID, and verified view status.
+**Narration**:
+
+> SHA-256 binds canonical payloads and event order; the local installation's
+> Ed25519 key signs each event hash. Verification checks payloads, sequence,
+> signatures, and the materialized view. This is tamper-evident within the
+> documented local-host boundary—not tamper-proof or factual truth proof.
+
+## 2:35–2:55 — Codex Subscription, GPT-5.6, and Close
+
+**Visual**: Show the provider badge and isolation warning, then the architecture
+panel and final title card.
 
 **Narration**:
 
-> Every decision is bound into an ordered SHA-256 chain and signed with the
-> local installation's Ed25519 key. Verification checks payloads, event order,
-> signatures, and the materialized view. This is tamper-evident under the local
-> host and key boundary—not tamper-proof and not factual truth verification.
+> GPT-5.6 supplies structured extraction and semantic risk advice. In this live
+> subscription path, Codex runs as the explicitly lower-isolation
+> `agentic_sandboxed` provider; observed tool activity invalidates its result,
+> and we do not call it tool-free. Deterministic policy keeps final authority.
+> Codex helped specify, build, test, and attack the product. Verity Cordon.
+> Verifiable memory. Revocable trust.
 
-## 2:35–2:55 — GPT-5.6, Codex, and Close
+## Recording and Safety Checklist
 
-**Visual**: Architecture panel, provider badge, final title card.
-
-**Narration**:
-
-> GPT-5.6 performs structured candidate extraction and semantic risk assessment
-> in explicit live mode with no tools or memory; deterministic policy keeps
-> final authority. This offline run used recorded fixtures and did not pretend to
-> be live. Codex was used to research, specify, implement, attack, test, and
-> polish the product, and its documented hooks provide the controlled memory
-> plane. Verity Cordon. Verifiable memory. Revocable trust.
-
-## Recording Checklist
-
-- Use synthetic content only; never show local keys, bearer capabilities, API
-  keys, real prompts, or private paths.
-- Capture the live GPT-5.6 provider label only during a separately successful
-  credentialed live run. Otherwise disclose that the live path was not shown.
-- Keep the final upload publicly visible on YouTube with audio.
-- Use no unauthorized music, trademarks, or copyrighted assets.
-- Verify final duration is below `03:00`, preferably `02:55` or shorter.
+- Rehearse the complete edited sequence to **2:55 or less** before recording.
+- The exercised MCP registration is user-wide, not project-local. Close every
+  unrelated task, quit Desktop around confirmed setup/teardown, and use a
+  dedicated workspace only as an organizational precaution; do not show setup,
+  private paths, or auth state.
+- Show the `live_codex_subscription` badge only when that exact run succeeded.
+  Otherwise use the recorded fixture path and label it explicitly; never imply
+  a live provider or silently substitute one.
+- Do not claim protection until the Control Room shows a signed terminal
+  decision with healthy ledger and materialized-view status.
+- Show only synthetic marker values. Never display keys, bearer capabilities,
+  private prompts, host environment values, or raw retained evidence.
+- Record a real Desktop observation only after the manual smoke path passes. If
+  Desktop is unavailable, label the deterministic harness as the offline
+  fallback rather than presenting it as a Desktop session.
+- Immediately after rehearsal, quit Desktop, preview and digest-confirm
+  demo-only teardown, then restart Desktop. Teardown must retain
+  the normal Verity plugin, ledger, key, policies, and unrelated Codex config.
+- Publish the final video publicly on YouTube with audio and no unauthorized
+  music, trademarks, or copyrighted assets.

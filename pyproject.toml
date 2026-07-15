@@ -23,6 +23,7 @@ dependencies = [
   "cryptography>=49,<50",
   "fastapi>=0.139,<0.140",
   "httpx>=0.28,<0.29",
+  "jsonschema>=4.26,<5",
   "openai>=2.45,<3",
   "opentelemetry-api>=1.43,<2",
   "platformdirs>=4.9,<5",
@@ -42,7 +43,6 @@ verity = "verity_cordon.cli.main:app"
 
 [dependency-groups]
 dev = [
-  "jsonschema>=4.26,<5",
   "mypy>=2.3,<3",
   "openapi-spec-validator>=0.7.2,<0.8",
   "pip-audit>=2.10.1,<3",

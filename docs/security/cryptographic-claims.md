@@ -1,6 +1,7 @@
 # Verity Cordon Cryptographic Claims
 
-**Feature**: `001-codex-memory-firewall`
+**Features**: `001-codex-memory-firewall`,
+`002-codex-desktop-subscription-defense`
 **Cryptographic profile**: `VC-CJ-1` + SHA-256 + Ed25519
 **Review date**: 2026-07-15
 
@@ -15,6 +16,78 @@ signature establishes that the event hash was signed by the corresponding
 installation key. It does not establish factual truth, safe meaning, correct
 policy, operator identity, confidentiality, or protection from a compromised
 host or stolen signing key.
+
+## Provider and Desktop Demo Claim Boundary
+
+The Codex subscription provider and Desktop demo installer use SHA-256 for
+request, executable, artifact, preview, and managed-entry identity checks. Those
+checks must not be conflated with the signed event-ledger construction.
+
+### Codex subscription result binding
+
+Before accepting subscription output, Verity requires a strict local schema and
+an exact match for operation, opaque request identity, provider echo, and the
+SHA-256 digest of the canonical sanitized input. The Codex executable identity
+is pinned locally and rechecked before launch. These checks support the narrow
+claim that the accepted object matches the locally initiated invocation and
+sanitized input under the tested provider contract.
+
+The subscription output is not signed by Codex or OpenAI. Its `provider` field
+is an untrusted echo, and a model-authored model name or execution claim is not
+accepted as evidence. The request digest does not prove that the model reasoned
+correctly, that no tool existed or was attempted, that outbound information
+flow was prevented, or that a particular remote model produced the text. The
+provider is therefore labeled `live_codex_subscription` and lower-isolation
+`agentic_sandboxed`; deterministic policy remains final authority.
+`requested_model` records the locally configured `gpt-5.6-luna` identifier used
+by the exercised subscription path. `returned_model` remains null unless
+trustworthy Codex runtime metadata supplies it; the requested value is not a
+remote model attestation.
+
+### Desktop demo receipt and artifact binding
+
+The Desktop demo uses a private schema-validated write-ahead receipt. It binds
+the confirmed preview, one canonical managed MCP entry, the normal integration
+receipt digest, source and staged fixture bytes, and selected Codex and Python
+runtime files. SHA-256 comparisons and exact-state checks detect the tested
+single-file, entry, runtime, and configuration drift while the local verifier
+and host are uncompromised. Teardown uses the independently bound managed entry;
+the demo retains only the config digest and never copies the whole Codex config,
+which may contain unrelated credentials.
+
+Confirmed mutations take a private Verity operation lock and require the
+expected whole-config SHA-256 head at replacement. That lock serializes only
+cooperating Verity demo operations. Codex Desktop, editors, and other writers do
+not participate; closing Desktop, using a fresh preview, applying immediately,
+and refusing any digest mismatch reduce but do not eliminate a non-cooperating
+writer race.
+
+The receipt's `prepared` and `removing` states support exact forward recovery
+after interruption. Completed `removed` receipts are retained and, before a
+later setup, archived by installation ID only after their digest matches; a
+conflicting archive is rejected. This is local recovery evidence, not an
+append-only or signed audit ledger.
+
+The Desktop receipt is not an Ed25519-signed ledger event, transparency record,
+software-vendor signature, or supply-chain attestation. Its hashes do not
+prevent replacement and cannot authenticate the operator or code publisher. A
+coordinated same-user or host attacker can replace the receipt, files, config,
+and verifier together.
+
+The synthetic sink's SHA-256 value binds only the two fixed marker literals
+compiled into the fixture. It is not a digest of arbitrary submitted content
+and is not cryptographic proof that no transmission occurred. The claim of no
+external action is implementation- and test-backed for that inert local fixture,
+not derived from the hash or its self-reported flag.
+
+### Protection state
+
+Neither fixture startup, capture acknowledgement, an accepted semantic result,
+nor an installed demo receipt proves that memory was protected. A candidate-
+specific signed terminal decision and a materialized view consistent with the
+verified ledger support the durable-memory claim. In shadow mode, the signed
+events deliberately record admission and a stricter would-have action; that is
+evidence of policy evaluation, not active protection.
 
 ## Algorithm Suite
 
@@ -353,6 +426,20 @@ Tests must exercise actual stored bytes and the public verification path; mocks
 that merely compare a precomputed string do not support the tamper-evidence
 claim.
 
+## Required Provider and Demo Integrity Tests
+
+These are non-cryptographic boundary tests except where they compare SHA-256
+identities. They do not extend the event-ledger signature claim.
+
+| Test mutation | Required result |
+|---|---|
+| Change a subscription output request ID or sanitized digest | Provider rejects the complete advisory result before policy input |
+| Replace the verified Codex executable after provider construction | Provider reports executable drift and does not accept an assessment |
+| Emit a subscription-child tool or unknown event | Provider rejects even a schema-valid final object and records no successful assessment |
+| Change the Desktop managed MCP entry, staged artifact, or bound runtime | Demo readiness fails; teardown refuses drifted managed state |
+| Interrupt setup after its write-ahead receipt or config mutation | Reconciliation accepts only the receipt-bound exact state and never guesses |
+| Change fixed demo sink input or add a field | Sink rejects without retaining or hashing arbitrary body content |
+
 ## Approved Cryptographic Claims
 
 When the corresponding verification tests pass, Verity Cordon may say:
@@ -369,7 +456,18 @@ When the corresponding verification tests pass, Verity Cordon may say:
   `MemorySuperseded` is a reserved contract event that replay can exclude, but
   the MVP exposes no supersession workflow.
 
-## Prohibited or Unsupported Cryptographic Claims
+## Approved Provider and Demo Integrity Claims
+
+When the corresponding contract tests pass, Verity Cordon may say:
+
+- A subscription result accepted by the provider is schema-, request-identity-,
+  and sanitized-content-digest-bound to the local invocation. This is a local
+  acceptance claim, not a remote signature or model-attestation claim.
+- Desktop demo doctor checks the private receipt, exact managed entry, staged
+  fixture, and runtime digests before reporting ready. These are local drift
+  checks separate from event-ledger verification.
+
+## Prohibited or Unsupported Claims
 
 Verity Cordon must not say that:
 
@@ -386,6 +484,16 @@ Verity Cordon must not say that:
 - The MVP provides production key rotation, HSM protection, distributed
   consensus, external transparency anchoring, or supply-chain attestation.
 - Cryptographic integrity alone prevents prompt injection or memory poisoning.
+- A subscription response digest proves which remote model produced it, that it
+  was tool-free, or that attempted outbound activity was prevented.
+- Rejection of observed subscription-child tool activity is an outbound
+  information-flow-control guarantee.
+- The Desktop demo receipt is ledger-signed, externally anchored, or a
+  supply-chain attestation.
+- The fixed sink-marker digest proves that an arbitrary process made no network
+  transmission or other side effect.
+- An installed fixture, capture acknowledgement, or shadow-mode admission is a
+  cryptographic proof of active protection.
 
 These distinctions must remain consistent in the README, Control Room, demo,
 submission copy, CLI output, and public verification instructions.

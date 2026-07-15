@@ -189,8 +189,8 @@ It is independent from the normal Codex integration receipt.
 |---|---|---|
 | Identity | receipt version, installation UUID, lifecycle state, create/update times | One receipt identifies one setup attempt. |
 | Confirmation | `operator_confirmed` | Must be true before any write-ahead receipt or configuration mutation. |
-| Paths | Codex home, config path, private staging root, optional backup path | Absolute local paths; private and omitted from routine output. |
-| Config binding | existence flag, before/after digests, backup digest | Whole-file digests support diagnostics; teardown does not wholesale restore a stale backup. |
+| Paths | Codex home, config path, private staging root; reserved `backup_path=null` compatibility field | Absolute local paths; private and omitted from routine output. No whole-config copy is created. |
+| Config binding | existence flag, before/after digests; reserved `backup_sha256=null` compatibility field | Whole-file digests support exact-head checks and diagnostics without retaining potentially secret config content. |
 | Managed entry | fixed name, canonical entry digest, fixed stdio command/arguments/options | Teardown compares this entry independently so unrelated config changes are preserved. |
 | Original value | `original_entry_present=false`, null digest | Setup refuses a pre-existing entry with the reserved demo name rather than copying possibly secret configuration into a receipt. |
 | Runtime identity | Codex and Python resolved paths, file digests, bounded versions | Doctor rejects runtime drift before use. |
@@ -233,7 +233,8 @@ Rules:
    digests to verify.
 5. Unrelated Codex config changes do not block teardown when the managed entry
    is byte-equivalent after canonical TOML parsing. Drift inside the managed
-   entry blocks teardown; no backup is restored over the current config.
+   entry blocks teardown. Only the pre-mutation digest is retained; the demo
+   never copies or restores the full Codex config.
 6. Staged artifacts are removed only when their path containment and digest
    checks pass. Drift is reported for manual review rather than recursively
    deleting the staging root.

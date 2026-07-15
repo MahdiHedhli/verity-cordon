@@ -203,6 +203,13 @@ export interface PolicyDecision {
   reason: string;
 }
 
+export interface CandidateEventReference {
+  event_id: string;
+  sequence_number: number;
+  event_type: string;
+  occurred_at: string;
+}
+
 export interface CandidateDetail {
   candidate: MemoryCandidate;
   status: MemoryStatus;
@@ -210,6 +217,7 @@ export interface CandidateDetail {
   semantic_assessment: SemanticAssessment | null;
   policy_decision: PolicyDecision;
   event_ids: string[];
+  event_references: CandidateEventReference[];
   ledger_verified: boolean;
 }
 

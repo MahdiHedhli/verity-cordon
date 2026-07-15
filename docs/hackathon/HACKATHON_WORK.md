@@ -135,13 +135,13 @@ host.
 
 ### Deterministic evaluation
 
-The saved 2026-07-15 evaluation uses 14 original Apache-2.0 synthetic fixtures
+The saved 2026-07-15 Sprint 002 evaluation uses 20 original Apache-2.0 synthetic fixtures
 and the recorded semantic provider:
 
-- 5/5 benign fixtures allowed
-- 9/9 risky fixtures protected
+- 7/7 benign fixtures allowed
+- 13/13 risky fixtures protected
 - 0 false positives and 0 false negatives for this fixture only
-- 226 signed events verified
+- 326 signed events verified
 - Materialized view consistent
 
 These are fixture-scoped results, not universal accuracy or live GPT-5.6
@@ -161,6 +161,25 @@ audits, 80% backend coverage, and the 20-sample fixture evaluation with 0
 fixture-scoped false positives and 0 fixture-scoped false negatives. The
 success-path descendant, blocked-stdin, opened-output inode, safe-rescan, and
 revoking-rescan cases now have explicit regressions.
+
+The Sprint 002 US3/US4 checkpoint then added the full shadow-admission and
+selective-recovery path plus a separate reversible Codex Desktop demo
+installer. The installer previews without mutation, requires explicit
+confirmation and reviewed-hook trust, manages only the reserved
+`verity_cordon_poisoned_docs` MCP entry and a digest-bound staged script, writes
+a strict private recovery receipt, refuses config/artifact/runtime drift, and
+tears down only exact managed state. The normal `install-codex` path remains
+separate and never stages the attack fixture.
+
+The canonical `./scripts/verify.sh` gate passed 437 backend tests in 105.14
+seconds, 13 isolated example/plugin tests, and 6 frontend files / 10 tests.
+Ruff, mypy, OpenAPI validation, frontend type/lint/build, Python and npm
+dependency audits, 79% aggregate backend coverage, and the 20-sample fixture
+evaluation all passed. The evaluation recorded 7/7 benign samples allowed,
+13/13 risky samples protected, 0 fixture-scoped false positives, 0
+fixture-scoped false negatives, a verified 326-event ledger, and a consistent
+materialized view. These are automated contract and fixture results; an actual
+timed Codex Desktop UI rehearsal remains separately operator-visible evidence.
 
 The timed final post-hardening `./scripts/verify.sh` run reported 267 backend tests,
 10 example/plugin tests, 7 frontend tests, 80% backend coverage, a successful
