@@ -7,8 +7,10 @@
 - **Verity Cordon project start**: 2026-07-15
 - **Clean baseline commit**: `ef2c80d` (`chore: establish hackathon baseline`)
 - **Integrated default branch**: `main`
-- **Implementation branch**: `feat/001-codex-memory-firewall`
-- **Only active feature**: `specs/001-codex-memory-firewall/`
+- **Implemented baseline feature**: `specs/001-codex-memory-firewall/`
+- **Current implementation branch**: `codex/002-desktop-subscription-defense`
+- **Only active sprint feature**:
+  `specs/002-codex-desktop-subscription-defense/`
 
 The baseline is an empty root commit created after confirming that the workspace
 was empty. Every product artifact and implementation file is new hackathon work
@@ -44,6 +46,43 @@ renamed codebase.
 
 The feature branch was fast-forwarded into `main` without rewriting history or
 force-pushing.
+
+## Sprint 002 Baseline
+
+Feature 002 began on 2026-07-15 from public `main` commit
+`00f7e44e64187dbf531a84bb0c1933e474ff6c08` on branch
+`codex/002-desktop-subscription-defense`. The sprint promotes Codex Desktop to
+the primary demo surface and adds an explicit subscription-backed semantic
+provider while preserving the implemented feature-001 controls and no-key
+fallback.
+
+The operator workspace contained unrelated untracked duplicate files named
+`* 2.*` before sprint work began. They are excluded from staging, editing, test
+discovery, and cleanup. Tracked-path test commands or a clean checkout are used
+for authoritative verification.
+
+The first tracked-path baseline run executed the 267 root backend tests. It
+reported 266 passing tests and one timeout in the three-second bounded stdio
+fixture used by the offline end-to-end demo. The same focused test failed once
+and then passed unchanged on the next run in 4.90 seconds; a direct fixture
+invocation also succeeded. This is recorded as a pre-existing demo-reliability
+flakiness signal under concurrent host load, not as a passing baseline gate.
+Feature 002 must remove the ambiguity and pass the clean-checkout gate before
+handoff. An attempted combined root/evaluation/example invocation was discarded
+because the independently packaged example projects require their own project
+environments; later verification uses `scripts/verify.sh` and its intended
+per-project commands.
+
+The feature-002 pre-implementation Spec Kit analysis then reviewed all 45
+functional, security, and success requirements against the 58-task graph. Its
+two critical process/test-matrix findings and six high-severity consistency or
+coverage findings were remediated before substantive code work: the verified
+Codex argument order became canonical, private demo state was ignored, daemon
+readiness API work and a timed manual Desktop rehearsal were made explicit,
+every security story received its required scenario matrix, executable/home
+trust rules were made normative, and the privacy criterion now excludes only
+the fixed literals in designated source definitions. No deferred capability
+entered active scope.
 
 ## Milestones
 

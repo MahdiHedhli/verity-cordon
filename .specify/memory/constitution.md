@@ -1,14 +1,21 @@
 <!--
 Sync Impact Report
-- Version change: template -> 1.0.0
-- Added principles: I-XII (initial ratification)
-- Added sections: Security and Delivery Constraints; Development Workflow and Quality Gates
+- Version change: 1.0.0 -> 1.1.0
+- Modified principles: none
+- Modified sections: Security and Delivery Constraints (active sprint promotion and
+  subscription-provider isolation requirements)
+- Added sections: none
 - Removed sections: none; template placeholders were resolved
-- Templates updated:
+- Templates verified without changes:
   - ✅ .specify/templates/plan-template.md
   - ✅ .specify/templates/spec-template.md
   - ✅ .specify/templates/tasks-template.md
-- Follow-up TODOs: none
+- Runtime guidance requiring feature-level propagation:
+  - ✅ specs/002-codex-desktop-subscription-defense/ (specified, planned, and
+    analyzed before implementation)
+  - ⚠ README.md and docs/security/ (update during feature implementation)
+- Follow-up TODOs: complete feature 002 implementation, verification, and final
+  consistency analysis
 -->
 # Verity Cordon Constitution
 
@@ -108,9 +115,20 @@ cannot be independently verified MUST NOT be used as security evidence.
 
 ## Security and Delivery Constraints
 
-- The active feature is exclusively `001-codex-memory-firewall`.
+- The implemented security baseline is `001-codex-memory-firewall`. The only
+  active implementation sprint is `002-codex-desktop-subscription-defense`.
+  Feature 002 MAY extend the baseline but MUST NOT weaken or silently replace
+  its tested controls, contracts, or claims.
+- Only one incomplete implementation feature MAY be active at a time. A later
+  feature MUST receive an explicit scope decision and MUST protect the current
+  demo-critical path before becoming active.
 - The product MUST use supported Codex configuration, hooks, skills, plugins, or
   other documented interfaces; undocumented Codex internals MUST NOT be patched.
+- Subscription-backed Codex execution MUST be identified separately from a
+  direct, tool-free OpenAI API semantic call. Until a documented control can
+  remove built-in agent tools, subscription-backed semantic review MUST remain
+  opt-in, isolated, fail closed on tool activity or malformed output, and MUST
+  NOT inherit the stronger `no tools` claim.
 - Secrets MUST be screened before model-bound content leaves the local trust
   boundary and MUST NOT appear in telemetry, fixtures, screenshots, or Git.
 - Historical ledger events are authoritative; materialized views MUST be
@@ -159,4 +177,4 @@ cannot be waived inside a feature plan. Complexity and scope exceptions MUST be
 recorded in the feature plan with the simpler alternative and why it cannot meet
 the active acceptance criteria.
 
-**Version**: 1.0.0 | **Ratified**: 2026-07-15 | **Last Amended**: 2026-07-15
+**Version**: 1.1.0 | **Ratified**: 2026-07-15 | **Last Amended**: 2026-07-15
