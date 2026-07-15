@@ -709,6 +709,29 @@ def test_installer_previews_backs_up_and_changes_only_required_toml_keys(
     assert not preview.applied
     assert config.read_text() == original
     assert runner.commands == []
+    assert any(
+        "/hooks" in action and "exact current hashes" in action
+        for action in preview.operator_actions
+    )
+    assert any(
+        "fully quit" in action and "CLI TUI" in action for action in preview.operator_actions
+    )
+    assert any(
+        "Start the Verity daemon" in action and "doctor" in action
+        for action in preview.operator_actions
+    )
+    hook_action = next(
+        index for index, action in enumerate(preview.operator_actions) if "/hooks" in action
+    )
+    doctor_action = next(
+        index
+        for index, action in enumerate(preview.operator_actions)
+        if "Start the Verity daemon" in action
+    )
+    new_task_action = next(
+        index for index, action in enumerate(preview.operator_actions) if "new task" in action
+    )
+    assert hook_action < doctor_action < new_task_action
     assert {change.dotted_key for change in preview.changes} == {
         "features.hooks",
         "features.memories",
@@ -770,6 +793,10 @@ def test_installer_previews_backs_up_and_changes_only_required_toml_keys(
         runner=runner,
     )
     assert removed.applied
+    assert any(
+        "fully quit" in action and "confirmed removal" in action
+        for action in removed.operator_actions
+    )
     restored = tomllib.loads(config.read_text())
     assert restored["features"] == {"hooks": False, "memories": True}
     assert restored["memories"]["generate_memories"] is True

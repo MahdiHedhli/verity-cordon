@@ -15,19 +15,24 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 
 ## Project
 
-- [x] Working project installs and runs consistently on each claimed platform.
+- [x] The verified macOS offline and automated judge path installs and runs
+  consistently; the pending manual Desktop surface and unverified secondary
+  platform targets are explicitly qualified below and in the README.
 - [x] Developer Tools is the selected category.
 - [x] Offline path exercises real policy, ledger, view, API, and UI code.
-- [x] One bounded, sanitized `gpt-5.6-luna` subscription assessment completed
-  through supported ChatGPT sign-in with no API key or provider fallback.
-- [ ] Final recorded live path visibly exercises the selected GPT-5.6 runtime
-  contribution; do not substitute fixture output or imply both semantic tasks
-  ran when only one was observed.
+- [x] A bounded, sanitized `gpt-5.6-luna` subscription run completed candidate
+  extraction and semantic assessment through supported ChatGPT sign-in with no
+  API key or provider fallback; requested model is not remote attestation.
+- [ ] Final video visibly exercises and labels the selected live GPT-5.6
+  contribution; pre-recording evidence or fixture output does not substitute
+  for what the video shows.
 - [x] Synthetic fixture reads no real environment and sends nothing externally.
 - [x] Temporary-home Desktop fixture setup, status, bounded probe, interruption
   recovery, drift refusal, and exact teardown contracts pass.
 - [ ] Timed manual Codex Desktop plant-trigger-enforce-clean-task-revoke-ledger
   rehearsal is complete and recorded separately from automated evidence.
+- [ ] CLI `/hooks` exact-definition trust, Desktop `/mcp` presence, benign
+  hook-delivery canary, and post-teardown `/mcp` absence are manually recorded.
 - [x] Critical security, failure, and adversarial tests pass.
 - [x] Control Room desktop browser, keyboard/focus accessibility, and
   console-error smoke checks pass. No automated axe-core result is claimed.

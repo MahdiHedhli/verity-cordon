@@ -126,5 +126,8 @@ def test_desktop_status_json_separates_fixture_and_system_readiness(
     assert payload["daemon_ready"] is True
     assert payload["control_room_headers_ready"] is True
     assert payload["configuration_scope"] == "user_wide_codex_home"
-    assert "Close all other Codex Desktop tasks" in payload["operator_warning"]
+    assert "close every ChatGPT Desktop task" in payload["operator_warning"]
+    assert "CLI TUI and IDE Codex sessions" in payload["operator_warning"]
+    assert "fully quit" in payload["operator_warning"]
+    assert "user-wide demo fixture" in payload["operator_warning"]
     assert "workspace" not in payload["operator_warning"].lower()

@@ -4,11 +4,16 @@
 
 **Created**: 2026-07-15
 
-**Status**: Approved for implementation after pre-implementation consistency analysis
+**Status**: Implementation complete; timed operator-observed Desktop acceptance rehearsal pending
 
 **Input**: User description: "Use the Codex subscription model, make the Codex
 Desktop app the main demo, and demonstrate the defense with a Trojan
 Hippo-inspired persistent-memory poisoning attack."
+
+**Surface terminology**: In this feature, **Codex Desktop** is concise project
+shorthand for the Codex experience in the supported ChatGPT desktop app. It
+does not name a separate Verity runtime or imply access to undocumented Desktop
+internals.
 
 ## User Scenarios & Testing *(mandatory)*
 

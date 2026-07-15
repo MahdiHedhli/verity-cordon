@@ -118,12 +118,18 @@ The direct Responses API provider has no tools, durable memory, conversation,
 or previous response. The separate subscription provider is deliberately
 labeled `agentic_sandboxed`: it runs a bounded Codex child, rejects any observed
 tool activity, and makes no claim that tools are absent inside the Codex binary.
-On 2026-07-15, a sanitized synthetic assessment succeeded through Codex CLI
-`0.144.4` and ChatGPT sign-in using `gpt-5.6-luna`, returned
-`live_codex_subscription`, and recommended quarantine in 11,026 ms. An earlier
-explicit request for base `gpt-5.6` was unavailable for that identity and
-failed without fallback. This proves one assessment on one host and date, not
-universal plan entitlement, stable latency, or a credentialed direct-API run.
+On 2026-07-15, an initial sanitized synthetic assessment succeeded through
+Codex CLI `0.144.4` and ChatGPT sign-in using `gpt-5.6-luna`, returned
+`live_codex_subscription`, and recommended quarantine in 11,026 ms. A later
+no-key closure run exercised both live candidate extraction and live semantic
+assessment: four candidates produced allow and quarantine outcomes, and the
+50-event ledger verified with a consistent materialized view in 45,806 ms. The
+strict live validator first rejected a nullable TTL field omitted from the
+schema's required list; Verity fixed that contract and added a regression test
+before the successful rerun. An earlier explicit request for base `gpt-5.6`
+was unavailable for that identity and failed without fallback. These runs prove
+bounded execution on one host and date, not universal plan entitlement, stable
+latency, remote-model attestation, or a credentialed direct-API run.
 
 ## Challenges
 
@@ -168,14 +174,47 @@ intentionally deferred behind separate numbered Spec Kit features.
 
 ## Testing Instructions
 
+The guaranteed no-key judge path is:
+
 ```bash
 ./scripts/bootstrap.sh
+export VERITY_DATA_DIR=.verity-demo
+./scripts/demo-offline.sh
+```
+
+It exercises the real policy, signed ledger, materialized view, local API, and
+Control Room with visibly labeled recorded semantic fixtures.
+
+For the optional subscription-backed Desktop path:
+
+Before any confirmed Codex configuration change, close every ChatGPT Desktop
+task, exit Codex CLI TUI and IDE Codex sessions, and fully quit the ChatGPT
+desktop app. Keep clients closed while each user-wide mutation runs. The first
+installer call below is a read-only preview; apply `--yes` only after reviewing
+that preview and the exact hook definitions.
+
+```bash
+./scripts/bootstrap.sh
+./scripts/verify.sh
+export VERITY_DATA_DIR="$PWD/.verity-desktop-demo"
+export VERITY_SEMANTIC_PROVIDER=codex_subscription
+export VERITY_CODEX_MODEL=gpt-5.6-luna
+uv run verity ledger init-key
 uv run verity install-codex --source-root .
 uv run verity install-codex --source-root . --yes
-uv run verity doctor --confirm-hook-trust
+```
+
+Use Codex CLI `/hooks` to inspect and trust the exact Verity command hook hash,
+then continue:
+
+```bash
 export VERITY_CONFIRM_HOOK_TRUST=1
 ./scripts/demo-desktop.sh
 ```
+
+After digest-confirmed setup, start `uv run verity serve` in terminal A. In
+terminal B, run `uv run verity doctor --confirm-hook-trust` and then the printed
+`verity demo desktop-status` command before reopening Desktop.
 
 The Desktop helper previews the dedicated setup and prints the explicit setup,
 status, startup, and teardown commands; it does not automate or scrape the
@@ -195,14 +234,8 @@ Subscription semantic mode uses supported ChatGPT sign-in and requires no
 model access, and usage limits; an unavailable live provider fails explicitly
 without substituting fixtures or the direct API.
 
-For the guaranteed no-key deterministic fallback:
-
-```bash
-export VERITY_DATA_DIR=.verity-demo
-./scripts/demo-offline.sh
-```
-
-Open the printed loopback URL. Inspect shadow admission, enforcement, selective
+Open the printed loopback URL for either applicable path. In offline mode,
+inspect shadow admission, enforcement, selective
 rescan/revocation, simulated SessionStart rendering, rebuild, and ledger
 verification. Run the full critical suite with `./scripts/verify.sh`.
 
@@ -225,7 +258,8 @@ Verity provides tamper-evident local history, not tamper-proof storage. It does
 not verify arbitrary factual truth, completely prevent prompt injection,
 intercept undocumented Codex internals, control all outbound information flow,
 or protect a compromised host, user account, signing key, operating system, or
-Codex binary. Codex Desktop is the primary demo surface on macOS; CLI is the
+Codex binary. “Codex Desktop” means the Codex experience in the supported
+ChatGPT desktop app and is the primary demo surface on macOS; CLI is the
 deterministic harness, Linux is an intended secondary target, and Windows is
 unverified. Automated tests cover the integration contract, but Desktop-only
 observations are reported separately as manual smoke evidence.

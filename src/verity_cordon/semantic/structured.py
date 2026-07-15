@@ -161,7 +161,7 @@ class ExtractedCandidate(StrictModel):
     confidence: float = Field(ge=0, le=1)
     durability_rationale: str = Field(min_length=1, max_length=1000)
     sensitivity: Sensitivity
-    requested_ttl_seconds: int | None = Field(default=None, ge=60, le=31_536_000)
+    requested_ttl_seconds: int | None = Field(ge=60, le=31_536_000)
     persistence_requested: bool
     authority_signal: Signal
     secrecy_signal: Signal

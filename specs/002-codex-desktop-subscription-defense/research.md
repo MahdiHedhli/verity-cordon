@@ -149,8 +149,16 @@ request-storage claims. The Control Room must label this provider
 
 ## Codex Desktop Integration Surface
 
+In this sprint, **Codex Desktop** means the Codex experience in the supported
+ChatGPT desktop app. OpenAI's current documentation describes the app, CLI, and
+IDE extension as sharing configuration layers and supports ChatGPT sign-in for
+subscription access. This terminology does not imply a separate Verity runtime
+or an undocumented interception surface.
+
 **Official sources**:
 
+- [ChatGPT desktop app](https://learn.chatgpt.com/docs/app)
+- [Authentication](https://learn.chatgpt.com/docs/auth)
 - [Build Codex plugins](https://learn.chatgpt.com/docs/build-plugins)
 - [Codex hooks](https://learn.chatgpt.com/docs/hooks)
 - [Codex memories](https://learn.chatgpt.com/docs/customization/memories)
@@ -161,6 +169,13 @@ memory controls, and MCP configuration shared by supported Codex surfaces.
 Desktop is a presentation and operator-workflow choice, not a license to patch
 Desktop internals. The existing thin hook-to-daemon contract remains the
 security boundary.
+
+Non-managed command hooks do not run merely because their files exist. Current
+official hook guidance requires the operator to inspect and trust the exact
+hook definition hash through CLI `/hooks`; a changed definition returns to a
+review-required state. Verity's `--confirm-hook-trust` flag records an operator
+assertion after that review and is not independent proof that Codex persisted
+trust.
 
 The demo-only poisoned-documentation MCP entry is installed separately from the
 normal Verity plugin. Setup must show a preview, require confirmation, record a

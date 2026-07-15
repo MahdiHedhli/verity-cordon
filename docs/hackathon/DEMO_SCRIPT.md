@@ -1,6 +1,7 @@
 # Three-Minute Desktop Demo Script
 
-Target edited runtime: **2:55**. Codex Desktop is the primary human-facing
+Target edited runtime: **2:55**. “Codex Desktop” below means the Codex
+experience in the supported ChatGPT desktop app and is the primary human-facing
 surface. Installation, restarts, loading, and typed prompts are prepared or
 recorded separately and edited out. The public YouTube video must remain under
 three minutes and include audio.
@@ -101,8 +102,8 @@ panel and final title card.
 
 **Narration**:
 
-> GPT-5.6 supplies structured extraction and semantic risk advice. In this live
-> subscription path, Codex runs as the explicitly lower-isolation
+> GPT-5.6 supplies structured extraction and semantic risk advice in this live
+> subscription pipeline. Codex runs as the explicitly lower-isolation
 > `agentic_sandboxed` provider; observed tool activity invalidates its result,
 > and we do not call it tool-free. Deterministic policy keeps final authority.
 > Codex helped specify, build, test, and attack the product. Verity Cordon.
@@ -115,9 +116,15 @@ panel and final title card.
   unrelated task, quit Desktop around confirmed setup/teardown, and use a
   dedicated workspace only as an organizational precaution; do not show setup,
   private paths, or auth state.
+- Before recording, use CLI `/hooks` to review and trust the exact Verity hook
+  hash. After restarting Desktop, verify `/mcp` and a benign hook-delivery
+  canary before starting the timed sequence.
 - Show the `live_codex_subscription` badge only when that exact run succeeded.
   Otherwise use the recorded fixture path and label it explicitly; never imply
   a live provider or silently substitute one.
+- Claim live extraction and assessment only when the recorded run shows both;
+  the pre-recording closure evidence does not substitute for what the video
+  visibly presents.
 - Do not claim protection until the Control Room shows a signed terminal
   decision with healthy ledger and materialized-view status.
 - Show only synthetic marker values. Never display keys, bearer capabilities,

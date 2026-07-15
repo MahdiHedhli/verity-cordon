@@ -16,6 +16,11 @@ into a signed, hash-chained local event ledger so an operator can inspect why a
 memory was admitted, revoke one exact memory later, and rebuild the view without
 erasing unrelated knowledge.
 
+![Verity Cordon Memory Control Room](docs/assets/control-room-overview.jpg)
+
+_Offline deterministic fixture shown. No live-provider claim is implied by this
+screenshot._
+
 > Verity Cordon is a hackathon-stage, single-user local security tool. It does
 > not prove factual truth, make storage tamper-proof, prevent every prompt
 > injection, intercept undocumented Codex internals, or protect a compromised
@@ -207,7 +212,11 @@ rejects observed tool events or malformed output, and never silently falls
 back to fixtures or the direct API. The UI labels this path
 `agentic_sandboxed`; it does not inherit the direct Responses API provider's
 no-tools claim. One sanitized `gpt-5.6-luna` assessment completed through this
-path on the recorded development host. Model access and limits remain
+path on the recorded development host. A later no-key closure run exercised
+both live candidate extraction and live semantic assessment for four synthetic
+candidates, produced allow and quarantine outcomes, and verified a 50-event
+ledger with a consistent view. `gpt-5.6-luna` is the requested local model
+identifier, not a remote model attestation. Model access and limits remain
 subscription- and workspace-dependent.
 
 ## Codex Integration
@@ -222,12 +231,24 @@ exits with status 2):
 uv run verity install-codex
 ```
 
-After reviewing the preview and bundled hook definition:
+After reviewing the preview and bundled hook definition, close every ChatGPT
+Desktop task, exit Codex CLI TUI and IDE Codex sessions, and fully quit the
+ChatGPT desktop app before applying the user-wide change:
 
 ```bash
 uv run verity install-codex --yes
-uv run verity doctor --confirm-hook-trust
 ```
+
+Start Codex CLI, enter `/hooks`, inspect the exact Verity definitions, and trust
+their current hashes. Then exit the CLI and set the post-review assertion:
+
+```bash
+export VERITY_CONFIRM_HOOK_TRUST=1
+```
+
+Start `uv run verity serve` before running full
+`uv run verity doctor --confirm-hook-trust`, because doctor also checks daemon
+reachability.
 
 The installer creates a backup, installs the local plugin through a private
 marketplace directory, enables hooks, and disables native local-memory generation
@@ -250,7 +271,9 @@ undo current-session side effects. `doctor` also refuses to execute an
 interpreter path chosen by a modified installation receipt: the receipt must
 match the currently verified Python executable and version.
 
-Preview removal, then apply it explicitly:
+Preview removal. Then close every ChatGPT Desktop task, exit all Codex CLI TUI
+and IDE Codex sessions, fully quit the ChatGPT desktop app, and apply removal
+explicitly while every client remains closed:
 
 ```bash
 uv run verity uninstall-codex
@@ -263,9 +286,11 @@ See the versioned
 
 ### Codex Desktop subscription demonstration
 
-Codex Desktop is the primary interactive demo surface. After the normal Verity
-integration is installed and `verity doctor --confirm-hook-trust` is ready,
-preview the separate synthetic MCP fixture without changing state:
+In this repository, **Codex Desktop** is shorthand for the Codex experience in
+the supported ChatGPT desktop app. It is the primary interactive demo surface;
+the name does not imply an undocumented interception surface. After the normal
+Verity integration is installed and its exact hook hashes are trusted through
+CLI `/hooks`, preview the separate synthetic MCP fixture without changing state:
 
 ```bash
 export VERITY_DATA_DIR="$PWD/.verity-desktop-demo"
@@ -284,7 +309,10 @@ reviewed. On the exercised Codex `0.144.4` surface, this MCP table lives in
 fixture's private `cwd` are operational precautions, not project-local scoping.
 Close every other Desktop task and quit Desktop before confirmed setup; restart
 only into the dedicated rehearsal and avoid unrelated work while the fixture is
-installed. Start `uv run verity serve` in one terminal before running
+installed. Use Codex CLI `/hooks` to inspect and trust the exact Verity command
+hook hash before asserting hook trust, then verify `/mcp` and one benign
+hook-delivery canary after restarting Desktop. Start `uv run verity serve` in
+one terminal, then run `verity doctor --confirm-hook-trust` and
 `verity demo desktop-status` in another; status intentionally fails unless the
 fixture, daemon, ledger, policy, materialized view, and Control Room are all
 ready. Its inert sink accepts only two fixed synthetic markers and performs no

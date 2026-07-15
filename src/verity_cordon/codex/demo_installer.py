@@ -898,11 +898,20 @@ def _operator_actions(operation: str, *, normal_ready: bool) -> tuple[str, ...]:
                 "Review and apply that integration separately, then rerun Desktop setup preview.",
             )
         return (
+            "Before confirmed setup, close every ChatGPT Desktop task, exit all "
+            "Codex CLI TUI and IDE Codex sessions, and fully quit the ChatGPT desktop app.",
             "Restart Codex Desktop.",
-            "Open a new task and run the Desktop demo only with synthetic data.",
-            "Run verity doctor and wait for a signed terminal evidence decision.",
+            "Use /mcp to confirm the synthetic demo server, then run a benign "
+            "hook-delivery canary.",
+            "Open a new task and run the Desktop demo only with synthetic data after "
+            "the canary reaches a signed terminal decision.",
         )
-    return ("Restart Codex Desktop after removing the synthetic fixture.",)
+    return (
+        "Before confirmed teardown, close every ChatGPT Desktop task, exit all "
+        "Codex CLI TUI and IDE Codex sessions, and fully quit the ChatGPT desktop app.",
+        "Restart Codex Desktop after removing the synthetic fixture.",
+        "Use /mcp to confirm the synthetic demo server is absent.",
+    )
 
 
 def _result(

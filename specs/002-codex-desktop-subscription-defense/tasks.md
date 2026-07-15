@@ -235,7 +235,7 @@ gate, and leave only honest operator-owned submission work.
 
 - Prerequisite discovery selected only `002-codex-desktop-subscription-defense`; all 93 feature checklist items are complete and no `VC-FUT-*` capability appears in the active task graph.
 - Cross-artifact analysis covered 4 user stories, 26 functional requirements, 10 security/failure requirements, 10 measurable outcomes, the plan, data model, contracts, checklists, and task graph. The review found no unresolved critical or high-severity inconsistency after the Desktop readiness, path, receipt, fixture-probe, config-secret, typed-event, and claims remediations.
-- Convergence found no remaining unbuilt implementation requirement, so no new implementation task was appended. T056 and T058 remain release-evidence/operator handoff work rather than product gaps.
+- Convergence found no remaining unbuilt implementation requirement. T056 remains operator-observed acceptance evidence rather than a product gap; T058 is complete.
 
 **T055 clean-checkout and T056 browser evidence (2026-07-15)**:
 
@@ -246,6 +246,11 @@ gate, and leave only honest operator-owned submission work.
 - Browser smoke verified Overview, a typed `MemoryRevoked` detail event, quarantine Block, selective revocation with unrelated memory preserved, enforce-to-shadow-to-enforce mode changes ending on policy `1.0.2`, and a 69-event ledger with anchored completeness and a consistent view. At 1280x720 it showed no horizontal overflow, 0 console errors or warnings, the expected main/navigation/heading/skip-link structure, 0 unlabeled controls, and 0 duplicate IDs.
 - T056 remains open because the timed, operator-visible Codex Desktop app rehearsal has not been performed. The completed Control Room browser smoke is recorded separately and is not treated as Desktop app evidence.
 - T058 records public branch checkpoint `79a12d0c8058d579664c90740a8bd44ae3359c68`, the complete verification and limitation set, deferred-scope confirmation, unsubmitted status, the exact operator sequence, and the required reminder to run `/feedback` without inventing a Session ID.
+### Phase 10: Release closure tasks
+
+- [x] T059 Refresh current Desktop terminology, exact-hash hook-trust guidance, the canonical shadow-trigger-enforce-revoke run order, judge testing instructions, and the blank manual evidence record in `README.md`, `docs/hackathon/DEMO_SCRIPT.md`, `docs/hackathon/SUBMISSION_DRAFT.md`, `docs/hackathon/DESKTOP_REHEARSAL_RECORD.md`, and `specs/002-codex-desktop-subscription-defense/{spec.md,research.md,quickstart.md,contracts/desktop-demo-contract.md}`.
+- [x] T060 Exercise the full no-key subscription pipeline, fix the strict candidate-extraction schema rejected by the live runtime, add regression assertions, and record the successful extraction-assessment-ledger evidence without claiming remote-model attestation in `src/verity_cordon/semantic/structured.py`, `tests/integration/test_codex_subscription_semantic.py`, `tests/integration/test_openai_semantic.py`, `README.md`, `docs/hackathon/HACKATHON_WORK.md`, and `docs/hackathon/SUBMISSION_DRAFT.md`.
+- [x] T061 Capture and publish a content-safe real Control Room screenshot from the offline deterministic fixture, label it accurately, and verify zero browser console warnings or errors in `docs/assets/control-room-overview.jpg` and `README.md`.
 
 ---
 

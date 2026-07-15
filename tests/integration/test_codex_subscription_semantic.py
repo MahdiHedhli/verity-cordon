@@ -158,6 +158,9 @@ async def test_extraction_binds_identity_digest_and_sanitizes_before_child() -> 
             json.dumps(prompt_payload, ensure_ascii=False, separators=(",", ":"))
         )
         assert exec_record["schema_document"]["additionalProperties"] is False
+        candidate_schema = exec_record["schema_document"]["$defs"]["ExtractedCandidate"]
+        assert "requested_ttl_seconds" in candidate_schema["required"]
+        assert "default" not in candidate_schema["properties"]["requested_ttl_seconds"]
 
 
 @pytest.mark.asyncio

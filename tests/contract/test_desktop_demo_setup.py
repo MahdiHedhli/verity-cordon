@@ -238,6 +238,11 @@ def test_preview_is_read_only_and_apply_installs_one_strict_private_entry(
     assert preview.managed_entry["tool_overrides"] == {
         "demo_artifact_sink": {"approval_mode": "prompt"}
     }
+    assert any("/mcp" in action and "canary" in action for action in preview.operator_actions)
+    assert any(
+        "fully quit" in action and "confirmed setup" in action
+        for action in preview.operator_actions
+    )
     assert _tree_snapshot(context.codex_home) == before_home
     assert _tree_snapshot(context.data_dir) == before_data
     assert not context.receipt_path.exists()
@@ -436,6 +441,11 @@ def test_unrelated_post_install_change_is_not_drift_and_survives_teardown(
     assert status.ready is True
     assert status.managed_entry_intact is True
     preview = _teardown(context)
+    assert any("/mcp" in action and "absent" in action for action in preview.operator_actions)
+    assert any(
+        "fully quit" in action and "confirmed teardown" in action
+        for action in preview.operator_actions
+    )
     removed = _teardown(
         context,
         confirmed=True,
@@ -977,9 +987,19 @@ def test_desktop_helper_orders_system_start_before_readiness_status() -> None:
     assert script.index('echo "  uv run verity serve"') < script.index(
         'echo "  uv run verity demo desktop-status'
     )
+    assert script.index('echo "  uv run verity serve"') < script.index(
+        'echo "  uv run verity doctor --confirm-hook-trust"'
+    )
+    assert script.index('echo "  uv run verity doctor --confirm-hook-trust"') < script.index(
+        'echo "  uv run verity demo desktop-status'
+    )
     assert quickstart.index("uv run verity serve") < quickstart.index(
         "uv run verity demo desktop-status"
     )
+    assert "use /hooks to review the exact Verity hook definitions" in script
+    assert "trust their current hashes" in script
+    assert "run full doctor after starting the daemon" in script
+    assert "quickstart.md" in script
 
 
 def test_teardown_never_recursively_deletes_an_unknown_staged_file(

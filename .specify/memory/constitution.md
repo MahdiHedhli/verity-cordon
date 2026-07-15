@@ -13,9 +13,9 @@ Sync Impact Report
 - Runtime guidance requiring feature-level propagation:
   - ✅ specs/002-codex-desktop-subscription-defense/ (specified, planned, and
     analyzed before implementation)
-  - ⚠ README.md and docs/security/ (update during feature implementation)
-- Follow-up TODOs: complete feature 002 implementation, verification, and final
-  consistency analysis
+  - ✅ README.md and docs/security/ (implemented and verified)
+- Follow-up TODOs: complete the operator-observed Desktop rehearsal and external
+  submission actions; no repository-controlled implementation TODO remains
 -->
 # Verity Cordon Constitution
 
@@ -170,10 +170,11 @@ requirements, measurable outcomes, plan, data model, contracts, checklists,
 task graph, implementation, tests, and public claims against Constitution
 v1.1.0. All 93 feature checklist items are complete; no deferred `VC-FUT-*`
 capability entered the active task graph; and no unresolved critical or
-high-severity inconsistency remained after convergence. The still-open clean
-checkout, browser/manual Desktop rehearsal, and final handoff tasks are release
-evidence gates, not exceptions to a constitutional MUST. This report changes no
-normative principle and therefore does not amend the constitution version.
+high-severity inconsistency remained after convergence. Clean-checkout,
+browser, and repository-handoff evidence are complete. The still-open timed,
+operator-observed Desktop rehearsal is an acceptance-evidence gate, not an
+exception to a constitutional MUST. This report changes no normative principle
+and therefore does not amend the constitution version.
 
 ## Governance
 

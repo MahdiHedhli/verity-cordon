@@ -53,8 +53,9 @@ console = Console()
 error_console = Console(stderr=True)
 DESKTOP_DEMO_CONFIGURATION_SCOPE = "user_wide_codex_home"
 DESKTOP_DEMO_OPERATOR_WARNING = (
-    "Close all other Codex Desktop tasks before setup and tear down the demo "
-    "immediately after the rehearsal."
+    "Before confirmed setup or teardown, close every ChatGPT Desktop task, exit "
+    "all Codex CLI TUI and IDE Codex sessions, and fully quit the ChatGPT desktop "
+    "app. Tear down the user-wide demo fixture immediately after the rehearsal."
 )
 
 

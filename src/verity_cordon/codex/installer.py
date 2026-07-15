@@ -658,9 +658,15 @@ def install_codex(
             raise CodexIntegrationError("codex_config_drift_requires_review")
     commands = _commands(marketplace_root, operation="install")
     actions = (
-        "Review the staged hooks and approve Codex's non-managed hook trust prompt.",
-        "Restart Codex and verify the integration in a new task.",
-        "Run the Codex integration doctor after the trust review.",
+        "Before confirmed installation, close every ChatGPT Desktop task, exit "
+        "all Codex CLI TUI and IDE Codex sessions, and fully quit the ChatGPT "
+        "desktop app.",
+        "Start Codex CLI, use /hooks to review the staged Verity hook definitions, "
+        "and trust their exact current hashes.",
+        "Start the Verity daemon, then run the Codex integration doctor with "
+        "--confirm-hook-trust after the /hooks review.",
+        "Restart Codex and verify the integration in a new task only after the "
+        "daemon and doctor are ready.",
     )
     if not confirmed:
         return IntegrationResult(
@@ -791,6 +797,8 @@ def uninstall_codex(
     )
     commands = _commands(marketplace_root, operation="uninstall")
     actions = (
+        "Before confirmed removal, close every ChatGPT Desktop task, exit all "
+        "Codex CLI TUI and IDE Codex sessions, and fully quit the ChatGPT desktop app.",
         "Restart Codex after removal.",
         "Review native-memory settings before re-enabling any Codex memory behavior.",
     )

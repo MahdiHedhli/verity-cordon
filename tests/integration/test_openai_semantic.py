@@ -63,6 +63,7 @@ def extraction_response():
                     confidence=0.94,
                     durability_rationale="Useful build convention.",
                     sensitivity=Sensitivity.PUBLIC,
+                    requested_ttl_seconds=None,
                     persistence_requested=False,
                     authority_signal=Signal.NONE,
                     secrecy_signal=Signal.NONE,

@@ -272,9 +272,10 @@ source-label and stream-reason sanitization, local-path hardening, and Codex
 receipt/current-Python binding. These changes are included in the final full
 gate above.
 
-### Publication security audit
+### Baseline publication security audit (historical)
 
-An independent read-only audit of all 234 intended tracked files and reachable
+At the feature-001 publication checkpoint, an independent read-only audit of
+all 234 then-intended tracked files and reachable
 history found no real credentials, private keys, mutation capabilities, runtime
 databases, ledger heads, salts, receipts, personal absolute paths, unsafe file
 types or modes, large blobs, or unsupported product claims. Fresh wheel and
@@ -287,6 +288,11 @@ marked test fixtures. They are not secrets, but GitHub push protection may
 still ask for a false-positive review. Secret scanning will not be disabled to
 work around a hypothetical block. Ignored demo runtime state was removed before
 publication.
+
+Sprint 002 added tracked implementation, test, specification, and release files;
+the feature-001 count is retained as dated evidence rather than presented as a
+current-branch total. The current branch is covered by the later clean-checkout
+verification and Sprint 002 closure audit below.
 
 ### Public repository
 
@@ -342,6 +348,45 @@ app itself. The timed, operator-visible Codex Desktop
 attack-enforcement-clean-task-revocation-ledger rehearsal remains open and is
 not represented as completed.
 
+### Sprint 002 closure preflight
+
+On 2026-07-15, a content-safe preflight observed macOS 26.4.1 on arm64,
+ChatGPT desktop app `26.707.72221` build `5307`, and Codex CLI `0.144.4` with
+ChatGPT subscription authentication ready. The app was running, so no
+user-wide configuration mutation, Desktop loading claim, or manual rehearsal
+was attempted.
+
+The normal Verity installer preview remained read-only, exited `2` as designed,
+reported the five expected Boolean configuration deltas with no issue, and
+confirmed the normal plugin was not yet installed. Native Codex memory remained
+enabled, demo data and receipts were absent, the reserved demo MCP name was
+absent, and port 8765 was available. Current official hook guidance also exposed
+a runbook gap: non-managed hooks require exact-definition trust through CLI
+`/hooks`; Verity's `--confirm-hook-trust` is only the operator assertion made
+after that Codex-managed review. The installer output, quickstart, demo script,
+submission instructions, and blank `DESKTOP_REHEARSAL_RECORD.md` were aligned to
+that boundary and to one canonical shadow-trigger-enforce-revoke sequence.
+
+The first full no-key subscription pipeline attempt then failed closed at live
+candidate extraction. Content-safe diagnostics isolated the cause to the strict
+output schema: `requested_ttl_seconds` was nullable but absent from the nested
+candidate object's required list. Verity made the nullable field required,
+added strict-schema regression assertions, and reran the focused OpenAI and
+subscription suite successfully (23 tests). The corrected live run used
+supported ChatGPT sign-in and requested `gpt-5.6-luna` with no API key or
+provider fallback. It extracted four synthetic candidates, completed live
+semantic assessment, produced allow and quarantine outcomes, and ended in
+45,806 ms with 50 verified signed events and a consistent materialized view.
+The requested model identifier is recorded; `returned_model` remains null by
+contract because the runtime event stream does not attest a remote model.
+
+A real 1280x720 Control Room overview was captured from the offline deterministic
+fixture and added as `docs/assets/control-room-overview.jpg`. It shows only
+content-safe aggregate state and truncated synthetic IDs, is explicitly
+captioned as fixture-backed, and produced zero browser console warnings or
+errors. It is a product screenshot, not fabricated live-provider or Desktop-app
+evidence.
+
 ## New Work versus Prior Art
 
 Verity Cordon's implemented contribution is an async-first local daemon, a
@@ -387,15 +432,19 @@ submission-checklist item remain intentionally unchecked.
 ## Submission Status
 
 Not submitted. The public repository is independently verified. No successful
-credentialed live API call, video, screenshot, `/feedback` Session ID, or
-Devpost submission is represented as complete until independently created and
-verified.
+credentialed direct-API call, operator-observed Desktop rehearsal, public
+video, `/feedback` Session ID, or Devpost submission is represented as complete
+until independently created and verified. The tracked offline-fixture product
+screenshot is complete and is not presented as Desktop-app or live-provider
+evidence.
 
 ## Sprint 002 Handoff Snapshot
 
 - **Public repository**: `https://github.com/MahdiHedhli/verity-cordon`
 - **Branch**: `codex/002-desktop-subscription-defense`
-- **Final verified implementation/evidence checkpoint**:
+- **Pre-closure public branch head**:
+  `d54532e12a478226939a30ce3b4e8da9beb181eb`
+- **Prior clean-checkout implementation/evidence checkpoint**:
   `79a12d0c8058d579664c90740a8bd44ae3359c68`
 - **Automated verification**: 506 backend tests, 13 isolated example/plugin
   tests, 10 frontend tests, 80% backend coverage, schema/OpenAPI validation,
@@ -407,8 +456,9 @@ verified.
   materialized view, 0 console errors or warnings, and the recorded 1280x720
   layout/accessibility smoke
 - **Known limitations**: the Codex Desktop app rehearsal is not yet observed;
-  the subscription smoke exercised semantic assessment with `gpt-5.6-luna`
-  rather than the direct API target `gpt-5.6`; the fixed sink sequence is an
+  the subscription pipeline exercised extraction and assessment with the
+  requested `gpt-5.6-luna` identifier but does not attest the remote model, and
+  the direct API target `gpt-5.6` remains unexercised; the fixed sink sequence is an
   inert simulation and does not prove a causal memory-to-tool-call path; and a
   compromised host, Codex binary, or signing key remains out of scope
 - **Deferred roadmap**: all `VC-FUT-*` backends, additional agents, remote
@@ -416,9 +466,13 @@ verified.
   exporter ecosystems remain outside the active feature task graph
 - **Submission status**: not submitted; video, final form entry, logged-out link
   checks, and the real `/feedback` Session ID remain operator-owned
-- **Exact next operator sequence**: close unrelated Codex tasks; follow the
-  preview/digest-confirmed setup in `scripts/demo-desktop.sh`; quit/restart
-  Codex Desktop around setup and teardown; run and time the documented attack,
+- **Exact next operator sequence**: close every ChatGPT Desktop task, exit all
+  Codex CLI TUI and IDE sessions, and fully quit the ChatGPT desktop app;
+  preview and apply the normal Verity integration; deliberately start CLI,
+  use `/hooks` to trust the exact reviewed Verity hook definitions, exit CLI,
+  and set the post-review assertion; follow the preview/digest-confirmed setup
+  in `scripts/demo-desktop.sh`; start the daemon and pass doctor/status before
+  restarting Desktop; verify `/mcp` and a benign hook canary; run and time the documented attack,
   enforcement, clean-task, revocation, and ledger sequence; immediately tear
   down the user-wide fixture; review and merge the feature branch; record and
   upload the under-three-minute public video; run `/feedback` in this primary

@@ -1,8 +1,9 @@
 # Codex Desktop Demo Setup Contract
 
-**Contract version**: `1.0.0`
+**Contract version**: `1.0.1`
 **Managed MCP entry**: `verity_cordon_poisoned_docs`
-**Primary surface**: Codex Desktop
+**Primary surface**: Codex in the supported ChatGPT desktop app (project
+shorthand: Codex Desktop)
 **Fallback surface**: deterministic Verity CLI demo
 
 This contract installs only the synthetic delayed-poisoning fixture used by the
@@ -31,9 +32,10 @@ directories, stage files, back up or rewrite Codex configuration, write a
 receipt, start the fixture, call the sink, or change Verity history.
 
 `--confirm-hook-trust` is an operator assertion that the separately installed
-normal Verity hook definition has been reviewed and trusted. It is not a
-discovery result, an implicit approval, or a substitute for the normal
-integration doctor.
+normal Verity hook definitions were reviewed and their exact current hashes
+were trusted through Codex CLI `/hooks`. It is not a discovery result, an
+implicit approval, proof of persisted Codex trust, or a substitute for the
+normal integration doctor.
 
 The setup preview shows:
 
@@ -49,10 +51,13 @@ The setup preview shows:
 - the statement that the fixture is synthetic, local stdio only, and separate
   from the normal product installation.
 
-Setup with `--yes` requires the normal integration doctor to be ready. If it is
-not ready, setup stops after the demo preview and instructs the operator to
-confirm the normal installer separately. It never silently installs hooks,
-changes native-memory controls, or trusts a plugin on the operator's behalf.
+Setup with `--yes` requires the normal integration receipt, artifacts, effective
+memory controls, and operator's post-`/hooks` assertion to be mechanically
+ready. If they are not ready, setup stops after the demo preview and instructs
+the operator to confirm the normal installer separately. Full `verity doctor`
+also checks daemon reachability and therefore runs after the daemon starts. The
+demo setup never silently installs hooks, changes native-memory controls, or
+trusts a plugin on the operator's behalf.
 
 ## User-Wide Configuration Scope
 
@@ -62,14 +67,15 @@ that load that configuration. Choosing a dedicated demo workspace and setting
 the MCP `cwd` reduce accidental use operationally; neither creates a
 project-local registration or a security boundary.
 
-Before confirmed setup or teardown, the operator MUST close every other Codex
-Desktop task and fully quit Codex Desktop. Desktop MUST remain closed while the
-configuration mutation runs. After setup, reopen Desktop only for the dedicated
-synthetic rehearsal and do not use unrelated workspaces or tasks until the demo
-entry has been removed. After the rehearsal, quit Desktop again, perform a fresh
-teardown preview, confirm that exact preview digest, apply teardown immediately,
-and restart Desktop. This minimizes the period in which the synthetic server is
-available through user-wide configuration.
+Before confirmed setup or teardown, the operator MUST close every ChatGPT
+Desktop task, exit Codex CLI TUI and IDE Codex sessions, and fully quit the
+ChatGPT desktop app. All Codex clients MUST remain closed while the configuration
+mutation runs. After setup, reopen Desktop only for the dedicated synthetic
+rehearsal and do not use unrelated workspaces or tasks until the demo entry has
+been removed. After the rehearsal, close every Codex client again, perform a
+fresh teardown preview, confirm that exact preview digest, apply teardown
+immediately, and restart Desktop. This minimizes the period in which the
+synthetic server is available through user-wide configuration.
 
 ## Managed Codex Configuration
 
@@ -153,8 +159,10 @@ After explicit confirmation, setup performs this ordered transaction:
 1. Require the explicit hook-trust assertion, re-read bounded Codex config with
    no-follow semantics, and verify it still matches the separately previewed
    digest.
-2. Verify normal integration receipt, staged plugin artifacts, effective memory
-   controls, and hook trust/doctor state without reading auth content.
+2. Verify the normal integration receipt, staged plugin artifacts, effective
+   memory controls, mechanical doctor state, and the operator's post-`/hooks`
+   trust assertion without reading auth content. The assertion is not
+   independent proof of Codex's persisted trust record.
 3. Resolve and verify the current Codex and Python executables. The Python
    runtime must support isolated `-I` execution and satisfy the project runtime
    version.
@@ -171,8 +179,9 @@ After explicit confirmation, setup performs this ordered transaction:
 8. Re-read and canonicalize the managed table, verify its expected digest and
    all unrelated parsed values, then atomically update the receipt to
    `installed` with the after-config digest.
-9. Return content-safe operator actions: restart Codex Desktop, open a new task,
-   confirm the plugin trust prompt if Codex presents one, and run doctor.
+9. Return content-safe operator actions: restart Codex Desktop, use `/mcp` to
+   confirm the expected synthetic server, run a benign hook-delivery canary,
+   and continue only after its signed terminal decision is visible.
 
 Any precondition or write failure stops the transaction. It does not fall back
 to editing generated memories or an undocumented Desktop file.
