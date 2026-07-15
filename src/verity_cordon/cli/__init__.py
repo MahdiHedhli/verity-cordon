@@ -1,0 +1,2 @@
+"""Verity command-line interface."""
+

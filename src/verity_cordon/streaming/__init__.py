@@ -1,0 +1,2 @@
+"""Transactional streamed memory writes."""
+

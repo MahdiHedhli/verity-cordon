@@ -1,0 +1,64 @@
+schema_version: 1.0.0
+engine_profile: VC-POLICY-1
+policy_id: verity.default-shadow
+version: 1.0.0
+mode: shadow
+default_action: quarantine
+shadow_action: allow
+protected_namespaces:
+  - policies
+  - policies.*
+rules:
+  - rule_id: persistent-tool-instruction
+    priority: 100
+    description: Quarantine persistent operational instructions originating in tool output.
+    match:
+      source_classes: [tool_output]
+      memory_kinds: [operational_instruction]
+    action: quarantine
+    manual_review_required: true
+    ttl_seconds: null
+  - rule_id: suspicious-persistence
+    priority: 120
+    description: Quarantine candidates with a positive persistent-instruction finding.
+    match:
+      detector_categories_any: [persistent_instruction]
+    action: quarantine
+    manual_review_required: true
+    ttl_seconds: null
+  - rule_id: clean-low-risk-memory
+    priority: 500
+    description: Allow low-risk facts, preferences, conventions, observations, and summaries.
+    match:
+      memory_kinds: [fact, user_preference, project_convention, tool_observation, task_summary]
+      sensitivities: [public, internal]
+    action: allow
+    manual_review_required: false
+    ttl_seconds: 2592000
+failure_behavior:
+  detector_failure_high_risk: quarantine
+  detector_failure_lower_risk: quarantine
+  semantic_timeout_high_risk: quarantine
+  semantic_timeout_lower_risk: quarantine
+  semantic_invalid_high_risk: block
+  semantic_invalid_lower_risk: quarantine
+  ledger_unavailable: refuse_commits_and_disable_injection
+  ledger_corrupt: refuse_commits_and_disable_injection
+  invalid_policy: refuse_new_commits
+  daemon_unavailable: continue_without_verity_memory
+  codex_hook_failure: continue_without_verity_memory
+manual_review:
+  required_actions: [approve, block, revoke]
+  reason_required: true
+  actor_id_required: true
+  confirmation_required: true
+limits:
+  max_candidate_bytes: 8192
+  max_evidence_bytes: 1048576
+  max_stream_bytes: 1048576
+  max_stream_chunks: 256
+  detector_timeout_ms: 500
+  semantic_timeout_ms: 15000
+  injection_token_budget: 2000
+  default_ttl_seconds: null
+created_at: 2026-07-15T00:00:00Z

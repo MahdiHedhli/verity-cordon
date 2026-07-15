@@ -1,0 +1,2 @@
+"""Documented Codex hook integration."""
+
