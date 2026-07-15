@@ -182,12 +182,25 @@ cannot be confused with an applied installation:
 uv run verity install-codex
 ```
 
-After reviewing the preview and hook definition:
+After reviewing the preview and hook definition, close every ChatGPT Desktop
+task, exit Codex CLI TUI and IDE Codex sessions, and fully quit the ChatGPT
+desktop app before applying the user-wide change:
 
 ```bash
 uv run verity install-codex --yes
-uv run verity doctor --confirm-hook-trust
 ```
+
+Start Codex CLI and enter `/hooks`. Review the exact Verity command hook
+definitions and trust their current hashes, then exit the CLI. Only after that
+Codex-managed review should you record the operator assertion:
+
+```bash
+export VERITY_CONFIRM_HOOK_TRUST=1
+```
+
+Start `uv run verity serve`, then run
+`uv run verity doctor --confirm-hook-trust`; full doctor also checks daemon
+reachability.
 
 The installer creates a backup, registers a private local plugin marketplace,
 installs Verity's reviewed command hooks, enables hooks, and disables native
@@ -206,7 +219,9 @@ The installer and hook contract were exercised with Codex CLI 0.144.4 against
 an isolated temporary configuration. Hook coverage remains limited to
 documented surfaces.
 
-Preview and then apply removal:
+Preview removal. Then close every ChatGPT Desktop task, exit all Codex CLI TUI
+and IDE Codex sessions, fully quit the ChatGPT desktop app, and apply removal
+while every client remains closed:
 
 ```bash
 uv run verity uninstall-codex

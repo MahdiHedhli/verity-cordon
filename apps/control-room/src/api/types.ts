@@ -30,10 +30,17 @@ export type SourceClass =
   | "external_event";
 export type SemanticProviderState =
   | "live_openai"
+  | "live_codex_subscription"
   | "recorded_fixture"
   | "deterministic_only"
   | "failed"
   | "not_required";
+export type ProviderIsolation =
+  | "tool_free_api"
+  | "agentic_sandboxed"
+  | "recorded_fixture"
+  | "local_deterministic"
+  | "failed";
 
 export interface PolicySummary {
   policy_id: string;
@@ -60,6 +67,9 @@ export interface StatusResponse {
   ledger: "verified" | "unverified" | "invalid" | "unavailable";
   memory_view: "consistent" | "stale" | "rebuilding" | "unavailable";
   semantic_provider: SemanticProviderState;
+  semantic_provider_isolation: ProviderIsolation;
+  semantic_provider_ready: boolean;
+  semantic_provider_failure_class?: string | null;
   counts: DecisionCounts;
 }
 
@@ -127,7 +137,11 @@ export interface MemoryCandidate {
   authority_signal: "none" | "implied" | "explicit" | "unknown";
   secrecy_signal: "none" | "implied" | "explicit" | "unknown";
   contains_redactions: boolean;
-  extractor_provider: "live_openai" | "recorded_fixture" | "deterministic";
+  extractor_provider:
+    | "live_openai"
+    | "live_codex_subscription"
+    | "recorded_fixture"
+    | "deterministic";
   extractor_version: string;
   content_digest: string;
   created_at: string;
@@ -157,7 +171,7 @@ export interface SemanticAssessment {
   schema_version: "1.0.0";
   assessment_id: string;
   candidate_id: string;
-  provider_state: "live_openai" | "recorded_fixture" | "failed";
+  provider_state: "live_openai" | "live_codex_subscription" | "recorded_fixture" | "failed";
   requested_model: string | null;
   returned_model: string | null;
   prompt_version: string;
@@ -189,6 +203,13 @@ export interface PolicyDecision {
   reason: string;
 }
 
+export interface CandidateEventReference {
+  event_id: string;
+  sequence_number: number;
+  event_type: string;
+  occurred_at: string;
+}
+
 export interface CandidateDetail {
   candidate: MemoryCandidate;
   status: MemoryStatus;
@@ -196,6 +217,7 @@ export interface CandidateDetail {
   semantic_assessment: SemanticAssessment | null;
   policy_decision: PolicyDecision;
   event_ids: string[];
+  event_references: CandidateEventReference[];
   ledger_verified: boolean;
 }
 

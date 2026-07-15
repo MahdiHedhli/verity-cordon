@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+import verity_cordon.codex.hooks as hooks_module
 import verity_cordon.codex.installer as installer_module
 from verity_cordon.codex.hooks import (
     END_DELIMITER,
@@ -40,6 +41,9 @@ from verity_cordon.codex.installer import (
 )
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
+INSTALLED_HOOK_EVENTS = tuple(
+    json.loads((REPOSITORY_ROOT / "hooks/hooks.json").read_text(encoding="utf-8"))["hooks"]
+)
 SESSION_ID = "session-demo-001"
 TURN_ID = "turn-demo-001"
 TOOL_USE_ID = "tool-use-demo-001"
@@ -136,6 +140,70 @@ class RecordingTransport:
         with self._lock:
             self.calls.append(kwargs)
         return self.response
+
+
+@pytest.mark.parametrize("event_name", INSTALLED_HOOK_EVENTS)
+def test_semantic_child_short_circuits_every_installed_hook_before_input_or_io(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    event_name: str,
+) -> None:
+    calls: list[str] = []
+
+    def recording_stdin_read() -> bytes:
+        calls.append("stdin")
+        return b'{"content":"must not be read"}'
+
+    class RecordingAdapter:
+        def __init__(self, **_: Any) -> None:
+            calls.append("adapter")
+
+        def process(self, expected_event: str, raw: bytes) -> dict[str, Any]:
+            del expected_event, raw
+            calls.append("daemon")
+            return {"continue": True, "systemMessage": "unexpected adapter call"}
+
+    monkeypatch.setenv("VERITY_SEMANTIC_CHILD", "1")
+    monkeypatch.setattr(hooks_module, "read_bounded_stdin", recording_stdin_read)
+    monkeypatch.setattr(hooks_module, "HookAdapter", RecordingAdapter)
+
+    assert hooks_module.main([event_name]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out == '{"continue":true}\n'
+    assert captured.err == ""
+    assert calls == []
+
+
+def test_only_exact_semantic_child_marker_short_circuits(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[str] = []
+
+    def recording_stdin_read() -> bytes:
+        calls.append("stdin")
+        return b"{}"
+
+    class RecordingAdapter:
+        def __init__(self, **_: Any) -> None:
+            calls.append("adapter")
+
+        def process(self, expected_event: str, raw: bytes) -> dict[str, Any]:
+            del expected_event, raw
+            calls.append("daemon")
+            return {"continue": True}
+
+    monkeypatch.setenv("VERITY_SEMANTIC_CHILD", "true")
+    monkeypatch.setattr(hooks_module, "read_bounded_stdin", recording_stdin_read)
+    monkeypatch.setattr(hooks_module, "HookAdapter", RecordingAdapter)
+
+    assert hooks_module.main(["Stop"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out == '{"continue":true}\n'
+    assert captured.err == ""
+    assert calls == ["stdin", "adapter", "daemon"]
 
 
 @pytest.mark.parametrize("source", ["startup", "resume", "clear", "compact"])
@@ -641,6 +709,29 @@ def test_installer_previews_backs_up_and_changes_only_required_toml_keys(
     assert not preview.applied
     assert config.read_text() == original
     assert runner.commands == []
+    assert any(
+        "/hooks" in action and "exact current hashes" in action
+        for action in preview.operator_actions
+    )
+    assert any(
+        "fully quit" in action and "CLI TUI" in action for action in preview.operator_actions
+    )
+    assert any(
+        "Start the Verity daemon" in action and "doctor" in action
+        for action in preview.operator_actions
+    )
+    hook_action = next(
+        index for index, action in enumerate(preview.operator_actions) if "/hooks" in action
+    )
+    doctor_action = next(
+        index
+        for index, action in enumerate(preview.operator_actions)
+        if "Start the Verity daemon" in action
+    )
+    new_task_action = next(
+        index for index, action in enumerate(preview.operator_actions) if "new task" in action
+    )
+    assert hook_action < doctor_action < new_task_action
     assert {change.dotted_key for change in preview.changes} == {
         "features.hooks",
         "features.memories",
@@ -702,6 +793,10 @@ def test_installer_previews_backs_up_and_changes_only_required_toml_keys(
         runner=runner,
     )
     assert removed.applied
+    assert any(
+        "fully quit" in action and "confirmed removal" in action
+        for action in removed.operator_actions
+    )
     restored = tomllib.loads(config.read_text())
     assert restored["features"] == {"hooks": False, "memories": True}
     assert restored["memories"]["generate_memories"] is True

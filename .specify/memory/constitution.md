@@ -1,14 +1,21 @@
 <!--
 Sync Impact Report
-- Version change: template -> 1.0.0
-- Added principles: I-XII (initial ratification)
-- Added sections: Security and Delivery Constraints; Development Workflow and Quality Gates
+- Version change: 1.0.0 -> 1.1.0
+- Modified principles: none
+- Modified sections: Security and Delivery Constraints (active sprint promotion and
+  subscription-provider isolation requirements)
+- Added sections: none
 - Removed sections: none; template placeholders were resolved
-- Templates updated:
+- Templates verified without changes:
   - ✅ .specify/templates/plan-template.md
   - ✅ .specify/templates/spec-template.md
   - ✅ .specify/templates/tasks-template.md
-- Follow-up TODOs: none
+- Runtime guidance requiring feature-level propagation:
+  - ✅ specs/002-codex-desktop-subscription-defense/ (specified, planned, and
+    analyzed before implementation)
+  - ✅ README.md and docs/security/ (implemented and verified)
+- Follow-up TODOs: complete the operator-observed Desktop rehearsal and external
+  submission actions; no repository-controlled implementation TODO remains
 -->
 # Verity Cordon Constitution
 
@@ -108,9 +115,20 @@ cannot be independently verified MUST NOT be used as security evidence.
 
 ## Security and Delivery Constraints
 
-- The active feature is exclusively `001-codex-memory-firewall`.
+- The implemented security baseline is `001-codex-memory-firewall`. The only
+  active implementation sprint is `002-codex-desktop-subscription-defense`.
+  Feature 002 MAY extend the baseline but MUST NOT weaken or silently replace
+  its tested controls, contracts, or claims.
+- Only one incomplete implementation feature MAY be active at a time. A later
+  feature MUST receive an explicit scope decision and MUST protect the current
+  demo-critical path before becoming active.
 - The product MUST use supported Codex configuration, hooks, skills, plugins, or
   other documented interfaces; undocumented Codex internals MUST NOT be patched.
+- Subscription-backed Codex execution MUST be identified separately from a
+  direct, tool-free OpenAI API semantic call. Until a documented control can
+  remove built-in agent tools, subscription-backed semantic review MUST remain
+  opt-in, isolated, fail closed on tool activity or malformed output, and MUST
+  NOT inherit the stronger `no tools` claim.
 - Secrets MUST be screened before model-bound content leaves the local trust
   boundary and MUST NOT appear in telemetry, fixtures, screenshots, or Git.
 - Historical ledger events are authoritative; materialized views MUST be
@@ -144,6 +162,20 @@ cannot be independently verified MUST NOT be used as security evidence.
 7. Repository publication and submission actions MUST preserve credential
    safety and report the exact remote, branch, commit, and verification state.
 
+## Feature 002 Consistency Sync *(Non-Normative)*
+
+The 2026-07-15 Spec Kit analysis selected only
+`002-codex-desktop-subscription-defense` and compared its four user stories,
+requirements, measurable outcomes, plan, data model, contracts, checklists,
+task graph, implementation, tests, and public claims against Constitution
+v1.1.0. All 93 feature checklist items are complete; no deferred `VC-FUT-*`
+capability entered the active task graph; and no unresolved critical or
+high-severity inconsistency remained after convergence. Clean-checkout,
+browser, and repository-handoff evidence are complete. The still-open timed,
+operator-observed Desktop rehearsal is an acceptance-evidence gate, not an
+exception to a constitutional MUST. This report changes no normative principle
+and therefore does not amend the constitution version.
+
 ## Governance
 
 This constitution supersedes informal project practices. Amendments require a
@@ -159,4 +191,4 @@ cannot be waived inside a feature plan. Complexity and scope exceptions MUST be
 recorded in the feature plan with the simpler alternative and why it cannot meet
 the active acceptance criteria.
 
-**Version**: 1.0.0 | **Ratified**: 2026-07-15 | **Last Amended**: 2026-07-15
+**Version**: 1.1.0 | **Ratified**: 2026-07-15 | **Last Amended**: 2026-07-15

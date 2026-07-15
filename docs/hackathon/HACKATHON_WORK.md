@@ -7,8 +7,10 @@
 - **Verity Cordon project start**: 2026-07-15
 - **Clean baseline commit**: `ef2c80d` (`chore: establish hackathon baseline`)
 - **Integrated default branch**: `main`
-- **Implementation branch**: `feat/001-codex-memory-firewall`
-- **Only active feature**: `specs/001-codex-memory-firewall/`
+- **Implemented baseline feature**: `specs/001-codex-memory-firewall/`
+- **Current implementation branch**: `codex/002-desktop-subscription-defense`
+- **Only active sprint feature**:
+  `specs/002-codex-desktop-subscription-defense/`
 
 The baseline is an empty root commit created after confirming that the workspace
 was empty. Every product artifact and implementation file is new hackathon work
@@ -21,8 +23,8 @@ renamed codebase.
   `7b91c1eda46e1107a53831cd3f14f608b4b7bad0`
 - Codex CLI observed and used for isolated integration verification: `0.144.4`
 - Spec Kit source-of-truth commit: `d7c2cd7`
-- GPT-5.6 runtime target implemented with configured alias `gpt-5.6`; no
-  successful credentialed live API run is recorded yet
+- Direct API runtime target remains configured as `gpt-5.6`; the exercised
+  ChatGPT-subscription provider uses `gpt-5.6-luna`
 
 ## Commit Record
 
@@ -41,9 +43,75 @@ renamed codebase.
 | `c632e62` | Converged specifications and hackathon release materials | Complete |
 | `c632e62..95459ac` | Fresh-clone, audit, repeatable verification, and publication evidence | Complete |
 | `95459ac` | Initial verified public `main` commit | Complete |
+| `485e49b..5bd85ff` | Sprint 002 specification, subscription boundary, Desktop defense, and secure demo vertical slice | Complete |
+| `104e0f0` | Pushed Sprint 002 clean-verification checkpoint with deterministic uncached Ruff checks | Complete |
+| `c70db72` | Pinned release verification to the bootstrapped environment and enforced the declared Node engine | Complete |
+| `79a12d0` | Recorded fresh-clone and Control Room browser acceptance evidence | Complete |
+| `a831e3e` | Closed subscription schema, hook-trust, runbook, screenshot, and release-audit gaps | Complete |
 
-The feature branch was fast-forwarded into `main` without rewriting history or
-force-pushing.
+The feature-001 branch was fast-forwarded into `main` without rewriting history
+or force-pushing. At this pre-PR checkpoint, Sprint 002 remained on its public
+feature branch pending review and merge.
+
+## Sprint 002 Baseline
+
+Feature 002 began on 2026-07-15 from public `main` commit
+`00f7e44e64187dbf531a84bb0c1933e474ff6c08` on branch
+`codex/002-desktop-subscription-defense`. The sprint promotes Codex Desktop to
+the primary demo surface and adds an explicit subscription-backed semantic
+provider while preserving the implemented feature-001 controls and no-key
+fallback.
+
+The operator workspace contained unrelated untracked duplicate files named
+`* 2.*` before sprint work began. They were excluded from early staging and
+test discovery, then removed only after the operator explicitly authorized a
+workspace cleanup on 2026-07-15. Generated frontend dependencies were rebuilt
+with `npm ci`.
+
+The first tracked-path baseline run executed the 267 root backend tests. It
+reported 266 passing tests and one timeout in the three-second bounded stdio
+fixture used by the offline end-to-end demo. The same focused test failed once
+and then passed unchanged on the next run in 4.90 seconds; a direct fixture
+invocation also succeeded. This is recorded as a pre-existing demo-reliability
+flakiness signal under concurrent host load, not as a passing baseline gate.
+Feature 002 must remove the ambiguity and pass the clean-checkout gate before
+handoff. An attempted combined root/evaluation/example invocation was discarded
+because the independently packaged example projects require their own project
+environments; later verification uses `scripts/verify.sh` and its intended
+per-project commands.
+
+The feature-002 pre-implementation Spec Kit analysis then reviewed all 45
+functional, security, and success requirements against the 58-task graph. Its
+two critical process/test-matrix findings and six high-severity consistency or
+coverage findings were remediated before substantive code work: the verified
+Codex argument order became canonical, private demo state was ignored, daemon
+readiness API work and a timed manual Desktop rehearsal were made explicit,
+every security story received its required scenario matrix, executable/home
+trust rules were made normative, and the privacy criterion now excludes only
+the fixed literals in designated source definitions. No deferred capability
+entered active scope.
+
+## Sprint 002 Live Subscription Evidence
+
+- **Date**: 2026-07-15
+- **Codex CLI**: `0.144.4`
+- **Authentication boundary**: supported ChatGPT sign-in status; Verity did not
+  read credential files or print raw status output
+- **First requested model**: `gpt-5.6`; unavailable for the signed-in identity,
+  recorded content-safely as `failed/process_exit` with no fallback
+- **Exercised model**: `gpt-5.6-luna`
+- **Input**: fixed sanitized synthetic operational instruction only
+- **Provider outcome**: `live_codex_subscription`
+- **Isolation label**: `agentic_sandboxed`
+- **Policy input recommendation**: `quarantine`; deterministic policy remains
+  final authority
+- **Observed provider latency**: 11,026 ms
+- **Raw child output retained or logged**: no
+
+This smoke proves only that the configured local subscription path completed on
+the recorded host and date. It does not establish universal model entitlement,
+latency, tool absence inside the Codex binary, or protection from a compromised
+host.
 
 ## Milestones
 
@@ -73,13 +141,13 @@ force-pushing.
 
 ### Deterministic evaluation
 
-The saved 2026-07-15 evaluation uses 14 original Apache-2.0 synthetic fixtures
+The saved 2026-07-15 Sprint 002 evaluation uses 20 original Apache-2.0 synthetic fixtures
 and the recorded semantic provider:
 
-- 5/5 benign fixtures allowed
-- 9/9 risky fixtures protected
+- 7/7 benign fixtures allowed
+- 13/13 risky fixtures protected
 - 0 false positives and 0 false negatives for this fixture only
-- 226 signed events verified
+- 326 signed events verified
 - Materialized view consistent
 
 These are fixture-scoped results, not universal accuracy or live GPT-5.6
@@ -87,6 +155,60 @@ performance. The exact dataset digest and timings are in
 `evals/results/latest.md` and `evals/results/latest.json`.
 
 ### Automated gates
+
+The Sprint 002 US1/US2 checkpoint ran the canonical `./scripts/verify.sh`
+after an independent containment review found and test-first repaired three
+pre-publication issues: successful Codex child descendants were not accounted
+for, blocked stdin transfer sat outside the semantic deadline, and signed
+evidence status could regress to pending after a rescan. The repaired gate
+passed 400 backend tests, 13 example/plugin tests, 9 frontend tests, Ruff,
+mypy, OpenAPI validation, frontend type/lint/build, Python and npm dependency
+audits, 80% backend coverage, and the 20-sample fixture evaluation with 0
+fixture-scoped false positives and 0 fixture-scoped false negatives. The
+success-path descendant, blocked-stdin, opened-output inode, safe-rescan, and
+revoking-rescan cases now have explicit regressions.
+
+The Sprint 002 US3/US4 checkpoint then added the full shadow-admission and
+selective-recovery path plus a separate reversible Codex Desktop demo
+installer. The installer previews without mutation, requires explicit
+confirmation and reviewed-hook trust, manages only the reserved
+`verity_cordon_poisoned_docs` MCP entry and a digest-bound staged script, writes
+a strict private recovery receipt, refuses config/artifact/runtime drift, and
+tears down only exact managed state. The normal `install-codex` path remains
+separate and never stages the attack fixture.
+
+The canonical `./scripts/verify.sh` gate passed 437 backend tests in 105.14
+seconds, 13 isolated example/plugin tests, and 6 frontend files / 10 tests.
+Ruff, mypy, OpenAPI validation, frontend type/lint/build, Python and npm
+dependency audits, 79% aggregate backend coverage, and the 20-sample fixture
+evaluation all passed. The evaluation recorded 7/7 benign samples allowed,
+13/13 risky samples protected, 0 fixture-scoped false positives, 0
+fixture-scoped false negatives, a verified 326-event ledger, and a consistent
+materialized view. These are automated contract and fixture results; an actual
+timed Codex Desktop UI rehearsal remains separately operator-visible evidence.
+
+Fresh-clone Sprint 002 acceptance then ran at pushed remote checkpoint
+`104e0f06d3d2b3be5d36e2f3884af1adf3076c04` from a new clone beneath a
+private trusted parent. Bootstrap completed without an OpenAI API key, and the
+no-key offline demo exercised the real policy engine, signed ledger, memory
+materialization, and recovery flow. It finished with 65 events, a verified
+chain, and a consistent materialized view. The complete clean-checkout
+`./scripts/verify.sh` gate passed 506 backend tests, 13 isolated
+example/plugin tests, 10 frontend tests, 80% backend coverage, Ruff, mypy,
+frontend lint/type/test/build, schema and OpenAPI validation, Python and npm
+dependency audits, and the 20-fixture evaluation with 0 fixture-scoped false
+positives and 0 fixture-scoped false negatives.
+
+An earlier acceptance attempt below `/tmp` was rejected by the intentional
+trusted-root security boundary because the clone inherited a shared writable
+ancestor. The boundary was not weakened to make the test pass; clean
+acceptance was rerun from the private trusted parent instead.
+
+The environment-pinning hardening at
+`c70db7296427f1525d52e0b2a0854fa34f123d2d` then passed bootstrap and the
+complete verification gate again from a second fresh private clone. This run
+used the checked-out `.venv` directly, ignored caller `PYTHONPATH` state, and
+enforced the Control Room's declared Node.js engine before frontend work.
 
 The timed final post-hardening `./scripts/verify.sh` run reported 267 backend tests,
 10 example/plugin tests, 7 frontend tests, 80% backend coverage, a successful
@@ -151,9 +273,10 @@ source-label and stream-reason sanitization, local-path hardening, and Codex
 receipt/current-Python binding. These changes are included in the final full
 gate above.
 
-### Publication security audit
+### Baseline publication security audit (historical)
 
-An independent read-only audit of all 234 intended tracked files and reachable
+At the feature-001 publication checkpoint, an independent read-only audit of
+all 234 then-intended tracked files and reachable
 history found no real credentials, private keys, mutation capabilities, runtime
 databases, ledger heads, salts, receipts, personal absolute paths, unsafe file
 types or modes, large blobs, or unsupported product claims. Fresh wheel and
@@ -166,6 +289,11 @@ marked test fixtures. They are not secrets, but GitHub push protection may
 still ask for a false-positive review. Secret scanning will not be disabled to
 work around a hypothetical block. Ignored demo runtime state was removed before
 publication.
+
+Sprint 002 added tracked implementation, test, specification, and release files;
+the feature-001 count is retained as dated evidence rather than presented as a
+current-branch total. The current branch is covered by the later clean-checkout
+verification and Sprint 002 closure audit below.
 
 ### Public repository
 
@@ -205,6 +333,61 @@ bounded subagent implemented and verified that isolated integration; the
 primary thread reviewed and integrated it. No operator's real Codex configuration
 was needed for the acceptance check.
 
+The Sprint 002 browser smoke used an ephemeral clean-clone runtime at
+1280x720. It verified Overview, Candidate Detail with a typed
+`MemoryRevoked` event, the quarantine Block action, and selective revocation
+while preserving one unrelated active memory. The mode sequence was
+enforce-to-shadow-to-enforce and ended in enforce mode on policy `1.0.2`.
+Ledger Verification reported 69 events with anchored completeness and a
+consistent materialized view. The browser console had 0 errors and 0 warnings,
+and the page had no horizontal overflow. The accessibility smoke found the
+expected main landmark, navigation landmark, level-one heading, and skip link,
+with 0 unlabeled controls and 0 duplicate IDs.
+
+This browser evidence exercises the local Control Room, not the Codex Desktop
+app itself. The timed, operator-visible Codex Desktop
+attack-enforcement-clean-task-revocation-ledger rehearsal remains open and is
+not represented as completed.
+
+### Sprint 002 closure preflight
+
+On 2026-07-15, a content-safe preflight observed macOS 26.4.1 on arm64,
+ChatGPT desktop app `26.707.72221` build `5307`, and Codex CLI `0.144.4` with
+ChatGPT subscription authentication ready. The app was running, so no
+user-wide configuration mutation, Desktop loading claim, or manual rehearsal
+was attempted.
+
+The normal Verity installer preview remained read-only, exited `2` as designed,
+reported the five expected Boolean configuration deltas with no issue, and
+confirmed the normal plugin was not yet installed. Native Codex memory remained
+enabled, demo data and receipts were absent, the reserved demo MCP name was
+absent, and port 8765 was available. Current official hook guidance also exposed
+a runbook gap: non-managed hooks require exact-definition trust through CLI
+`/hooks`; Verity's `--confirm-hook-trust` is only the operator assertion made
+after that Codex-managed review. The installer output, quickstart, demo script,
+submission instructions, and blank `DESKTOP_REHEARSAL_RECORD.md` were aligned to
+that boundary and to one canonical shadow-trigger-enforce-revoke sequence.
+
+The first full no-key subscription pipeline attempt then failed closed at live
+candidate extraction. Content-safe diagnostics isolated the cause to the strict
+output schema: `requested_ttl_seconds` was nullable but absent from the nested
+candidate object's required list. Verity made the nullable field required,
+added strict-schema regression assertions, and reran the focused OpenAI and
+subscription suite successfully (23 tests). The corrected live run used
+supported ChatGPT sign-in and requested `gpt-5.6-luna` with no API key or
+provider fallback. It extracted four synthetic candidates, completed live
+semantic assessment, produced allow and quarantine outcomes, and ended in
+45,806 ms with 50 verified signed events and a consistent materialized view.
+The requested model identifier is recorded; `returned_model` remains null by
+contract because the runtime event stream does not attest a remote model.
+
+A real 1280x720 Control Room overview was captured from the offline deterministic
+fixture and added as `docs/assets/control-room-overview.jpg`. It shows only
+content-safe aggregate state and truncated synthetic IDs, is explicitly
+captioned as fixture-backed, and produced zero browser console warnings or
+errors. It is a product screenshot, not fabricated live-provider or Desktop-app
+evidence.
+
 ## New Work versus Prior Art
 
 Verity Cordon's implemented contribution is an async-first local daemon, a
@@ -235,8 +418,13 @@ submission-checklist item remain intentionally unchecked.
 
 ## Open Issues and Operator Actions
 
+- Review and merge `codex/002-desktop-subscription-defense` into public `main`;
+  no pull request or merge is represented as complete.
 - Exercise the credentialed live GPT-5.6 path if a suitable local key is
   available; otherwise disclose it as unexercised.
+- Perform and time the operator-visible Codex Desktop app rehearsal; automated
+  fixture, subscription, Control Room, and hook-contract evidence does not
+  substitute for that app-level observation.
 - Run `/feedback` in the primary project thread and record the real Session ID.
 - Record and upload a public YouTube video with audio under three minutes.
 - Keep the free judge path available through 2026-08-05 17:00 PT.
@@ -245,6 +433,52 @@ submission-checklist item remain intentionally unchecked.
 ## Submission Status
 
 Not submitted. The public repository is independently verified. No successful
-credentialed live API call, video, screenshot, `/feedback` Session ID, or
-Devpost submission is represented as complete until independently created and
-verified.
+credentialed direct-API call, operator-observed Desktop rehearsal, public
+video, `/feedback` Session ID, or Devpost submission is represented as complete
+until independently created and verified. The tracked offline-fixture product
+screenshot is complete and is not presented as Desktop-app or live-provider
+evidence.
+
+## Sprint 002 Handoff Snapshot
+
+- **Public repository**: `https://github.com/MahdiHedhli/verity-cordon`
+- **Branch**: `codex/002-desktop-subscription-defense`
+- **Pre-closure public branch head**:
+  `d54532e12a478226939a30ce3b4e8da9beb181eb`
+- **Locally verified release implementation commit**:
+  `a831e3e20bbdc656b3d8199ad75ab76eeb3a7c3d`
+- **Prior clean-checkout implementation/evidence checkpoint**:
+  `79a12d0c8058d579664c90740a8bd44ae3359c68`
+- **Automated verification**: 506 backend tests, 13 isolated example/plugin
+  tests, 10 frontend tests, 80% backend coverage, schema/OpenAPI validation,
+  dependency audits, type checks, lint, production build, and 20 fixture
+  evaluations with 0 fixture-scoped false positives and 0 fixture-scoped false
+  negatives
+- **Browser verification**: protected quarantine action, selective revocation,
+  shadow/enforce transitions, 69-event anchored ledger verification, consistent
+  materialized view, 0 console errors or warnings, and the recorded 1280x720
+  layout/accessibility smoke
+- **Known limitations**: the Codex Desktop app rehearsal is not yet observed;
+  the subscription pipeline exercised extraction and assessment with the
+  requested `gpt-5.6-luna` identifier but does not attest the remote model, and
+  the direct API target `gpt-5.6` remains unexercised; the fixed sink sequence is an
+  inert simulation and does not prove a causal memory-to-tool-call path; and a
+  compromised host, Codex binary, or signing key remains out of scope
+- **Deferred roadmap**: all `VC-FUT-*` backends, additional agents, remote
+  control-plane capabilities, enterprise identity, packaged local models, and
+  exporter ecosystems remain outside the active feature task graph
+- **Submission status**: not submitted; video, final form entry, logged-out link
+  checks, and the real `/feedback` Session ID remain operator-owned
+- **Release sequence at this checkpoint**: close every ChatGPT Desktop task, exit all
+  Codex CLI TUI and IDE sessions, and fully quit the ChatGPT desktop app;
+  preview and apply the normal Verity integration; deliberately start CLI,
+  use `/hooks` to trust the exact reviewed Verity hook definitions, exit CLI,
+  and set the post-review assertion; follow the preview/digest-confirmed setup
+  in `scripts/demo-desktop.sh`; start the daemon and pass doctor/status before
+  restarting Desktop; verify `/mcp` and a benign hook canary; run and time the
+  documented attack,
+  enforcement, clean-task, revocation, and ledger sequence; immediately tear
+  down the user-wide fixture; review and merge the feature branch; record and
+  upload the under-three-minute public video; run `/feedback` in this primary
+  task; enter the real Session ID; test public links logged out; and submit
+  before 2026-07-21 17:00 PT

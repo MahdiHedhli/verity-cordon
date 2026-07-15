@@ -1649,6 +1649,7 @@ dependencies = [
     { name = "cryptography" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "jsonschema" },
     { name = "openai" },
     { name = "opentelemetry-api" },
     { name = "platformdirs" },
@@ -1661,7 +1662,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "jsonschema" },
     { name = "mypy" },
     { name = "openapi-spec-validator" },
     { name = "pip-audit" },
@@ -1679,6 +1679,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=49,<50" },
     { name = "fastapi", specifier = ">=0.139,<0.140" },
     { name = "httpx", specifier = ">=0.28,<0.29" },
+    { name = "jsonschema", specifier = ">=4.26,<5" },
     { name = "openai", specifier = ">=2.45,<3" },
     { name = "opentelemetry-api", specifier = ">=1.43,<2" },
     { name = "platformdirs", specifier = ">=4.9,<5" },
@@ -1691,7 +1692,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "jsonschema", specifier = ">=4.26,<5" },
     { name = "mypy", specifier = ">=2.3,<3" },
     { name = "openapi-spec-validator", specifier = ">=0.7.2,<0.8" },
     { name = "pip-audit", specifier = ">=2.10.1,<3" },

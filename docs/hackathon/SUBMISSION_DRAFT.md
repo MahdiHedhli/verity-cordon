@@ -13,7 +13,8 @@ A tamper-evident memory firewall for Codex: verifiable memory, revocable trust.
 Codex can carry useful knowledge between tasks, but durable memory creates a new
 security boundary: untrusted content from tools, documentation, imported files,
 or model output can be cleaned up into a persistent instruction and regain
-influence in a later session.
+influence in a later session. The primary demonstration makes this time-delayed
+risk visible across two Codex Desktop tasks.
 
 Verity Cordon makes durable memory explicit, attributable, policy-governed, and
 revocable. Candidate memories are traced to evidence, screened for secrets,
@@ -40,10 +41,12 @@ retroactive correction.
 Verity Cordon provides:
 
 - A documented Codex controlled memory plane
+- A reversible, confirmation-gated Codex Desktop demonstration fixture
 - Atomic candidate extraction and provenance
 - Local secret sanitization before model calls
 - Deterministic persistence, authority, cross-task, and size detectors
-- Isolated GPT-5.6 structured semantic assessment
+- Direct-API and explicitly lower-isolation Codex subscription paths for
+  GPT-5.6 structured semantic evidence
 - Pydantic-validated versioned policy with enforce and shadow modes
 - A signed append-only event chain and deterministic active view
 - Quarantine, manual review, targeted current-policy rescan, selective
@@ -51,6 +54,8 @@ Verity Cordon provides:
 - Transactional streamed memory writes
 - A calm, local Memory Control Room
 - Offline synthetic judging and an explicit live GPT-5.6 path
+- A clean-room Trojan Hippo-inspired delayed-trigger scenario using only fixed
+  synthetic values and an inert local sink
 
 ## How It Works
 
@@ -61,6 +66,14 @@ semantic work. The worker extracts atomic candidates, fans out deterministic
 detectors, and optionally asks GPT-5.6 for schema-constrained semantic risk
 evidence. A deterministic policy chooses allow, redact, quarantine, or block.
 
+The direct OpenAI path uses the Responses API with no tools. The optional Codex
+subscription path instead invokes one bounded, read-only Codex child using the
+operator's supported ChatGPT sign-in. It does not read Codex credential files,
+does not require an OpenAI API key, forwards only an allow-listed environment,
+rejects tool events or malformed output, and never silently switches provider.
+Because this path runs an agentic Codex process, the UI labels it
+`agentic_sandboxed` rather than making a tool-free isolation claim.
+
 The outcome, provenance, versions, digests, and signatures are appended to
 SQLite as an ordered event chain. Eligible events materialize an active memory
 view. At documented `SessionStart`, a thin hook returns only typed, delimited,
@@ -69,8 +82,9 @@ in no injected memory.
 
 ## Built With
 
-- Codex and GitHub Spec Kit
-- GPT-5.6 through the OpenAI Responses API and Structured Outputs
+- Codex Desktop, Codex CLI, and GitHub Spec Kit
+- GPT-5.6 through the OpenAI Responses API, plus the exercised GPT-5.6-family
+  `gpt-5.6-luna` model through supported Codex ChatGPT-subscription execution
 - Python, asyncio, Pydantic, FastAPI, aiosqlite, cryptography, Typer
 - React, TypeScript, Vite, Vitest
 - SQLite, SHA-256, Ed25519
@@ -81,11 +95,14 @@ in no injected memory.
 Codex drove the work end to end in the primary project thread: current rules and
 API research, donor inspection, Spec Kit source of truth, architecture,
 implementation, adversarial tests, UI, documentation, browser verification,
-and repository publication preparation. The operator set the product identity,
-security constitution, claims, scope cuts, and release decisions. Bounded
-subagents were used for research, contracts, isolated review, and Codex
-plugin/hook integration implementation and verification in a temporary
-configuration. The primary thread reviewed and integrated that work and
+and repository publication preparation. In Sprint 002, Codex also implemented
+and adversarially tested the subscription subprocess boundary, reversible
+Desktop fixture setup, delayed-attack matrix, and Control Room timeline. The
+operator set the product identity, security constitution, claims, scope cuts,
+Desktop-first direction, subscription-access goal, attack-model reference, and
+release decisions. Bounded subagents were used for research, contracts,
+isolated review, Codex plugin/hook integration, and secondary test and
+documentation work. The primary thread reviewed and integrated that work and
 retained the majority of the core build.
 
 ## How GPT-5.6 Is Used at Runtime
@@ -93,14 +110,26 @@ retained the majority of the core build.
 GPT-5.6 performs two distinct schema-constrained tasks after local secret
 sanitization: extracting atomic candidate memories and assessing semantic risk
 such as persistence intent, authority claims, exfiltration, tool hijack, and
-cross-task contamination. The call has no tools, durable memory, conversation,
-or previous response. The model recommends risk; deterministic policy retains
-final authority. Offline mode uses visibly labeled recorded fixtures and never
-pretends they are live.
+cross-task contamination. The model recommends risk; deterministic policy
+retains final authority. Offline mode uses visibly labeled recorded fixtures
+and never pretends they are live.
 
-The live integration is implemented, but the repository evidence does not yet
-claim a successful credentialed live API run. This sentence must be updated
-only if the final live exercise succeeds.
+The direct Responses API provider has no tools, durable memory, conversation,
+or previous response. The separate subscription provider is deliberately
+labeled `agentic_sandboxed`: it runs a bounded Codex child, rejects any observed
+tool activity, and makes no claim that tools are absent inside the Codex binary.
+On 2026-07-15, an initial sanitized synthetic assessment succeeded through
+Codex CLI `0.144.4` and ChatGPT sign-in using `gpt-5.6-luna`, returned
+`live_codex_subscription`, and recommended quarantine in 11,026 ms. A later
+no-key closure run exercised both live candidate extraction and live semantic
+assessment: four candidates produced allow and quarantine outcomes, and the
+50-event ledger verified with a consistent materialized view in 45,806 ms. The
+strict live validator first rejected a nullable TTL field omitted from the
+schema's required list; Verity fixed that contract and added a regression test
+before the successful rerun. An earlier explicit request for base `gpt-5.6`
+was unavailable for that identity and failed without fallback. These runs prove
+bounded execution on one host and date, not universal plan entitlement, stable
+latency, remote-model attestation, or a credentialed direct-API run.
 
 ## Challenges
 
@@ -112,6 +141,10 @@ only if the final live exercise succeeds.
 - Combining shadow evaluation, enforcement, revocation, and replay into a demo
   under three minutes
 - Separating donor prior art from clean hackathon contributions
+- Using the Trojan Hippo threat model without copying, running, or claiming to
+  reproduce its benchmark
+- Using supported ChatGPT subscription execution while preserving explicit
+  provider identity, process bounds, and honest lower-isolation claims
 
 ## Accomplishments
 
@@ -121,6 +154,8 @@ only if the final live exercise succeeds.
 - Transactional streamed writes that cannot partially commit
 - Honest actual versus would-have shadow actions
 - One-command offline path using the real policy, ledger, view, API, and UI
+- A Codex Desktop-first setup that is previewable, confirmation-gated,
+  receipt-bound, drift-aware, and reversible without changing unrelated config
 - Test-backed claim boundaries and a detailed threat model
 
 ## What We Learned
@@ -139,23 +174,95 @@ intentionally deferred behind separate numbered Spec Kit features.
 
 ## Testing Instructions
 
+The guaranteed no-key judge path is:
+
 ```bash
 ./scripts/bootstrap.sh
 export VERITY_DATA_DIR=.verity-demo
 ./scripts/demo-offline.sh
 ```
 
-Open the printed loopback URL. Inspect shadow admission, enforcement, selective
+It exercises the real policy, signed ledger, materialized view, local API, and
+Control Room with visibly labeled recorded semantic fixtures.
+
+For the optional subscription-backed Desktop path:
+
+Before any confirmed Codex configuration change, close every ChatGPT Desktop
+task, exit Codex CLI TUI and IDE Codex sessions, and fully quit the ChatGPT
+desktop app. Keep clients closed while each user-wide mutation runs. The first
+installer call below is a read-only preview; apply `--yes` only after reviewing
+that preview and the exact hook definitions.
+
+```bash
+./scripts/bootstrap.sh
+./scripts/verify.sh
+export VERITY_DATA_DIR="$PWD/.verity-desktop-demo"
+export VERITY_SEMANTIC_PROVIDER=codex_subscription
+export VERITY_CODEX_MODEL=gpt-5.6-luna
+uv run verity ledger init-key
+uv run verity install-codex --source-root .
+uv run verity install-codex --source-root . --yes
+```
+
+Use Codex CLI `/hooks` to inspect and trust the exact Verity command hook hash,
+then continue:
+
+```bash
+export VERITY_CONFIRM_HOOK_TRUST=1
+./scripts/demo-desktop.sh
+```
+
+After digest-confirmed setup, start `uv run verity serve` in terminal A. In
+terminal B, run `uv run verity doctor --confirm-hook-trust` and then the printed
+`verity demo desktop-status` command before reopening Desktop.
+
+The Desktop helper previews the dedicated setup and prints the explicit setup,
+status, startup, and teardown commands; it does not automate or scrape the
+Desktop UI. Follow
+`specs/002-codex-desktop-subscription-defense/quickstart.md`, restart Desktop
+after confirmed setup, keep the loopback Control Room visible, and use new tasks
+for the plant and trigger steps. The exercised MCP entry is user-wide in
+`$CODEX_HOME/config.toml`; the dedicated workspace is not project-local
+isolation. Close unrelated tasks and quit Desktop around each mutation. Wait
+for a signed terminal outcome before claiming protection, then immediately
+quit Desktop and apply a separately digest-confirmed teardown. Teardown removes
+only receipt-bound demo artifacts and preserves the normal plugin, unrelated
+Codex config, ledger, key, and memory history.
+
+Subscription semantic mode uses supported ChatGPT sign-in and requires no
+`OPENAI_API_KEY`. Availability depends on the operator's plan, workspace,
+model access, and usage limits; an unavailable live provider fails explicitly
+without substituting fixtures or the direct API.
+
+Open the printed loopback URL for either applicable path. In offline mode,
+inspect shadow admission, enforcement, selective
 rescan/revocation, simulated SessionStart rendering, rebuild, and ledger
-verification. The supported Codex installation and deterministic hook contract
-tests cover the actual hook boundary separately. Run the full critical suite
-with `./scripts/verify.sh`. Live GPT-5.6 instructions are in the README and
-require a local `OPENAI_API_KEY` that is never printed.
+verification. Run the full critical suite with `./scripts/verify.sh`.
 
 For stage reliability, the one-command offline path invokes the reviewed fixture
 over bounded stdio under a minimal environment, validates its inert safety flag,
 and supplies the returned synthetic response directly to the same memory
 service. It does not claim to launch Codex.
+
+## Attribution and Limitations
+
+The delayed-trigger scenario is inspired by the
+[Trojan Hippo paper](https://arxiv.org/abs/2605.01970) and
+[benchmark repository](https://github.com/debesheedas/trojan-hippo-benchmark).
+Verity does not vendor, execute, reproduce, or compare itself against that
+benchmark. The fixture, fixed synthetic markers, inert local sink, and tests are
+original clean-room materials; paper-reported attack rates are not Verity
+results.
+
+Verity provides tamper-evident local history, not tamper-proof storage. It does
+not verify arbitrary factual truth, completely prevent prompt injection,
+intercept undocumented Codex internals, control all outbound information flow,
+or protect a compromised host, user account, signing key, operating system, or
+Codex binary. “Codex Desktop” means the Codex experience in the supported
+ChatGPT desktop app and is the primary demo surface on macOS; CLI is the
+deterministic harness, Linux is an intended secondary target, and Windows is
+unverified. Automated tests cover the integration contract, but Desktop-only
+observations are reported separately as manual smoke evidence.
 
 ## Required Final Links
 

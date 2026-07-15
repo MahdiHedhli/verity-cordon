@@ -3,7 +3,26 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT_DIR"
-export PYTHONPATH="$ROOT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$ROOT_DIR/src"
+
+if [[ ! -x .venv/bin/python ]]; then
+  echo "Run ./scripts/bootstrap.sh before verification." >&2
+  exit 1
+fi
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo "A supported Node.js release and npm are required for verification." >&2
+  exit 1
+fi
+NODE_VERSION="$(node -p 'process.versions.node')"
+if ! node -e '
+const [major, minor] = process.versions.node.split(".").map(Number);
+const supported = (major === 20 && minor >= 19) ||
+  (major === 22 && minor >= 13) || major > 22;
+process.exit(supported ? 0 : 1);
+'; then
+  echo "Unsupported Node.js ${NODE_VERSION}; expected ^20.19.0 or >=22.13.0." >&2
+  exit 1
+fi
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   # uv can recreate the underscore-prefixed editable-install .pth file with
@@ -15,11 +34,11 @@ fi
 
 env -u PYTHONPATH .venv/bin/python -c "import verity_cordon"
 env -u PYTHONPATH .venv/bin/verity --help >/dev/null
-uv run pip-audit --local --skip-editable
-uv run ruff format --check src tests evals
-uv run ruff check src tests evals
-uv run mypy src
-uv run python - <<'PY'
+.venv/bin/pip-audit --local --skip-editable
+.venv/bin/ruff format --no-cache --check src tests evals
+.venv/bin/ruff check --no-cache src tests evals
+.venv/bin/mypy src
+.venv/bin/python - <<'PY'
 from pathlib import Path
 
 import yaml
@@ -31,10 +50,10 @@ validate(
     base_uri=contract.resolve().as_uri(),
 )
 PY
-uv run pytest --cov=verity_cordon --cov-report=term-missing
+.venv/bin/pytest --cov=verity_cordon --cov-report=term-missing
 
-PYTHONPATH="src:examples/poisoned-docs-mcp/src:examples/detector-plugin/src" \
-  uv run pytest -q examples/poisoned-docs-mcp/tests examples/detector-plugin/tests
+PYTHONPATH="$ROOT_DIR/src:$ROOT_DIR/examples/poisoned-docs-mcp/src:$ROOT_DIR/examples/detector-plugin/src" \
+  .venv/bin/pytest -q examples/poisoned-docs-mcp/tests examples/detector-plugin/tests
 
 npm run typecheck --prefix apps/control-room
 npm run lint --prefix apps/control-room
@@ -43,7 +62,7 @@ npm run build --prefix apps/control-room
 npm audit --prefix apps/control-room --audit-level=high
 
 if [[ -f evals/runners/run_fixture_evaluation.py ]]; then
-  uv run python evals/runners/run_fixture_evaluation.py --check
+  .venv/bin/python evals/runners/run_fixture_evaluation.py --check
 fi
 
 echo "All configured Verity Cordon verification gates passed."

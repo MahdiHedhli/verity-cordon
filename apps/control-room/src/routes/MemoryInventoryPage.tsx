@@ -12,7 +12,7 @@ import { formatDate, formatLabel, shortId } from "../lib/format";
 const statuses: MemoryStatus[] = ["active", "redacted", "revoked", "superseded", "expired"];
 const kinds: MemoryKind[] = ["fact", "user_preference", "project_convention", "operational_instruction", "tool_observation", "task_summary", "identity_assertion", "policy_statement", "unknown"];
 const sources: SourceClass[] = ["user_input", "tool_output", "agent_output", "imported_file", "prior_memory", "compaction", "session_summary", "external_event"];
-const providers: SemanticProviderState[] = ["live_openai", "recorded_fixture", "deterministic_only", "failed", "not_required"];
+const providers: SemanticProviderState[] = ["live_openai", "live_codex_subscription", "recorded_fixture", "deterministic_only", "failed", "not_required"];
 
 export function MemoryInventoryPage(): React.JSX.Element {
   const [searchParams, setSearchParams] = useSearchParams();

@@ -1,6 +1,7 @@
 # Verity Cordon Trust Boundaries
 
-**Feature**: `001-codex-memory-firewall`
+**Features**: `001-codex-memory-firewall`,
+`002-codex-desktop-subscription-defense`
 **Review date**: 2026-07-15
 **Deployment boundary**: Single-user local host; macOS exercised, Linux intended
 but not yet recorded as exercised, Windows unverified
@@ -19,6 +20,13 @@ Within it, process and data boundaries still matter: Codex does not write the
 active view, the hook adapter does not make policy decisions, plugins do not
 grant trust, the semantic model does not choose the final action, and the UI
 does not mutate derived state directly.
+
+The Codex subscription provider is a separate lower-isolation
+`agentic_sandboxed` child boundary, not the direct API boundary. Verity rejects
+its result when it observes tool or unknown activity, but that rejection is not
+outbound information-flow control. The Desktop poisoned-docs MCP server is also
+separate: it is an explicitly installed, receipt-bound, synthetic fixture with
+one inert fixed-marker sink, not a product data destination.
 
 ```text
 untrusted user, file, tool, and model content
@@ -39,13 +47,21 @@ untrusted user, file, tool, and model content
                      |
                      v
               verityd daemon (TCB)
-        +------------+-------------+
-        |            |             |
-        v            v             v
-  detector code  sanitized      deterministic
-  and plugins    OpenAI call    policy engine
-        \            |             /
-         +-----------+------------+
+        +------------+-----------------------+
+        |            |                       |
+        v            v                       v
+  detector code  semantic router       deterministic
+  and plugins      /       \           policy engine
+                  v         v                /
+          direct OpenAI   Codex subscription
+          tool-free API   child (agentic,
+                          lower isolation)
+                  \         /
+                   +-------+
+                       |
+         advisory schema-bound output only
+                       |
+         +-------------+--------------------+
                      |
                      v
         signed SQLite event ledger
@@ -55,6 +71,19 @@ untrusted user, file, tool, and model content
            |                   |
            v                   v
    SessionStart context   Control Room API
+```
+
+The Desktop attack fixture is an additional evidence-source path:
+
+```text
+explicit demo setup + private write-ahead receipt
+                     |
+                     v
+ Codex Desktop -> local stdio poisoned-docs MCP fixture
+                     |                    |
+                     |              fixed-marker inert sink
+                     v
+ documented hook capture -> normal Verity lifecycle above
 ```
 
 ## Verified Codex Integration Boundary
@@ -122,6 +151,15 @@ The supported injection contract is a `SessionStart` JSON response containing
 memory in `hookSpecificOutput.additionalContext`. On daemon, ledger, policy, or
 view-integrity failure, the adapter returns no additional memory. A content-free
 `systemMessage` may report degraded health without exposing evidence.
+
+The Desktop demo installer is deliberately separate from the normal Codex
+installer. It manages only the reserved
+`mcp_servers.verity_cordon_poisoned_docs` entry, a digest-verified staged script,
+and a private write-ahead receipt. Preview has no side effects; apply and
+teardown require explicit confirmation. Normal installation never stages or
+enables the fixture. Under the exercised Codex `0.144.4` surface, the table is
+stored in `$CODEX_HOME/config.toml` and is user-wide. A dedicated workspace and
+the fixture `cwd` are not a project-scope enforcement boundary.
 
 ## Trust-Boundary Register
 
@@ -267,7 +305,7 @@ labels, drops plugin metadata, and replaces plugin messages with fixed summaries
 are not sandboxed. A malicious plugin may access user-level resources or stop
 the daemon. The reference plugin demonstrates discovery, not code isolation.
 
-### TB-07: OpenAI API and semantic adjudicator
+### TB-07: Direct OpenAI API and semantic adjudicator
 
 **Data crossing out**: Only bounded, locally sanitized evidence with detected
 secrets replaced by typed placeholders, plus the minimum provenance needed for
@@ -289,6 +327,8 @@ advisory output could change a later policy decision.
 **Residual boundary**: Sanitization can miss a secret, the model can err or
 refuse, and `store=false` is not a claim of Zero Data Retention. Live mode
 depends on the operator's OpenAI data-governance settings and network path.
+The Codex subscription path does not inherit this boundary's tool-free or
+`store=false` claims; it is defined separately in TB-12.
 
 ### TB-08: SQLite database and event payload store
 
@@ -359,15 +399,90 @@ security fixture.
 
 **Controls**: MCP-style JSON-RPC over stdin/stdout only with no network listener;
 synthetic constants only; no process-environment reads; no filesystem secret
-discovery; no external requests; no real tool invocation or exfiltration; and
-prominent source documentation that the behavior is a demonstration. The
-one-command offline demo starts this reviewed process with a minimal
-environment, exchanges bounded stdio messages, validates its identity and inert
-response flag, and then sends the returned synthetic content to the core
-service.
+discovery; no external requests; and prominent source documentation that the
+behavior is a demonstration. It exposes exactly `get_release_guidance` and
+`demo_artifact_sink`. The sink accepts only the fixed manifest and environment
+marker literals, rejects additional or changed content, keeps no body, and
+returns a count, acceptance flag, fixed-pair digest, and
+`external_transmission_performed=false`. The one-command offline demo starts
+this reviewed process with a minimal environment, exchanges bounded stdio
+messages, validates its identity and inert response, and then sends the returned
+synthetic content to the core service.
 
 **Residual boundary**: The fixture proves only the included attack path. It is
-not representative of all MCP servers or every persistence technique.
+not representative of all MCP servers or every persistence technique. The sink
+flag and fixed-pair digest describe this implementation and input; they are not
+cryptographic proof that an arbitrary process performed no outbound action.
+
+### TB-12: Codex subscription semantic child
+
+**Trust classification**: Lower-isolation `agentic_sandboxed` semantic adviser.
+It is not a tool-free API request and never grants memory trust.
+
+**Data crossing out**: Only bounded locally sanitized evidence or a candidate
+safe representation, the minimum provenance needed for the operation, and the
+locally computed request identity and SHA-256 content digest. The child uses the
+operator's supported ChatGPT sign-in through Codex; Verity does not open, copy,
+parse, print, persist, or watch Codex credential files.
+
+**Controls**: Explicit provider selection; verified Codex executable and auth
+directory identity; a fresh allow-listed environment with no API keys, bearer
+values, proxy credentials, or arbitrary parent variables; fixed non-shell argv;
+stdin-only untrusted content; ephemeral execution; ignored user configuration
+and rules; private empty read-only working directory; disabled high-risk
+feature surfaces; strict output schema; request identity and digest matching;
+bounded JSONL, stderr, and final file; conservative rejection of every tool or
+unknown event; POSIX process-group termination and descendant reaping (with
+direct-child-only fallback on unverified Windows); local re-sanitization;
+explicit provider/isolation labels; and no fallback to the API or fixture.
+Deterministic versioned policy consumes accepted output as advice and makes the
+final action decision.
+
+**Residual boundary**: The child must use a networked Codex service. A tool or
+other side-effect attempt can occur before Verity observes and rejects its
+event, and future activity may not be represented by the currently understood
+event grammar. POSIX process-group cleanup was tested; the unverified Windows
+fallback terminates the direct child and does not provide the same descendant
+guarantee. These controls do not provide outbound information-flow control
+or prove that no tool existed. Sanitization may miss a secret. Subscription
+availability, service behavior, workspace policy, and rate limits are external
+state. A malicious Codex binary or fully compromised host remains out of scope.
+
+### TB-13: Desktop demo installer and private receipt
+
+**Trusted for**: Previewing and managing one reserved local MCP table and one
+reviewed staged fixture without changing the normal Verity integration, ledger,
+memory view, or policy state.
+
+**Controls**: Read-only zero-side-effect preview; explicit confirmation and
+preview-digest match; an explicit operator hook-trust assertion; prerequisite
+normal-integration doctor for setup/readiness; reserved-name collision refusal
+without serializing the existing value; bounded no-follow paths; private modes;
+resolved absolute regular executables with owner/ancestor mode checks plus
+pinned source, staged artifact, Codex executable, and Python runtime SHA-256
+identities and sizes; atomic writes; a schema-valid `prepared` receipt before
+config mutation; an independently canonicalized managed-entry digest;
+`prepared` and `removing` exact-state reconciliation; repeatable archival of a
+digest-matching `removed` receipt by installation ID; safe bounded fixture
+probe that never calls the sink; and teardown that removes only the exact
+managed entry and digest-matching staged regular files while preserving
+unrelated TOML changes. Confirmed operations use a private Verity operation lock
+and expected whole-config SHA-256 head. Teardown may proceed despite an
+unhealthy normal integration when its own receipt, entry, artifacts, runtimes,
+and separately reviewed teardown digest remain exact, so the user-wide fixture
+is not stranded.
+
+**Residual boundary**: The receipt is private local write-ahead state, not an
+Ed25519-signed event and not a supply-chain attestation. File and entry hashes
+detect tested drift under an uncompromised verifier; they do not prevent
+modification. A coordinated same-user or host replacement of the receipt,
+artifacts, configuration, runtimes, and verifier defeats this boundary. Status
+is point-in-time, and ambiguous unreceipted state requires manual recovery. The
+operation lock does not serialize Codex Desktop, editors, or arbitrary writers;
+closing all other tasks and quitting Desktop around a fresh digest-confirmed
+mutation is an operational mitigation for the remaining race. POSIX probe
+cleanup uses a new process session and process-group termination. Windows is
+unverified and lacks the same tested descendant process-group guarantee.
 
 ## Data Classification and Allowed Flows
 
@@ -376,11 +491,14 @@ not representative of all MCP servers or every persistence technique.
 | Original evidence bytes | Not retained by the MVP | Never as original bytes | No | SHA-256 raw-content digest referenced by `EvidenceCaptured` |
 | Recognized credential or secret | Not retained as raw content; replaced by a typed placeholder | Never as recognized raw content | Never | Redaction type/count and sanitized digest, without the value |
 | Sanitized evidence | Permanent bounded `safe_excerpt` plus a transient bounded SQLite queue body | Yes, in explicit live mode | No queue body or capture excerpt in routine UI; telemetry uses digest/length/source | Queue body is checked against the sanitized digest bound in `EvidenceCaptured`; no semantic-result cache in the MVP |
+| Subscription semantic input | Ephemeral Codex child stdin and private temporary files; no Verity session persistence | Yes, through Codex's supported ChatGPT subscription service when explicitly selected | Provider/isolation/failure state, latency, and IDs only; no prompt, status output, JSONL body, stderr, paths, or final free text | Local request identity and sanitized-content digest must match strict output; this is not a signature from Codex or OpenAI |
 | Candidate safe representation | Local candidate store | Yes, if policy invokes semantic review | Yes, only after redaction rules | Candidate ID, source refs, and payload digest |
-| Semantic assessment | Local event payload | Returned from OpenAI | Provider state, categories, scores, and safe rationale | Schema/version/model/prompt bound to event |
+| Semantic assessment | Local event payload | Returned from direct OpenAI API or Codex subscription service | Provider state, isolation, categories, scores, and safe rationale | Schema/version/model-or-requested-model/prompt bound to event; subscription output also binds request identity and sanitized digest |
 | Active memory | Derived local view | Not for adjudication unless rescanned | Safe statement according to policy | Deterministic replay from committed events |
 | Ledger event and public key | Local database; public export when requested | No | Safe metadata may appear | `VC-CJ-1`, SHA-256 chain, Ed25519 signature |
 | Private signing key or IPC capability | User-only local file; OS keychain support is deferred | Never | Never | Permission and availability checks; never event payload |
+| Desktop demo receipt and staged fixture | Private local demo directory outside Git | No | Fixed state, issue codes, tool names, artifact sizes, and digest metadata only | Schema validation, private permissions, preview/entry/artifact/runtime digests, and exact-state checks; receipt is not ledger-signed |
+| Demo sink arguments | Process memory in the reviewed local stdio fixture | No | Fixed marker names, count, acceptance, and canonical fixed-pair digest only | Exact equality to the two compiled synthetic literals; no arbitrary body is retained or hashed |
 
 ## Trust Transitions
 
@@ -396,7 +514,9 @@ not representative of all MCP servers or every persistence technique.
    remain untrusted and retain evidence links and
    extractor version.
 4. **Assess**: Detector results and optional semantic output are advisory,
-   versioned inputs. Failures are first-class findings.
+   versioned inputs. The direct API and subscription child remain distinctly
+   labeled; subscription is `agentic_sandboxed`, rejects observed tool activity,
+   and never silently falls back. Failures are first-class findings.
 5. **Decide**: Deterministic policy records rule, version, mode,
    `actual_action`, and `would_have_action`. Shadow admission remains labeled.
 6. **Commit**: An allowed or redacted candidate becomes eligible only after an
@@ -418,6 +538,12 @@ not representative of all MCP servers or every persistence technique.
     candidate, and records current findings and policy decision. Under
     enforcement, an unsafe result appends revocation and projection changes in
     the same transaction. No automatic policy-wide sweep is implied.
+
+Desktop demo setup is outside this memory trust transition. It stages a local
+evidence fixture and adds one receipt-bound MCP entry only after confirmation;
+it does not approve memory, append ledger events, activate policy, or establish
+that a Desktop task is protected. Protection requires candidate-specific signed
+terminal memory events and a verified materialized view.
 
 ## Session-Start Injection Boundary
 
@@ -453,9 +579,13 @@ policy, typed fields, provenance, and later revocation remain required.
 
 At every boundary, content trust fails closed even when Codex task availability
 fails open. If the adapter, daemon, policy, ledger, key verification, or view
-cannot establish eligibility, Verity supplies no durable memory. The current
-Codex session may continue with a content-free warning. Detailed component
-behavior and residual risks are defined in
+cannot establish eligibility, Verity supplies no durable memory. A failed
+subscription child supplies no successful advisory assessment, records an
+explicit failure for policy, and triggers no provider substitution. A failed or
+drifted Desktop demo setup disables demo readiness and makes no
+memory-protection claim. The current Codex session may continue with a
+content-free warning. Detailed component behavior and residual risks are
+defined in
 [the threat model](./threat-model.md#failure-behavior-matrix).
 
 ## Change Control
@@ -464,4 +594,7 @@ Adding a non-loopback listener, remote policy source, new agent integration,
 new storage backend, plugin process isolation, enterprise identity, public
 Control Room, or hardware-backed key changes these boundaries and requires a
 separate numbered feature or explicit scope amendment. None is implied by the
-MVP interfaces.
+MVP interfaces. Changes to the supported Codex child invocation, JSONL event
+grammar, subscription authentication marker, Desktop managed MCP entry, demo
+receipt schema, or fixed sink contract also require review of TB-11 through
+TB-13 and the related failure tests before publication.

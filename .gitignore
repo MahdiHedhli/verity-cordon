@@ -19,6 +19,7 @@ build/
 # Verity runtime state and credentials never belong in Git.
 .verity/
 .verity-demo/
+.verity-desktop-demo/
 .verity-live-demo/
 *.sqlite
 *.sqlite3

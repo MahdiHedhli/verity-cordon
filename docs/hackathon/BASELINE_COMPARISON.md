@@ -62,10 +62,30 @@ optional ML detector are shipped but not enabled in the default pipeline.
 - The default REST bind/CORS/reset posture and raw matched metadata are not
   carried into Verity Cordon.
 
+## Delayed-Attack Research Attribution
+
+The Desktop demonstration is informed by the delayed-trigger threat model in
+the [Trojan Hippo paper](https://arxiv.org/abs/2605.01970) and the
+[`debesheedas/trojan-hippo-benchmark`](https://github.com/debesheedas/trojan-hippo-benchmark)
+repository. The repository was inspected on 2026-07-15 at `main` commit
+`a67d3261338120c606fcf6afda2547f622809922` under Apache-2.0; the paper
+distribution states CC BY 4.0.
+
+Trojan Hippo is attack-model research, not the Verity donor baseline. Verity
+does not vendor, import, execute, or reproduce the benchmark in its judge path.
+No benchmark source, dataset, prompt, simulated-email implementation, or
+reported result was copied into Verity Cordon. The repository's fixed
+documentation response, synthetic marker values, inert local sink, detector
+fixtures, and acceptance cases were authored independently. The resulting demo
+is therefore described only as a **clean-room synthetic delayed-trigger
+scenario inspired by Trojan Hippo**. It is not a benchmark reproduction,
+compatible implementation, comparative evaluation, or claim to the paper's
+reported attack-success rates.
+
 ## Code Provenance
 
 The initial Verity Cordon implementation is clean-room and does not copy donor
-source. `THIRD_PARTY_NOTICES.md` records the donor as research prior art. If a
-future file is copied, adapted, or substantially derived, that file must retain
-applicable Apache-2.0 notices, identify this exact source commit, and be marked
-as modified before release.
+or Trojan Hippo benchmark source. `THIRD_PARTY_NOTICES.md` records both research
+sources and their distinct roles. If a future file is copied, adapted, or
+substantially derived, that file must retain applicable license notices,
+identify the exact source commit, and be marked as modified before release.

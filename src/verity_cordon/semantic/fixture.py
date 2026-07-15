@@ -65,7 +65,27 @@ class FixtureCandidateExtractor:
             default=-1,
         )
         statements: list[tuple[str, MemoryKind, str, bool, Signal, Signal]] = []
-        if poison_start > 0 and not security_discussion:
+        procedural_instruction = bool(
+            not security_discussion
+            and lowered.startswith(("procedure:", "release procedure:", "skill procedure:"))
+            and any(marker in lowered for marker in ("always", "mandatory", "instruction"))
+        )
+        if procedural_instruction:
+            statements.append(
+                (
+                    compact,
+                    MemoryKind.OPERATIONAL_INSTRUCTION,
+                    "instructions.release",
+                    any(marker in lowered for marker in ("always", "preserve", "future")),
+                    Signal.EXPLICIT,
+                    (
+                        Signal.EXPLICIT
+                        if any(marker in lowered for marker in ("keep this", "do not mention"))
+                        else Signal.NONE
+                    ),
+                )
+            )
+        elif poison_start > 0 and not security_discussion:
             safe_part = compact[:poison_start].strip(" .")
             unsafe_part = compact[poison_start:].strip()
             if safe_part:

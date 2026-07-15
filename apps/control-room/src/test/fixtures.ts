@@ -21,6 +21,9 @@ export const safeStatus: StatusResponse = {
   ledger: "verified",
   memory_view: "consistent",
   semantic_provider: "recorded_fixture",
+  semantic_provider_isolation: "recorded_fixture",
+  semantic_provider_ready: true,
+  semantic_provider_failure_class: null,
   counts: {
     total_candidates: 3,
     allowed: 1,
@@ -150,6 +153,20 @@ export const candidateDetail: CandidateDetail = {
     reason: "Untrusted tools cannot establish durable operational authority.",
   },
   event_ids: ["event-00000002", "event-00000003"],
+  event_references: [
+    {
+      event_id: "event-00000002",
+      sequence_number: 2,
+      event_type: "MemoryCandidateCreated",
+      occurred_at: "2026-07-15T14:21:00Z",
+    },
+    {
+      event_id: "event-00000003",
+      sequence_number: 3,
+      event_type: "MemoryQuarantined",
+      occurred_at: "2026-07-15T14:21:02Z",
+    },
+  ],
   ledger_verified: true,
 };
 

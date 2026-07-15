@@ -1,17 +1,18 @@
 # Verity Cordon Threat Model
 
-**Feature**: `001-codex-memory-firewall`
+**Features**: `001-codex-memory-firewall`,
+`002-codex-desktop-subscription-defense`
 **Review date**: 2026-07-15
 **Status**: Implemented local MVP; protection claims remain limited to the
 linked tests and final publication verification
 
 ## Scope and Security Objective
 
-Verity Cordon is a controlled memory plane for local Codex clients. Its primary
-security objective is to prevent unadjudicated content captured through the
-documented integration surfaces from becoming Verity-provided durable context.
-It also makes memory decisions attributable, selectively revocable, and
-tamper-evident.
+Verity Cordon is a controlled memory plane for local Codex clients, with Codex
+Desktop as the primary demonstration surface. Its primary security objective is
+to prevent unadjudicated content captured through the documented integration
+surfaces from becoming Verity-provided durable context. It also makes memory
+decisions attributable, selectively revocable, and tamper-evident.
 
 This is not a claim that arbitrary content is factually true, that every prompt
 injection is detected, or that every Codex action is intercepted. A malicious
@@ -19,6 +20,14 @@ tool response can still affect the current session before or independently of
 the durable-memory path. The demonstrated claim is narrower: for the captured
 surfaces and tested attack patterns, Verity Cordon governs whether candidate
 memory becomes active and is supplied to a later session.
+
+The optional Codex subscription provider is a lower-isolation
+`agentic_sandboxed` semantic adviser. Verity minimizes and sanitizes its input,
+requests a restricted ephemeral child, rejects observed tool activity, and
+validates the returned schema, request identity, and content digest. Those
+controls are acceptance gates, not outbound information-flow control and not
+proof that the child had no tools or made no attempted side effect before an
+event was observed. Deterministic policy remains the final authority.
 
 ## Protected Assets
 
@@ -31,6 +40,8 @@ memory becomes active and is supplied to a later session.
 - Integrity of manual approval, block, revocation, and rebuild actions.
 - Separation between concurrent transactional memory streams.
 - Honest operator visibility into degraded, shadow, fixture, and live states.
+- Integrity of the receipt-bound Desktop demo entry, staged synthetic fixture,
+  and verified Codex and Python runtime identities used to operate it.
 
 Availability of Codex itself is not a protected guarantee. When Verity Cordon
 is unhealthy, Codex may continue the current task without Verity-provided
@@ -54,16 +65,37 @@ memory, but Verity Cordon must fail closed for new memory trust and injection.
    they were approved as memory.
 10. Native Codex memory use and generation remain disabled for the controlled
     demo plane; installer and doctor checks verify effective configuration.
+11. A subscription child is never treated as tool-free. Any observed tool or
+    unknown event invalidates the entire advisory result, with no fixture or API
+    fallback.
+12. The delayed-attack sink accepts only two fixed synthetic marker literals,
+    is local stdio only, and provides no general payload or destination field.
+    Its fixed digest identifies those markers; it is not evidence of network
+    noninterference.
+13. Desktop demo configuration changes require an explicit confirmed preview
+    and a private write-ahead receipt. Drift or ambiguous partial state disables
+    readiness and prevents automatic cleanup from guessing.
+14. On the exercised Codex `0.144.4` surface, the demo MCP entry in
+    `$CODEX_HOME/config.toml` is user-wide. A dedicated workspace or MCP `cwd`
+    MUST NOT be described as project-local isolation.
 
 ## System and Adversary Model
 
 The MVP is a single-user local service. macOS is the exercised platform; Linux
 is an intended local target but is not yet recorded as exercised, and Windows
-is unverified. Codex, the thin hook
-adapter, the Verity daemon, SQLite, the Control Room, detector plugins, and the
+is unverified. Codex Desktop, the thin hook adapter, the Verity daemon, SQLite,
+the Control Room, detector plugins, the receipt-bound demo installer, and the
 local stdio demo fixture share a host but cross distinct application trust
-boundaries. Live semantic assessment crosses the host boundary to the OpenAI
-API only after local secret screening and sanitization.
+boundaries. Direct live semantic assessment crosses the host boundary to the
+OpenAI API only after local secret screening and sanitization. Subscription
+assessment passes the same class of bounded sanitized input to an ephemeral
+Codex child, which uses the operator's supported ChatGPT sign-in to reach the
+service. Verity does not inspect or copy Codex credential files.
+
+The verified fixture probe and subscription child use POSIX process sessions
+and process-group termination on the exercised macOS host. Windows remains
+unverified and does not have the same tested descendant process-group cleanup
+guarantee in the current fallback.
 
 The in-scope adversary may control imported text, documentation, a tool or MCP
 response, model-authored content proposed as memory, stream chunk boundaries,
@@ -77,6 +109,11 @@ The operator is trusted to review hook definitions, protect the host and key,
 understand shadow mode, and confirm trust-changing actions. Operator mistakes
 remain possible and are mitigated through confirmation, reasons, provenance,
 and append-only review history rather than treated as impossible.
+
+For the Desktop fixture, the operator is also trusted to close every unrelated
+Desktop task, quit Desktop around confirmed setup and teardown, reopen only the
+dedicated synthetic rehearsal while the user-wide entry exists, and perform
+fresh digest-confirmed teardown immediately afterward.
 
 ## In-Scope Threats
 
@@ -95,6 +132,15 @@ and append-only review history rather than treated as impossible.
 - Malformed, missing, or failed policy activation.
 - Daemon, hook, signing-key, database, or local IPC failure.
 - Unsafe trust-changing UI requests and stale UI state.
+- Delayed poisoning that is admitted in shadow mode, reappears in a later task,
+  and attempts to call a synthetic sink.
+- Subscription-child tool activity, unknown event types, output spoofing,
+  executable replacement, inherited-environment exposure, and incomplete
+  descendant cleanup.
+- Desktop demo receipt, managed-entry, artifact, runtime, preview, and teardown
+  drift; reserved-name collision; unsafe filesystem paths; and interrupted
+  setup.
+- Unexpected or non-synthetic input sent to the local demo sink.
 
 ## Out-of-Scope Threats and Non-Claims
 
@@ -113,6 +159,14 @@ and append-only review history rather than treated as impossible.
 - Current-session rollback of side effects already performed by a tool.
 - Tool and activity paths not exposed by the documented Codex hooks used by the
   implementation.
+- Prevention of outbound activity by the Codex subscription child. The provider
+  rejects observed tool activity as an invalid result but does not implement a
+  network information-flow-control boundary.
+- Proof that a Codex subscription execution was tool-free merely because its
+  accepted event stream contained no tool event.
+- Protection from a malicious replacement of the verified fixture, receipt,
+  configuration, executable, and verifier by the same compromised operator or
+  host.
 - Confidentiality against another process running with the fully compromised
   operator account.
 
@@ -125,6 +179,15 @@ hooks include `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
 memory reads, writes, generation, or commits. Verity Cordon therefore disables
 native local memory generation and use and supplies its own approved view at
 `SessionStart`.
+
+Codex Desktop is the primary user-facing surface, but the memory boundary is
+still the documented hook and local-daemon contract. The separately installed
+`verity_cordon_poisoned_docs` MCP entry exists only for the synthetic demo and
+is not part of the normal product installer. It exposes fixed release guidance
+and an inert fixed-marker sink; it does not extend Verity's capture coverage or
+prove that other MCP servers are safe. Codex `0.144.4` reads the managed table
+from `$CODEX_HOME/config.toml`; the entry is user-wide even when the operator
+opens a dedicated workspace and the server uses a private `cwd`.
 
 Hook coverage is not universal. In particular, documented tool hooks cover the
 supported tool paths rather than every possible Codex activity; matching hooks
@@ -374,6 +437,88 @@ memory remains.
 A bug shared by both materialization and verification could evade detection, so
 independent fixture-based replay tests are required.
 
+### TM-16: A shadow-admitted instruction triggers in a later Desktop task
+
+**Scenario**: A Trojan Hippo-inspired documentation response combines a useful
+fact with a concealed permanent operational instruction. Shadow policy admits
+the instruction, a fresh Desktop task receives it, and the later task proposes
+the demo sink.
+
+**Expected control**: Record the original source, evidence digest, candidate,
+detector and semantic inputs, `actual_action=allow`, stricter
+`would_have_action`, and `shadow_mode=true` in signed events. The Control Room
+must state that this is not active protection. The demonstration sink accepts
+only `VERITY_SYNTHETIC_RELEASE_MANIFEST_V1` and
+`VERITY_SYNTHETIC_DEMO_ENV_V1` over local stdio, requires an operator prompt,
+and performs no external action. After enforcement is activated, the same
+malicious operational candidate is quarantined; a confirmed rescan appends a
+revocation, deterministic rebuild removes it from later injection, unrelated
+and false-positive-trap memories remain, and ledger verification must succeed.
+
+**Residual risk**: Shadow mode intentionally permits durable reuse and a later
+task can act on the admitted text before revocation. The inert fixed-marker sink
+limits this repository demonstration only; it neither contains a real
+exfiltration path nor shows that a production tool call could be undone.
+
+### TM-17: The Codex subscription child attempts a tool or spoofs output
+
+**Scenario**: An ephemeral subscription child tries a command, file, MCP, web,
+browser, delegation, or unknown future activity, or returns a valid-looking
+document for a different request or digest.
+
+**Expected control**: Screen secrets before launch; pass bounded sanitized data
+on stdin under a fixed non-shell argument vector; use a private empty read-only
+working directory, allow-listed environment, ignored user configuration, and
+disabled high-risk features; and parse bounded JSONL conservatively. Any tool or
+unknown event, malformed stream, identity or digest mismatch, invalid schema,
+timeout, output overflow, executable drift, or incomplete child outcome rejects
+the entire result and triggers POSIX process-group cleanup (direct-child cleanup
+only on unverified Windows). No fixture or direct-API provider is substituted.
+A schema-valid accepted assessment is still advisory;
+deterministic policy makes the action decision.
+
+**Residual risk**: The child is an agentic process using a networked Codex
+service, not a tool-free API call. A side-effect attempt can happen before its
+event is observed and rejected. Disabled features, a read-only sandbox, and
+event validation are defense in depth, not outbound information-flow control.
+A sanitizer false negative in the minimal input can still cross to the Codex
+service, and a compromised Codex executable or host is outside the boundary.
+
+### TM-18: Desktop demo setup or sink state is tampered or ambiguous
+
+**Scenario**: The reserved MCP name already exists, configuration changes after
+preview, a non-cooperating Desktop/editor process races a config write, setup or
+teardown is interrupted, a receipt or staged file is replaced, runtime identity
+drifts, teardown sees a different managed entry, or the sink receives
+non-synthetic content.
+
+**Expected control**: Preview has zero mutation or process side effects. Apply
+requires explicit hook-trust assertion and confirmation, an intact normal
+integration, a matching preview digest, safe no-follow paths, strictly verified
+runtimes and source, an atomic private `prepared` receipt before config
+mutation, and an exact independently digest-bound managed entry. Confirmed
+Verity operations serialize under a private lock and each replacement checks
+the expected whole-config SHA-256 head. Readiness requires the installed
+receipt, entry, artifacts, runtimes, safe fixture probe, and product health to
+agree. `prepared` setup and `removing` teardown states resume only under exact
+receipt-bound conditions; a later setup archives an exact prior `removed`
+receipt without overwriting a conflict. Teardown removes only the exact
+receipt-bound entry and digest-matching staged regular files, preserves
+unrelated TOML changes, and refuses drift instead of restoring a stale
+whole-file backup. A failed normal-integration doctor blocks setup/readiness but
+does not block otherwise exact teardown, so the user-wide synthetic entry is
+not stranded. The sink rejects any value other than its two fixed markers and
+neither retains nor transmits an arbitrary body.
+
+**Residual risk**: Receipt and artifact hashes detect tested drift but do not
+authenticate code against a supply-chain authority, and the demo receipt is not
+an Ed25519-signed ledger event. Same-user or host compromise can replace the
+receipt, code, configuration, and verifier together. The operation lock does
+not include Codex Desktop or arbitrary editors, so a non-cooperating writer can
+race a point-in-time digest check; quitting Desktop and applying a fresh preview
+immediately reduce but do not eliminate that risk. The fixture proves only this
+reviewed local scenario.
+
 ## Additional Threat Coverage
 
 The named abuse cases above are the required demonstration set. These related
@@ -417,6 +562,12 @@ availability. It is fail-closed for the Verity memory trust boundary.
 | Detector plugin has duplicate ID or fails discovery | Reject duplicate/plugin; do not treat it as having passed | Only results from a complete policy-required detector set may inject | Plugin identity/version failure; operator removes or repairs plugin |
 | Stream is oversized, cancelled, blocked, or abandoned | Abort; no partial commit and no later commit | None from the stream | Append abort outcome when ledger is available; otherwise health warning |
 | Live OpenAI credentials are absent | Live semantic-required candidate cannot pass that stage | No fixture substitution and no ambiguous high-risk injection | `doctor` reports presence only, never the key; offline mode remains explicitly separate |
+| Codex subscription login, capacity, executable, schema, or child execution is unavailable | Record an explicit subscription failure; never substitute API or fixture output; action follows the versioned semantic-failure rule and high-risk ambiguity quarantines | No memory from a high-risk failed assessment | Content-safe provider/failure/isolation state only; repair sign-in/runtime or select another provider explicitly |
+| Subscription child emits a tool or unknown event | Reject the entire advisory result even if its final file is otherwise valid; terminate and reap the POSIX process group, with direct-child-only fallback on unverified Windows | No memory based on the rejected assessment | `failed/tool_activity`; this is result rejection, not proof that an attempted side effect was prevented |
+| Subscription child times out, is cancelled, exceeds an output bound, or cannot complete verified cleanup | Reject partial output, terminate POSIX descendants (direct child only on unverified Windows), and record the safe failure class; a cleanup-integrity failure also degrades provider health | No successful assessment and no implicit allow | Retry only within the configured bound after health recovery; raw child output and paths remain hidden |
+| Desktop demo preview, receipt, managed entry, artifact, runtime, or normal integration does not verify | Refuse setup/reconciliation/readiness; do not guess, overwrite a collision, or run a drifted fixture. An unhealthy normal integration does not block separately digest-confirmed exact teardown. | Existing Verity memory behavior remains governed by the separate normal integration | Content-safe issue code and a fresh preview or bounded manual recovery path; close Desktop because its user-wide config writer does not cooperate with the Verity lock |
+| Desktop teardown sees managed-entry or artifact drift | Refuse automatic removal and preserve current configuration and receipt state | No change to memory ledger or normal integration | Resolve drift manually, then rerun exact-state verification |
+| Demo sink receives an unexpected value or field | Reject without retention, hashing the arbitrary body, or external transmission | No memory effect; sink is not a trust boundary | Fixed safe rejection only; never echo input |
 | Control Room loses API connectivity during a trust-changing action | Server transaction is authoritative; client must not assume success | Unchanged until a verified server result exists | Show unknown/pending state, refetch event outcome, require a fresh confirmation before retry |
 | Memory exceeds injection budget | No change to stored trust decision | Deterministically select eligible entries by documented budget/order; never truncate inside a memory record | Report omitted count and budget metadata without raw content |
 
@@ -429,6 +580,14 @@ modification under an uncompromised key; they do not prevent modification,
 provide confidentiality, establish factual truth, or withstand a fully
 compromised host. Shadow mode deliberately admits the configured shadow action
 and therefore must not be represented as protection.
+
+The Codex subscription provider adds a deliberately lower-isolation agentic
+boundary. Rejection of observed tool activity protects the acceptance decision;
+it does not provide outbound information-flow control or prove that no activity
+was attempted. The Desktop installer and fixed-marker sink reduce demo risk and
+detect tested drift, but their receipts and SHA-256 values are local integrity
+checks rather than signatures, supply-chain attestations, or network
+noninterference proofs.
 
 The release gate is evidence, not aspiration. Tests cover the demonstrated
 critical claims, including payload/event/order/omission/signature tampering and

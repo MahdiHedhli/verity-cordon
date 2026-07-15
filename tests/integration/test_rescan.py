@@ -160,6 +160,116 @@ async def test_benign_rescan_records_current_decision_without_revocation(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_evidence_status_remains_terminal_after_safe_signed_rescan(tmp_path) -> None:
+    service, store, view = await build_service(tmp_path, mode=Mode.ENFORCE)
+    evaluation = await service.evaluate_evidence(
+        EvidenceSubmission(
+            session_id=new_id(),
+            task_id=new_id(),
+            source_class=SourceClass.USER_INPUT,
+            content="The project uses Python 3.12.",
+        )
+    )
+    target = (await view.list_active())[0]
+    queries = LedgerQueries(store)
+    before = await queries.get_evidence_status(evaluation.evidence.evidence_id)
+
+    result = await RetroactiveRescanService(service).rescan(
+        target.memory_id,
+        actor_id="operator.demo",
+        reason="Routine signed evidence checkpoint regression.",
+        confirmed=True,
+    )
+    after = await queries.get_evidence_status(evaluation.evidence.evidence_id)
+
+    assert before["evaluation_state"] == "signed_terminal"
+    assert after["evaluation_state"] == "signed_terminal"
+    assert after["terminal_outcome"] == "completed"
+    assert after["terminal_event_ids"] == before["terminal_event_ids"]
+    assert after["candidate_ids"] == before["candidate_ids"]
+    assert after["actual_actions"] == before["actual_actions"] == ["allow"]
+    assert after["policy_versions"] == before["policy_versions"]
+    assert after["rescan_count"] == 1
+    assert after["latest_rescan"] == {
+        "candidate_id": result.candidate_id,
+        "candidate_event_id": result.rescan_candidate_event_id,
+        "decision_id": result.decision_id,
+        "actual_action": "allow",
+        "would_have_action": "allow",
+        "policy_id": result.policy_id,
+        "policy_version": result.policy_version,
+        "memory_id": result.memory_id,
+        "revoked": False,
+        "revocation_event_id": None,
+    }
+    assert after["fresh_session_ready"] is True
+    assert after["warning_code"] is None
+
+
+@pytest.mark.asyncio
+async def test_evidence_status_preserves_terminal_checkpoint_after_revoking_rescan(
+    tmp_path,
+) -> None:
+    service, store, view = await build_service(tmp_path, mode=Mode.SHADOW)
+    evaluation = await service.evaluate_evidence(
+        EvidenceSubmission(
+            session_id=new_id(),
+            task_id=new_id(),
+            source_class=SourceClass.TOOL_OUTPUT,
+            source_name="poisoned-docs-mcp",
+            content=POISONED_DOCS,
+        )
+    )
+    poisoned = next(
+        outcome
+        for outcome in evaluation.outcomes
+        if "demo_artifact_sink" in outcome.candidate.statement
+    )
+    assert poisoned.memory_id is not None
+    queries = LedgerQueries(store)
+    before = await queries.get_evidence_status(evaluation.evidence.evidence_id)
+
+    enforce_policy = load_builtin_policy(Mode.ENFORCE)
+    await SQLitePolicyRepository(store).activate(
+        enforce_policy,
+        actor_id="operator.demo",
+        reason="Activate enforcement for evidence-status rescan regression.",
+    )
+    service.policy_engine = PolicyEngine(enforce_policy)
+    result = await RetroactiveRescanService(service).rescan(
+        poisoned.memory_id,
+        actor_id="operator.demo",
+        reason="Revoke the synthetic delayed instruction.",
+        confirmed=True,
+    )
+    after = await queries.get_evidence_status(evaluation.evidence.evidence_id)
+
+    assert result.revoked is True
+    assert result.revocation_event_id is not None
+    assert after["evaluation_state"] == "signed_terminal"
+    assert after["terminal_outcome"] == "completed"
+    assert after["terminal_event_ids"] == before["terminal_event_ids"]
+    assert after["candidate_ids"] == before["candidate_ids"]
+    assert after["actual_actions"] == before["actual_actions"]
+    assert after["rescan_count"] == 1
+    assert after["latest_rescan"] == {
+        "candidate_id": result.candidate_id,
+        "candidate_event_id": result.rescan_candidate_event_id,
+        "decision_id": result.decision_id,
+        "actual_action": "quarantine",
+        "would_have_action": "quarantine",
+        "policy_id": result.policy_id,
+        "policy_version": result.policy_version,
+        "memory_id": result.memory_id,
+        "revoked": True,
+        "revocation_event_id": result.revocation_event_id,
+    }
+    assert all(item.memory_id != poisoned.memory_id for item in await view.list_active())
+    assert after["fresh_session_ready"] is True
+    assert after["warning_code"] is None
+
+
+@pytest.mark.asyncio
 async def test_rescan_requires_confirmation_and_active_state(tmp_path) -> None:
     service, store, view = await build_service(tmp_path, mode=Mode.ENFORCE)
     await service.evaluate_evidence(

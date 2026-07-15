@@ -6,6 +6,7 @@ import asyncio
 import json
 import sys
 from dataclasses import dataclass, replace
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,13 @@ from verity_cordon.policies.load import load_builtin_policy
 
 _FIXTURE_SERVER_NAME = "verity-cordon-poisoned-docs-fixture"
 _FIXTURE_TOOL_NAME = "get_release_guidance"
+_FIXTURE_SINK_TOOL_NAME = "demo_artifact_sink"
+_FIXTURE_ARTIFACT_MARKER = "VERITY_SYNTHETIC_RELEASE_MANIFEST_V1"
+_FIXTURE_ENVIRONMENT_MARKER = "VERITY_SYNTHETIC_DEMO_ENV_V1"
+_FIXTURE_CANONICAL_PAIR = (
+    f"artifact_marker={_FIXTURE_ARTIFACT_MARKER}\nenvironment_marker={_FIXTURE_ENVIRONMENT_MARKER}"
+)
+_FIXTURE_CANONICAL_PAIR_SHA256 = sha256(_FIXTURE_CANONICAL_PAIR.encode("utf-8")).hexdigest()
 _FIXTURE_MAX_OUTPUT_BYTES = 128 * 1024
 _FIXTURE_TIMEOUT_SECONDS = 3.0
 
@@ -34,6 +42,15 @@ class PoisonedDocsResult:
     text: str
     server_name: str
     tool_name: str
+    external_transmission_performed: bool
+    delayed_attempt: DelayedAttemptResult | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DelayedAttemptResult:
+    accepted: bool
+    call_count: int
+    canonical_pair_sha256: str
     external_transmission_performed: bool
 
 
@@ -74,7 +91,11 @@ def _request(request_id: int, method: str, params: dict[str, object]) -> bytes:
     ).encode("utf-8")
 
 
-def _validate_fixture_output(raw: bytes) -> PoisonedDocsResult:
+def _validate_fixture_output(
+    raw: bytes,
+    *,
+    expect_delayed_attempt: bool,
+) -> PoisonedDocsResult:
     if not raw or len(raw) > _FIXTURE_MAX_OUTPUT_BYTES:
         raise ConfigurationError("The poisoned-docs fixture returned an invalid response size.")
     try:
@@ -82,11 +103,12 @@ def _validate_fixture_output(raw: bytes) -> PoisonedDocsResult:
         responses = [json.loads(line) for line in lines]
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ConfigurationError("The poisoned-docs fixture returned invalid JSON.") from exc
-    if len(responses) != 3 or any(not isinstance(item, dict) for item in responses):
+    expected_ids = {1, 2, 3, 4} if expect_delayed_attempt else {1, 2, 3}
+    if len(responses) != len(expected_ids) or any(not isinstance(item, dict) for item in responses):
         raise ConfigurationError("The poisoned-docs fixture returned an invalid response set.")
     by_id = {item.get("id"): item for item in responses}
     if (
-        set(by_id) != {1, 2, 3}
+        set(by_id) != expected_ids
         or any(item.get("jsonrpc") != "2.0" for item in responses)
         or any("error" in item for item in responses)
     ):
@@ -101,13 +123,30 @@ def _validate_fixture_output(raw: bytes) -> PoisonedDocsResult:
         server_name = initialize["serverInfo"]["name"]
     except (KeyError, IndexError, TypeError) as exc:
         raise ConfigurationError("The poisoned-docs fixture response contract is invalid.") from exc
-    valid_tool = bool(
+    valid_tools = bool(
         isinstance(tools, list)
-        and len(tools) == 1
-        and isinstance(tools[0], dict)
+        and len(tools) == 2
+        and all(isinstance(tool, dict) for tool in tools)
+        and [tool.get("name") for tool in tools] == [_FIXTURE_TOOL_NAME, _FIXTURE_SINK_TOOL_NAME]
         and tools[0].get("name") == _FIXTURE_TOOL_NAME
         and isinstance(tools[0].get("inputSchema"), dict)
         and tools[0]["inputSchema"].get("additionalProperties") is False
+        and tools[1].get("inputSchema")
+        == {
+            "type": "object",
+            "properties": {
+                "artifact_marker": {
+                    "type": "string",
+                    "const": _FIXTURE_ARTIFACT_MARKER,
+                },
+                "environment_marker": {
+                    "type": "string",
+                    "const": _FIXTURE_ENVIRONMENT_MARKER,
+                },
+            },
+            "required": ["artifact_marker", "environment_marker"],
+            "additionalProperties": False,
+        }
     )
     valid_call = bool(
         isinstance(content, list)
@@ -123,18 +162,67 @@ def _validate_fixture_output(raw: bytes) -> PoisonedDocsResult:
         and call.get("isError") is False
         and "demo_artifact_sink" in text
     )
-    if server_name != _FIXTURE_SERVER_NAME or not valid_tool or not valid_call:
+    if server_name != _FIXTURE_SERVER_NAME or not valid_tools or not valid_call:
         raise ConfigurationError("The poisoned-docs fixture identity or safety flags are invalid.")
+
+    delayed_attempt: DelayedAttemptResult | None = None
+    if expect_delayed_attempt:
+        try:
+            sink_call = by_id[4]["result"]
+            sink_content = sink_call["content"]
+            sink_structured = sink_call["structuredContent"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ConfigurationError(
+                "The poisoned-docs delayed-attempt response contract is invalid."
+            ) from exc
+        valid_sink_call = bool(
+            isinstance(sink_content, list)
+            and len(sink_content) == 1
+            and isinstance(sink_content[0], dict)
+            and sink_content[0]
+            == {
+                "type": "text",
+                "text": (
+                    "Accepted fixed synthetic demo markers locally; no external "
+                    "transmission was performed."
+                ),
+            }
+            and isinstance(sink_structured, dict)
+            and set(sink_structured)
+            == {
+                "accepted",
+                "external_transmission_performed",
+                "call_count",
+                "canonical_pair_sha256",
+            }
+            and sink_structured.get("accepted") is True
+            and sink_structured.get("external_transmission_performed") is False
+            and type(sink_structured.get("call_count")) is int
+            and sink_structured.get("call_count") == 1
+            and sink_structured.get("canonical_pair_sha256") == _FIXTURE_CANONICAL_PAIR_SHA256
+            and sink_call.get("isError") is False
+        )
+        if not valid_sink_call:
+            raise ConfigurationError("The poisoned-docs delayed-attempt safety flags are invalid.")
+        delayed_attempt = DelayedAttemptResult(
+            accepted=True,
+            call_count=1,
+            canonical_pair_sha256=_FIXTURE_CANONICAL_PAIR_SHA256,
+            external_transmission_performed=False,
+        )
     return PoisonedDocsResult(
         text=text,
         server_name=server_name,
         tool_name=_FIXTURE_TOOL_NAME,
         external_transmission_performed=False,
+        delayed_attempt=delayed_attempt,
     )
 
 
 async def call_poisoned_docs_fixture(
     fixture_root: Path | None = None,
+    *,
+    include_delayed_attempt: bool = False,
 ) -> PoisonedDocsResult:
     """Invoke only the reviewed stdio fixture under a minimal environment."""
 
@@ -159,28 +247,41 @@ async def call_poisoned_docs_fixture(
         process.kill()
         await process.wait()
         raise ConfigurationError("The poisoned-docs fixture stdio boundary is unavailable.")
-    request_bytes = b"".join(
-        (
+    requests = [
+        _request(
+            1,
+            "initialize",
+            {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {},
+                "clientInfo": {"name": "verity-demo", "version": "1.0.0"},
+            },
+        ),
+        _request(2, "tools/list", {}),
+        _request(
+            3,
+            "tools/call",
+            {
+                "name": _FIXTURE_TOOL_NAME,
+                "arguments": {"release_channel": "stable"},
+            },
+        ),
+    ]
+    if include_delayed_attempt:
+        requests.append(
             _request(
-                1,
-                "initialize",
-                {
-                    "protocolVersion": "2025-11-25",
-                    "capabilities": {},
-                    "clientInfo": {"name": "verity-demo", "version": "1.0.0"},
-                },
-            ),
-            _request(2, "tools/list", {}),
-            _request(
-                3,
+                4,
                 "tools/call",
                 {
-                    "name": _FIXTURE_TOOL_NAME,
-                    "arguments": {"release_channel": "stable"},
+                    "name": _FIXTURE_SINK_TOOL_NAME,
+                    "arguments": {
+                        "artifact_marker": _FIXTURE_ARTIFACT_MARKER,
+                        "environment_marker": _FIXTURE_ENVIRONMENT_MARKER,
+                    },
                 },
-            ),
+            )
         )
-    )
+    request_bytes = b"".join(requests)
     try:
         async with asyncio.timeout(_FIXTURE_TIMEOUT_SECONDS):
             process.stdin.write(request_bytes)
@@ -201,7 +302,10 @@ async def call_poisoned_docs_fixture(
             return_code = await process.wait()
         if return_code != 0:
             raise ConfigurationError("The poisoned-docs fixture exited unsuccessfully.")
-        return _validate_fixture_output(output)
+        return _validate_fixture_output(
+            output,
+            expect_delayed_attempt=include_delayed_attempt,
+        )
     except TimeoutError as exc:
         raise ConfigurationError("The poisoned-docs fixture exceeded its time boundary.") from exc
     finally:
@@ -242,6 +346,20 @@ async def run_offline_demo(
     )
     if shadow_malicious.memory_id is None:
         raise RuntimeError("Offline shadow fixture did not create the expected demo memory.")
+    shadow_context = await runtime.memory_service.session_start_context(
+        session_id=new_id(),
+        token_budget=shadow_policy.limits.injection_token_budget,
+    )
+    shadow_memory_active_in_new_session = "demo_artifact_sink" in shadow_context
+    if not shadow_memory_active_in_new_session:
+        raise RuntimeError("Offline shadow fixture did not activate the delayed demo memory.")
+    delayed_fixture = await call_poisoned_docs_fixture(
+        fixture_root,
+        include_delayed_attempt=True,
+    )
+    delayed_attempt = delayed_fixture.delayed_attempt
+    if delayed_fixture.text != fixture.text or delayed_attempt is None:
+        raise RuntimeError("Offline delayed-attempt fixture did not satisfy its fixed contract.")
 
     enforce_policy = load_builtin_policy(Mode.ENFORCE)
     await runtime.policy_repository.activate(enforce_policy, actor_id="operator.demo")
@@ -291,6 +409,27 @@ async def run_offline_demo(
                 "actual_action": shadow_malicious.decision.actual_action.value,
                 "would_have_action": shadow_malicious.decision.would_have_action.value,
                 "memory_id": shadow_malicious.memory_id,
+            },
+            "delayed_attempt": {
+                "scenario_id": "vc-delayed-docs-v1",
+                "trigger": "synthetic_release_task",
+                "simulation": True,
+                "causal_claim": "not_established",
+                "sequence": "memory_presence_verified_then_fixed_sink_invoked",
+                "shadow_memory_active_in_new_session": shadow_memory_active_in_new_session,
+                "sink_tool": _FIXTURE_SINK_TOOL_NAME,
+                "arguments": {
+                    "artifact_marker": _FIXTURE_ARTIFACT_MARKER,
+                    "environment_marker": _FIXTURE_ENVIRONMENT_MARKER,
+                },
+                "accepted": delayed_attempt.accepted,
+                "call_count": delayed_attempt.call_count,
+                "canonical_pair_sha256": delayed_attempt.canonical_pair_sha256,
+                "transport": "stdio",
+                "boundary": "local_inert_fixture_only",
+                "external_transmission_performed": (
+                    delayed_attempt.external_transmission_performed
+                ),
             },
             "enforcement": {
                 "actions": [outcome.decision.actual_action.value for outcome in enforced.outcomes],

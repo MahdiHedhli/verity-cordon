@@ -543,6 +543,9 @@ class HookAdapter:
     def process(self, expected_event: str, raw: bytes) -> dict[str, Any]:
         """Return a valid Codex continuation response for every outcome."""
 
+        if os.environ.get("VERITY_SEMANTIC_CHILD") == "1":
+            return {"continue": True}
+
         try:
             parsed = parse_one_object(raw)
             path, request, idempotency_key = normalize_hook_input(parsed, expected_event)
@@ -593,6 +596,10 @@ def read_bounded_stdin(stream: Any = None) -> bytes:
 
 def main(argv: list[str] | None = None) -> int:
     """Run one synchronous command hook and always fail safe for memory reuse."""
+
+    if os.environ.get("VERITY_SEMANTIC_CHILD") == "1":
+        sys.stdout.write('{"continue":true}\n')
+        return 0
 
     arguments = list(sys.argv[1:] if argv is None else argv)
     expected_event = arguments[0] if len(arguments) == 1 else ""

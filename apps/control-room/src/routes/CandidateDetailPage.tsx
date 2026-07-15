@@ -25,6 +25,7 @@ export function CandidateDetailPage(): React.JSX.Element {
   const candidate = detail.candidate;
   const semantic = detail.semantic_assessment;
   const decision = detail.policy_decision;
+  const shadowAdmitted = decision.shadow_mode && decision.actual_action === "allow";
 
   return (
     <div className="page">
@@ -115,6 +116,11 @@ export function CandidateDetailPage(): React.JSX.Element {
               <StatusPill value={semantic.provider_state} tone={semantic.provider_state === "failed" ? "danger" : "info"} />
             </div>
             <div>
+              {semantic.provider_state === "live_codex_subscription" ? (
+                <p className="shadow-callout">
+                  This assessment used the lower-isolation agentic provider <span className="mono">agentic_sandboxed</span>. Tool activity invalidates the result; deterministic policy retains final authority.
+                </p>
+              ) : null}
               <p>{semantic.rationale ?? "The semantic provider failed without producing a risk recommendation."}</p>
               <dl className="score-grid">
                 <div><dt>Persistence</dt><dd>{formatLabel(semantic.persistence_intent)}</dd></div>
@@ -130,9 +136,66 @@ export function CandidateDetailPage(): React.JSX.Element {
         )}
       </Card>
 
-      <Card>
-        <div className="section-heading"><div><p className="eyebrow">Bound history</p><h2>Related events</h2></div><span>{detail.event_ids.length}</span></div>
-        <ul className="event-id-list">{detail.event_ids.map((eventId) => <li className="mono" key={eventId}>{eventId}</li>)}</ul>
+      <Card aria-labelledby="decision-recovery-timeline-title">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Decision to recovery</p>
+            <h2 id="decision-recovery-timeline-title">Decision and recovery timeline</h2>
+          </div>
+          <StatusPill value={detail.status} />
+        </div>
+        <ol className="timeline">
+          <li>
+            <span aria-hidden="true" className="timeline__node" />
+            <article>
+              <header><div><span className="mono sequence">1</span><strong>Trust decision</strong></div></header>
+              <div className="action-comparison action-comparison--inline">
+                <div><span>Actual action</span><StatusPill value={decision.actual_action} /></div>
+                <div><span>Would-have action</span><StatusPill value={decision.would_have_action} /></div>
+              </div>
+            </article>
+          </li>
+          <li>
+            <span aria-hidden="true" className="timeline__node" />
+            <article>
+              <header><div><span className="mono sequence">2</span><strong>Future-memory effect</strong></div></header>
+              {shadowAdmitted ? (
+                <p><strong>Shadow mode is not active protection.</strong> The actual allow action admitted this candidate, so delayed influence remained possible until revocation or another ineligibility event.</p>
+              ) : (
+                <p>The actual {formatLabel(decision.actual_action)} action governed whether this candidate could enter future memory injection.</p>
+              )}
+            </article>
+          </li>
+          <li>
+            <span aria-hidden="true" className={`timeline__node${detail.ledger_verified ? " timeline__node--verified" : ""}`} />
+            <article>
+              <header>
+                <div><span className="mono sequence">3</span><strong>Related signed events</strong></div>
+                <StatusPill value={detail.ledger_verified ? "verified" : "unverified"} />
+              </header>
+              <p>{detail.event_references.length} event references remain bound to this candidate.</p>
+              <ul className="event-id-list">
+                {detail.event_references.map((event) => (
+                  <li key={event.event_id}>
+                    <strong>{formatLabel(event.event_type)}</strong>{" "}
+                    <span className="mono">#{event.sequence_number} · {event.event_id}</span>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          </li>
+          <li>
+            <span aria-hidden="true" className={`timeline__node${detail.status === "revoked" ? " timeline__node--verified" : ""}`} />
+            <article>
+              <header><div><span className="mono sequence">4</span><strong>Current outcome</strong></div><StatusPill value={detail.status} /></header>
+              {detail.status === "revoked" ? (
+                <p>This candidate is revoked and excluded from active memory injection. Its related signed events remain in append-only history.</p>
+              ) : (
+                <p>The current candidate state is {formatLabel(detail.status)}. No revocation is represented by this response.</p>
+              )}
+            </article>
+          </li>
+        </ol>
       </Card>
     </div>
   );
