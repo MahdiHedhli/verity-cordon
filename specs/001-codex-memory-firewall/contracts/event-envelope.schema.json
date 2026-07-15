@@ -1,0 +1,312 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:verity-cordon:schema:event-envelope:1.0.0",
+  "title": "Verity Cordon Event Envelope",
+  "description": "An append-only, globally ordered ledger event. The event hash binds the canonical envelope, the previous global event hash, and the exact payload digest. The signature covers the raw 32-byte event hash, not its hexadecimal text.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "stream_id",
+    "sequence_number",
+    "event_type",
+    "occurred_at",
+    "actor",
+    "session_id",
+    "task_id",
+    "source_class",
+    "memory_id",
+    "evidence_references",
+    "policy_id",
+    "policy_version",
+    "detector_bundle_version",
+    "semantic_model_identifier",
+    "payload",
+    "payload_digest",
+    "previous_event_hash",
+    "canonicalization_algorithm",
+    "digest_algorithm",
+    "event_hash",
+    "signature_algorithm",
+    "signing_key_id",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "event_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "stream_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "sequence_number": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "event_type": {
+      "enum": [
+        "EvidenceCaptured",
+        "MemoryCandidateCreated",
+        "DetectorVerdictRecorded",
+        "SemanticAssessmentRecorded",
+        "PolicyDecisionRecorded",
+        "MemoryCommitted",
+        "MemoryRedacted",
+        "MemoryQuarantined",
+        "MemoryBlocked",
+        "MemoryApproved",
+        "MemoryRevoked",
+        "MemorySuperseded",
+        "MemoryExpired",
+        "PolicyActivated",
+        "PolicyActivationRejected",
+        "LedgerCheckpointCreated",
+        "StreamStarted",
+        "StreamAborted",
+        "StreamCommitted"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?Z$",
+      "description": "UTC timestamp normalized before hashing as YYYY-MM-DDTHH:MM:SS[.ffffff]Z: omit the fraction when zero; otherwise use 1-6 digits and remove trailing zeroes."
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "system",
+            "operator",
+            "codex",
+            "tool",
+            "agent",
+            "policy",
+            "detector"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "session_id": {
+      "$ref": "#/$defs/nullableIdentifier"
+    },
+    "task_id": {
+      "$ref": "#/$defs/nullableIdentifier"
+    },
+    "source_class": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/sourceClass"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "memory_id": {
+      "$ref": "#/$defs/nullableIdentifier"
+    },
+    "evidence_references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "evidence_id",
+          "digest"
+        ],
+        "properties": {
+          "evidence_id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "digest": {
+            "$ref": "#/$defs/sha256Hex"
+          }
+        }
+      },
+      "uniqueItems": true
+    },
+    "policy_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/policyIdentifier"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "policy_version": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "detector_bundle_version": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "semantic_model_identifier": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-specific payload. It MUST contain only finite JSON values and is independently canonicalized and hashed. Raw credentials, API keys, bearer capabilities, signing keys, and unredacted protected evidence are prohibited; evidence content is stored separately under local protection and referenced by identifier and digest.",
+      "additionalProperties": {
+        "$ref": "#/$defs/jsonValue"
+      }
+    },
+    "payload_digest": {
+      "$ref": "#/$defs/sha256Hex"
+    },
+    "previous_event_hash": {
+      "$ref": "#/$defs/sha256Hex",
+      "description": "Hash of the preceding global event. The genesis event uses 64 lowercase zeroes."
+    },
+    "canonicalization_algorithm": {
+      "const": "VC-CJ-1",
+      "description": "Project-defined canonical JSON profile: UTF-8 without BOM; object keys sorted lexicographically; compact separators; array order preserved; JSON lowercase literals; ensure_ascii=false; finite numbers only; duplicate object keys rejected; no Unicode normalization; UTC timestamps normalized before serialization. This is not an RFC 8785 claim."
+    },
+    "digest_algorithm": {
+      "const": "SHA-256"
+    },
+    "event_hash": {
+      "$ref": "#/$defs/sha256Hex",
+      "description": "SHA-256 of the VC-CJ-1 event body after removing event_hash and signature. The body retains signing_key_id, signature_algorithm, previous_event_hash, and payload_digest."
+    },
+    "signature_algorithm": {
+      "const": "Ed25519"
+    },
+    "signing_key_id": {
+      "type": "string",
+      "pattern": "^vc-ed25519-[0-9a-f]{64}$"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]{86}==$",
+      "description": "Standard padded base64 encoding of the 64-byte Ed25519 signature over the raw 32-byte event hash."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "sequence_number": {
+            "const": 1
+          }
+        },
+        "required": [
+          "sequence_number"
+        ]
+      },
+      "then": {
+        "properties": {
+          "previous_event_hash": {
+            "const": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "previous_event_hash": {
+            "not": {
+              "const": "0000000000000000000000000000000000000000000000000000000000000000"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"
+    },
+    "nullableIdentifier": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/identifier"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sha256Hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "policyIdentifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]{2,63}$"
+    },
+    "sourceClass": {
+      "enum": [
+        "user_input",
+        "tool_output",
+        "agent_output",
+        "imported_file",
+        "prior_memory",
+        "compaction",
+        "session_summary",
+        "external_event",
+        "operator_action",
+        "system"
+      ]
+    },
+    "jsonValue": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/jsonValue"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/jsonValue"
+          }
+        }
+      ]
+    }
+  }
+}

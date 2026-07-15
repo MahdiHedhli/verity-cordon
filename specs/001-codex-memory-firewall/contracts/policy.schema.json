@@ -1,0 +1,427 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:verity-cordon:schema:policy:1.0.0",
+  "title": "Verity Cordon Local Policy",
+  "description": "A versioned deterministic policy using VC-POLICY-1 constitutional hard guards. Pydantic validation rejects duplicate rule IDs. Remaining rules are evaluated by ascending (priority, rule_id), and the first matching rule determines would_have_action. All populated match fields are ANDed; values inside an array are ORed. Semantic output is input only; this policy remains final authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "engine_profile",
+    "policy_id",
+    "version",
+    "mode",
+    "default_action",
+    "shadow_action",
+    "protected_namespaces",
+    "rules",
+    "failure_behavior",
+    "manual_review",
+    "limits",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "engine_profile": {
+      "const": "VC-POLICY-1",
+      "description": "Applies non-configurable, versioned hard guards before document rules: structural invalidity blocks; raw credential material blocks; and untrusted writes to protected policy namespaces block."
+    },
+    "policy_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]{2,63}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "mode": {
+      "enum": [
+        "enforce",
+        "shadow"
+      ]
+    },
+    "default_action": {
+      "$ref": "#/$defs/action"
+    },
+    "shadow_action": {
+      "enum": [
+        "allow",
+        "redact"
+      ],
+      "description": "Action actually applied in shadow mode. would_have_action is still computed from the matching enforcement rule."
+    },
+    "protected_namespaces": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/namespacePattern"
+      }
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    },
+    "failure_behavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "detector_failure_high_risk",
+        "detector_failure_lower_risk",
+        "semantic_timeout_high_risk",
+        "semantic_timeout_lower_risk",
+        "semantic_invalid_high_risk",
+        "semantic_invalid_lower_risk",
+        "ledger_unavailable",
+        "ledger_corrupt",
+        "invalid_policy",
+        "daemon_unavailable",
+        "codex_hook_failure"
+      ],
+      "properties": {
+        "detector_failure_high_risk": {
+          "enum": [
+            "quarantine",
+            "block"
+          ]
+        },
+        "detector_failure_lower_risk": {
+          "$ref": "#/$defs/action"
+        },
+        "semantic_timeout_high_risk": {
+          "enum": [
+            "quarantine",
+            "block"
+          ]
+        },
+        "semantic_timeout_lower_risk": {
+          "$ref": "#/$defs/action"
+        },
+        "semantic_invalid_high_risk": {
+          "enum": [
+            "quarantine",
+            "block"
+          ]
+        },
+        "semantic_invalid_lower_risk": {
+          "$ref": "#/$defs/action"
+        },
+        "ledger_unavailable": {
+          "const": "refuse_commits_and_disable_injection"
+        },
+        "ledger_corrupt": {
+          "const": "refuse_commits_and_disable_injection"
+        },
+        "invalid_policy": {
+          "const": "refuse_new_commits"
+        },
+        "daemon_unavailable": {
+          "const": "continue_without_verity_memory"
+        },
+        "codex_hook_failure": {
+          "const": "continue_without_verity_memory"
+        }
+      }
+    },
+    "manual_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_actions",
+        "reason_required",
+        "actor_id_required",
+        "confirmation_required"
+      ],
+      "properties": {
+        "required_actions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "approve",
+              "block",
+              "revoke"
+            ]
+          }
+        },
+        "reason_required": {
+          "const": true
+        },
+        "actor_id_required": {
+          "const": true
+        },
+        "confirmation_required": {
+          "const": true
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_candidate_bytes",
+        "max_evidence_bytes",
+        "max_stream_bytes",
+        "max_stream_chunks",
+        "detector_timeout_ms",
+        "semantic_timeout_ms",
+        "injection_token_budget",
+        "default_ttl_seconds"
+      ],
+      "properties": {
+        "max_candidate_bytes": {
+          "type": "integer",
+          "minimum": 256,
+          "maximum": 1048576
+        },
+        "max_evidence_bytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 10485760
+        },
+        "max_stream_bytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 10485760
+        },
+        "max_stream_chunks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "detector_timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60000
+        },
+        "semantic_timeout_ms": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 300000
+        },
+        "injection_token_budget": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32768
+        },
+        "default_ttl_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 60,
+          "maximum": 31536000
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "action": {
+      "enum": [
+        "allow",
+        "redact",
+        "quarantine",
+        "block"
+      ]
+    },
+    "sourceClass": {
+      "enum": [
+        "user_input",
+        "tool_output",
+        "agent_output",
+        "imported_file",
+        "prior_memory",
+        "compaction",
+        "session_summary",
+        "external_event"
+      ]
+    },
+    "memoryKind": {
+      "enum": [
+        "fact",
+        "user_preference",
+        "project_convention",
+        "operational_instruction",
+        "tool_observation",
+        "task_summary",
+        "identity_assertion",
+        "policy_statement",
+        "credential_material",
+        "unknown"
+      ]
+    },
+    "severity": {
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ]
+    },
+    "namespacePattern": {
+      "type": "string",
+      "pattern": "^(facts|preferences|project|instructions|policies|tool_results|scratch|credentials)(?:\\.[a-z0-9*][a-z0-9_*-]*)*$",
+      "maxLength": 160
+    },
+    "detectorCategory": {
+      "enum": [
+        "credential_material",
+        "pii",
+        "persistent_instruction",
+        "protected_namespace",
+        "cross_task_contamination",
+        "self_reinforcement",
+        "untrusted_authority",
+        "anomalous_size",
+        "concealed_instruction",
+        "encoded_content",
+        "structural_invalidity"
+      ]
+    },
+    "semanticCategory": {
+      "enum": [
+        "persistent_instruction",
+        "privilege_escalation",
+        "tool_hijack",
+        "data_exfiltration",
+        "cross_task_contamination",
+        "self_reinforcement",
+        "secret_material",
+        "protected_namespace",
+        "concealed_instruction",
+        "benign_fact",
+        "benign_preference",
+        "ambiguous"
+      ]
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule_id",
+        "priority",
+        "description",
+        "match",
+        "action",
+        "manual_review_required",
+        "ttl_seconds"
+      ],
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{2,63}$"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "match": {
+          "type": "object",
+          "description": "All present fields must match. Array fields match when any listed value or pattern matches. Detector severity considers only positive findings. Semantic category/score fields do not match when no successful assessment exists. semantic_required=true matches only a successful assessment; false means the assessment presence does not constrain the rule.",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "source_classes": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/sourceClass"
+              }
+            },
+            "namespace_patterns": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/namespacePattern"
+              }
+            },
+            "memory_kinds": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/memoryKind"
+              }
+            },
+            "sensitivities": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "public",
+                  "internal",
+                  "sensitive",
+                  "restricted",
+                  "credential"
+                ]
+              }
+            },
+            "detector_categories_any": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/detectorCategory"
+              }
+            },
+            "minimum_detector_severity": {
+              "$ref": "#/$defs/severity"
+            },
+            "semantic_categories_any": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/semanticCategory"
+              }
+            },
+            "minimum_semantic_risk": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "persistence_requested": {
+              "type": "boolean"
+            },
+            "semantic_required": {
+              "type": "boolean"
+            }
+          }
+        },
+        "action": {
+          "$ref": "#/$defs/action"
+        },
+        "manual_review_required": {
+          "type": "boolean"
+        },
+        "ttl_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 60,
+          "maximum": 31536000
+        }
+      }
+    }
+  }
+}

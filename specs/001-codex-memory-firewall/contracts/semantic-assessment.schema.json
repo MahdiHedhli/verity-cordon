@@ -1,0 +1,314 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:verity-cordon:schema:semantic-assessment:1.0.0",
+  "title": "Verity Cordon Semantic Assessment",
+  "description": "A schema-constrained semantic risk recommendation over sanitized candidate content. It is policy input and cannot independently grant durable trust.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "assessment_id",
+    "candidate_id",
+    "provider_state",
+    "requested_model",
+    "returned_model",
+    "prompt_version",
+    "risk_score",
+    "categories",
+    "persistence_intent",
+    "authority_claim",
+    "exfiltration_risk",
+    "tool_hijack_risk",
+    "cross_task_risk",
+    "secret_risk",
+    "rationale",
+    "recommended_disposition",
+    "sanitized_content_digest",
+    "cache_hit",
+    "latency_ms",
+    "failure",
+    "assessed_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "assessment_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "candidate_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "provider_state": {
+      "enum": [
+        "live_openai",
+        "recorded_fixture",
+        "failed"
+      ]
+    },
+    "requested_model": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "returned_model": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "prompt_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "risk_score": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/score"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "categories": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/category"
+      }
+    },
+    "persistence_intent": {
+      "enum": [
+        "none",
+        "implicit",
+        "explicit",
+        "unknown"
+      ]
+    },
+    "authority_claim": {
+      "enum": [
+        "none",
+        "implied",
+        "explicit",
+        "unknown"
+      ]
+    },
+    "exfiltration_risk": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/score"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "tool_hijack_risk": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/score"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "cross_task_risk": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/score"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "secret_risk": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/score"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rationale": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 2000,
+      "description": "Sanitized rationale that MUST NOT reproduce a secret or an unsafe evidence passage."
+    },
+    "recommended_disposition": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/action"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sanitized_content_digest": {
+      "$ref": "#/$defs/sha256Hex"
+    },
+    "cache_hit": {
+      "type": "boolean"
+    },
+    "latency_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 300000
+    },
+    "failure": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "class",
+            "retryable"
+          ],
+          "properties": {
+            "class": {
+              "enum": [
+                "timeout",
+                "unavailable",
+                "refusal",
+                "incomplete",
+                "invalid_schema",
+                "invalid_response",
+                "internal_error"
+              ]
+            },
+            "retryable": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "assessed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "provider_state": {
+            "const": "live_openai"
+          }
+        },
+        "required": [
+          "provider_state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requested_model": {
+            "type": "string"
+          },
+          "returned_model": {
+            "type": "string"
+          },
+          "failure": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "provider_state": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "provider_state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "failure": {"type": "object"},
+          "risk_score": {"type": "null"},
+          "categories": {"maxItems": 0},
+          "persistence_intent": {"const": "unknown"},
+          "authority_claim": {"const": "unknown"},
+          "exfiltration_risk": {"type": "null"},
+          "tool_hijack_risk": {"type": "null"},
+          "cross_task_risk": {"type": "null"},
+          "secret_risk": {"type": "null"},
+          "rationale": {"type": "null"},
+          "recommended_disposition": {"type": "null"}
+        }
+      },
+      "else": {
+        "properties": {
+          "failure": {"type": "null"},
+          "risk_score": {"$ref": "#/$defs/score"},
+          "categories": {"minItems": 1},
+          "exfiltration_risk": {"$ref": "#/$defs/score"},
+          "tool_hijack_risk": {"$ref": "#/$defs/score"},
+          "cross_task_risk": {"$ref": "#/$defs/score"},
+          "secret_risk": {"$ref": "#/$defs/score"},
+          "rationale": {"type": "string", "minLength": 1},
+          "recommended_disposition": {"$ref": "#/$defs/action"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"
+    },
+    "sha256Hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "action": {
+      "enum": [
+        "allow",
+        "redact",
+        "quarantine",
+        "block"
+      ]
+    },
+    "category": {
+      "enum": [
+        "persistent_instruction",
+        "privilege_escalation",
+        "tool_hijack",
+        "data_exfiltration",
+        "cross_task_contamination",
+        "self_reinforcement",
+        "secret_material",
+        "protected_namespace",
+        "concealed_instruction",
+        "benign_fact",
+        "benign_preference",
+        "ambiguous"
+      ]
+    }
+  }
+}

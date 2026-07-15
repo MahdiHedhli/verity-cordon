@@ -58,6 +58,10 @@ then start a new session and inspect the approved memory supplied to it.
    a session starts, **Then** Codex continues without Verity-provided memory and
    receives a content-free health warning.
 
+**Security Test Matrix**: Benign fact, malicious persistent instruction,
+benign quoted false positive, semantic/daemon failure, next-session exclusion,
+and invalid-ledger injection denial are all required P1 cases.
+
 ---
 
 ### User Story 2 - Understand Every Memory Decision (Priority: P2)
@@ -86,6 +90,10 @@ semantic assessment, policy, actions, events, and ledger verification.
    inspects the decision, **Then** the failed component and fallback action are
    explicit rather than represented as a clean pass.
 
+**Security Test Matrix**: Inspect benign and malicious decisions, a benign
+quoted false positive, a failed component, cross-session provenance, and a
+tampered-chain status; every view must remain content-safe.
+
 ---
 
 ### User Story 3 - Revoke Previously Trusted Memory (Priority: P3)
@@ -112,6 +120,10 @@ malicious memory, revoke the malicious event, rebuild, and compare the result.
    **When** consistency is checked, **Then** injection is disabled until rebuild
    removes the stale entry.
 
+**Security Test Matrix**: Cover legitimate memory preservation, malicious
+target revocation, a false-positive preview cancelled without mutation,
+transaction failure, later-session exclusion, and tampered-history refusal.
+
 ---
 
 ### User Story 4 - Evaluate Safely in Shadow Mode (Priority: P4)
@@ -137,19 +149,26 @@ modes and compare recorded and applied actions.
    **Then** the interface does not present shadow evaluation as active
    protection.
 
+**Security Test Matrix**: Cover benign parity, malicious action divergence, a
+false-positive candidate, semantic failure fallback, cross-session
+shadow-admission labeling, and decision-event tamper detection.
+
 ---
 
 ### User Story 5 - Verify Ledger Integrity (Priority: P5)
 
-As an operator or judge, I need a straightforward way to verify that
+As an operator or judge, I need a straightforward way to verify that covered
 memory-security events and their bound payloads have not been altered,
-reordered, omitted, or signed by an unexpected key.
+reordered, omitted relative to a trusted expected head, or signed by an
+unexpected key.
 
 **Why this priority**: Tamper evidence is a central product claim and must be
 independently checkable.
 
-**Independent Test**: Verify an intact ledger, then separately alter a payload,
-alter an event, reorder events, remove an event, and corrupt a signature.
+**Independent Test**: Verify an intact ledger against its signed expected-head
+sidecar, then separately alter a payload, alter an event, reorder events, remove
+an event, and corrupt a signature. Verify that the same chain without an
+expected head reports terminal completeness as unproven.
 
 **Acceptance Scenarios**:
 
@@ -162,6 +181,14 @@ alter an event, reorder events, remove an event, and corrupt a signature.
 3. **Given** the installation public key, **When** a judge independently verifies
    an exported event, **Then** the documented canonical representation and
    signature procedure reproduce the stored result.
+4. **Given** a self-contained chain with no expected head or external
+   checkpoint, **When** verification runs, **Then** covered records may pass
+   cryptographic checks but the overall result is not fully verified and tail
+   completeness is explicitly `unproven`.
+
+**Security Test Matrix**: Cover an intact benign chain, each malicious mutation,
+equivalent-serialization false positives, key/storage failure, an expected-head
+check across sessions, and payload/order/omission/signature/view tampering.
 
 ---
 
@@ -188,6 +215,10 @@ abort or commit them, and inspect active memory and audit history.
    outcome exists without active memory.
 4. **Given** concurrent streams, **When** one fails and another succeeds, **Then**
    their buffers and outcomes remain isolated.
+
+**Security Test Matrix**: Cover a benign stream, split malicious stream, benign
+quoted attack text, cancellation/storage failure, next-session visibility only
+after commit, and tampering with stream events.
 
 ---
 
@@ -218,6 +249,10 @@ verify flows, then optionally run the explicitly labeled live path.
 4. **Given** the synthetic poisoned documentation tool, **When** it runs, **Then**
    it binds only to loopback, reads no real environment values, sends no network
    traffic externally, and clearly identifies itself as inert demo code.
+
+**Security Test Matrix**: The judge path includes benign seed data, the
+malicious tool fixture, a false-positive trap, offline/live dependency failure,
+cross-session injection behavior, and an isolated ledger-tamper demonstration.
 
 ### Edge Cases
 
@@ -267,12 +302,15 @@ verify flows, then optionally run the explicitly labeled live path.
   shadow-admitted, and MUST NOT be described as active protection.
 - **FR-008**: The system MUST maintain an append-only security event history in
   which corrections are represented by new events rather than edits or
-  deletions.
+  deletions; due TTLs MUST become explicit expiration events before they affect
+  replay or injection.
 - **FR-009**: Each persisted event MUST bind its canonical envelope, prior event,
   exact payload digest, signature, and signing-key identifier.
 - **FR-010**: Operators MUST be able to verify event order, chain links, event
   digests, payload digests, signatures, key identifiers, and materialized-view
-  consistency, with the first failure identified.
+  consistency, with the first failure identified. Full verification MUST bind
+  to a signed local expected head or supplied checkpoint; without one, terminal
+  completeness MUST be reported as unproven.
 - **FR-011**: Active memory MUST be derived deterministically from committed,
   eligible events and exclude blocked, quarantined, revoked, superseded,
   expired, or invalid memories.
@@ -302,10 +340,12 @@ verify flows, then optionally run the explicitly labeled live path.
   active memory directly, and inject no unverified evidence.
 - **FR-020**: Operators MUST be able to validate, inspect, and activate local
   policies; invalid policy MUST fail closed for new commits; activation MUST be
-  recorded; and last-known-good behavior MUST be explicit.
+  recorded; rejected activation MUST append a content-safe failure event when
+  the ledger is available; and last-known-good behavior MUST be explicit.
 - **FR-021**: The product MUST provide working health, status, policy, memory,
-  revocation, rebuild, ledger verification, public-key export, offline demo, and
-  live demo operator paths without placeholder success responses.
+  revocation, rebuild, signing-key initialization, ledger verification,
+  public-key export, offline demo, and live demo operator paths without
+  placeholder success responses.
 - **FR-022**: The offline demo MUST require no API key and exercise real policy,
   ledger, memory view, service, and UI code using deterministic semantic
   fixtures.
@@ -335,7 +375,9 @@ verify flows, then optionally run the explicitly labeled live path.
 - **SFR-003**: High-risk ambiguous candidates MUST default to quarantine after
   detector or semantic failure; lower-risk fallback requires explicit policy.
 - **SFR-004**: New commits MUST fail closed when the active policy is invalid;
-  policy failure MUST be visible and auditable.
+  policy failure MUST be visible and auditable. A rejected proposed policy MAY
+  leave an intact last-known-good policy active, but no valid policy means no
+  commit and no injection.
 - **SFR-005**: Private signing material, API keys, credentials, raw secrets, and
   unsafe development logs MUST be absent from the repository and default output.
 - **SFR-006**: The signing-key threat boundary, local-host assumptions,
@@ -410,8 +452,10 @@ certification.
 - **SC-003**: Revoking one seeded malicious memory and rebuilding preserves 100%
   of unrelated eligible seeded memories and removes the target.
 - **SC-004**: Every covered payload alteration, event alteration, reordering,
-  omission, invalid signature, and stale-view fixture causes verification to
-  fail at the first attributable inconsistency.
+  interior omission, expected-head-relative terminal omission, invalid
+  signature, and stale-view fixture causes verification to fail at the first
+  attributable inconsistency; an unanchored tail is reported as unproven rather
+  than complete.
 - **SC-005**: No synthetic secret value from the adversarial fixtures appears in
   model-bound content, routine logs, telemetry attributes, list views, or demo
   screenshots.

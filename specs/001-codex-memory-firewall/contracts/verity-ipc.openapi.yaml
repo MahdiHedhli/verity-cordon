@@ -1,0 +1,1970 @@
+openapi: 3.1.0
+info:
+  title: Verity Cordon Local IPC API
+  version: 1.0.0
+  description: >-
+    Contract between thin Codex hooks, the local CLI, the Memory Control Room,
+    and verityd. The daemon binds to loopback only. It rejects non-loopback
+    peers, any Host other than the configured loopback authority, and browser
+    requests whose Origin is not the same-origin Control Room. Missing Origin is
+    accepted only for authenticated non-browser local clients. Read endpoints
+    return safe representations and are loopback-only. The unauthenticated
+    challenge endpoint grants no authority; the session bootstrap requires a
+    one-time passphrase-derived proof. Hook ingestion and every subsequent
+    trust-changing or state-changing operation requires either a
+    per-installation bearer capability for non-browser clients or an
+    origin-bound HttpOnly Control Room session plus a CSRF header. Bearer
+    capabilities, session cookies, raw signing keys, raw secrets, and
+    unredacted evidence are never response fields.
+  contact:
+    name: Verity Cordon
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: http://127.0.0.1:8765/api/v1
+    description: Default loopback-only daemon
+x-verity-local-security:
+  bind_addresses: [127.0.0.1]
+  allowed_hosts: ["127.0.0.1:8765"]
+  allowed_browser_origins: ["http://127.0.0.1:8765"]
+  allow_credentials_cors: false
+  reject_null_origin: true
+  allow_missing_origin_with_bearer_capability: true
+  non_browser_mutation_transport: authorization_bearer_header_only
+  browser_mutation_transport: passphrase_challenge_then_httponly_samesite_strict_cookie_plus_csrf_header
+  browser_passphrase_minimum_characters: 12
+  browser_challenge_ttl_seconds: 60
+  browser_max_challenges_per_minute: 20
+  browser_max_failed_proofs_per_window: 5
+  browser_failed_proof_window_seconds: 300
+  browser_cooldown_seconds: 300
+  browser_session_idle_ttl_seconds: 900
+tags:
+  - name: Health
+  - name: Control Room
+  - name: Hooks
+  - name: Candidates
+  - name: Memory
+  - name: Events
+  - name: Policies
+  - name: Ledger
+  - name: Streaming
+security: []
+paths:
+  /health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Return a content-free liveness result
+      responses:
+        "200":
+          description: Daemon process is reachable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /status:
+    get:
+      tags: [Health]
+      operationId: getStatus
+      summary: Return privacy-safe product status
+      responses:
+        "200":
+          description: Current daemon, policy, ledger, view, and provider state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /statistics:
+    get:
+      tags: [Health]
+      operationId: getStatistics
+      summary: Return privacy-safe aggregate evaluation statistics
+      responses:
+        "200":
+          description: Aggregate counts and latency without content.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatisticsResponse"
+  /ui/challenge:
+    get:
+      tags: [Control Room]
+      operationId: getControlRoomChallenge
+      summary: Obtain a short-lived local browser authentication challenge
+      description: >-
+        This endpoint accepts only the exact configured Control Room Origin and
+        a loopback peer. It returns public PBKDF2 parameters and a one-time
+        nonce. Possession of this challenge does not authorize mutations.
+      security: []
+      responses:
+        "200":
+          description: A short-lived one-time challenge.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ControlRoomChallengeResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /ui/session:
+    post:
+      tags: [Control Room]
+      operationId: createControlRoomSession
+      summary: Establish an origin-bound local browser mutation session
+      description: >-
+        This endpoint accepts only the exact configured Control Room Origin and
+        a loopback peer and requires a valid one-time HMAC proof derived from
+        the operator's locally configured Control Room passphrase. The
+        passphrase is entered through a non-echoing prompt or secret
+        environment input and is never sent over HTTP. On success, this
+        endpoint sets an opaque HttpOnly, SameSite=Strict, Path=/ cookie and
+        returns a short-lived CSRF token for in-memory use. It never returns the
+        session cookie, verifier, passphrase, or installation bearer capability.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ControlRoomSessionRequest"
+      responses:
+        "201":
+          description: Local browser session established.
+          headers:
+            Set-Cookie:
+              description: >-
+                Opaque HttpOnly Control Room session; SameSite=Strict and
+                Path=/. Secure is added if a future HTTPS loopback origin is
+                configured.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ControlRoomSessionResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /hooks/evidence:
+    post:
+      tags: [Hooks]
+      operationId: captureHookEvidence
+      summary: Capture normalized evidence from a supported Codex hook
+      description: >-
+        Returns after durable local capture or queue admission. Semantic
+        evaluation is asynchronous and never runs in the hook process.
+      security:
+        - LocalMutationCapability: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HookEvidenceRequest"
+      responses:
+        "202":
+          description: Evidence was accepted or recognized as an idempotent replay.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceAcceptedResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /hooks/session-start:
+    post:
+      tags: [Hooks]
+      operationId: getSessionStartContext
+      summary: Render eligible approved memory for a Codex SessionStart hook
+      description: >-
+        The response contains either a fully rendered, budgeted context block or
+        an explicit unavailable state. It never returns raw evidence or
+        ineligible memory.
+      security:
+        - LocalMutationCapability: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionStartRequest"
+      responses:
+        "200":
+          description: Injection decision, including an explicit no-context result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionStartResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /candidates:
+    get:
+      tags: [Candidates]
+      operationId: listCandidates
+      summary: List safe candidate summaries
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/MemoryStatus"
+        - name: kind
+          in: query
+          schema:
+            $ref: "#/components/schemas/MemoryKind"
+        - name: namespace
+          in: query
+          schema:
+            type: string
+            maxLength: 160
+        - name: source_class
+          in: query
+          schema:
+            $ref: "#/components/schemas/SourceClass"
+        - name: session_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Identifier"
+        - name: policy_version
+          in: query
+          schema:
+            type: string
+            maxLength: 64
+        - name: risk_category
+          in: query
+          schema:
+            type: string
+            maxLength: 64
+        - name: semantic_provider
+          in: query
+          schema:
+            $ref: "#/components/schemas/SemanticProviderState"
+      responses:
+        "200":
+          description: Page of safe candidate summaries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CandidateListResponse"
+  /candidates/{candidate_id}:
+    get:
+      tags: [Candidates]
+      operationId: getCandidate
+      summary: Get a safe, provenance-rich candidate detail
+      parameters:
+        - $ref: "#/components/parameters/CandidateId"
+      responses:
+        "200":
+          description: Candidate, detector, semantic, policy, and event detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CandidateDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /candidates/{candidate_id}/review:
+    post:
+      tags: [Candidates]
+      operationId: reviewCandidate
+      summary: Approve, block, or leave a candidate quarantined
+      security:
+        - LocalMutationCapability: []
+        - ControlRoomSession: []
+          ControlRoomCsrf: []
+      parameters:
+        - $ref: "#/components/parameters/CandidateId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CandidateReviewRequest"
+      responses:
+        "200":
+          description: Recorded review outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustActionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /memories:
+    get:
+      tags: [Memory]
+      operationId: listMemories
+      summary: List safe materialized memory records
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/MemoryStatus"
+        - name: namespace
+          in: query
+          schema:
+            type: string
+            maxLength: 160
+        - name: kind
+          in: query
+          schema:
+            $ref: "#/components/schemas/MemoryKind"
+        - name: source_class
+          in: query
+          schema:
+            $ref: "#/components/schemas/SourceClass"
+        - name: session_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Identifier"
+        - name: policy_version
+          in: query
+          schema:
+            type: string
+            maxLength: 64
+        - name: risk_category
+          in: query
+          schema:
+            type: string
+            maxLength: 64
+        - name: semantic_provider
+          in: query
+          schema:
+            $ref: "#/components/schemas/SemanticProviderState"
+      responses:
+        "200":
+          description: Page of safe memory records.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryListResponse"
+  /memories/{memory_id}:
+    get:
+      tags: [Memory]
+      operationId: getMemory
+      summary: Get one safe materialized memory record
+      parameters:
+        - $ref: "#/components/parameters/MemoryId"
+      responses:
+        "200":
+          description: Safe materialized memory record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryRecord"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /memories/{memory_id}/revoke/preview:
+    post:
+      tags: [Memory]
+      operationId: previewMemoryRevocation
+      summary: Preview active-view changes from revoking one memory
+      security:
+        - LocalMutationCapability: []
+        - ControlRoomSession: []
+          ControlRoomCsrf: []
+      parameters:
+        - $ref: "#/components/parameters/MemoryId"
+      responses:
+        "200":
+          description: Content-safe revocation impact preview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevocationPreviewResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /memories/{memory_id}/revoke:
+    post:
+      tags: [Memory]
+      operationId: revokeMemory
+      summary: Append a reasoned revocation event and rebuild the view
+      security:
+        - LocalMutationCapability: []
+        - ControlRoomSession: []
+          ControlRoomCsrf: []
+      parameters:
+        - $ref: "#/components/parameters/MemoryId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperatorActionRequest"
+      responses:
+        "200":
+          description: Revocation and rebuild completed atomically or failed without partial change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustActionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /memory/rebuild:
+    post:
+      tags: [Memory]
+      operationId: rebuildMemoryView
+      summary: Replay the ledger and compare or replace the materialized view
+      security:
+        - LocalMutationCapability: []
+        - ControlRoomSession: []
+          ControlRoomCsrf: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RebuildRequest"
+      responses:
+        "200":
+          description: Rebuild comparison or completed rebuild.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RebuildResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /events:
+    get:
+      tags: [Events]
+      operationId: listEventTimeline
+      summary: List content-safe append-only event summaries
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - name: memory_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Identifier"
+        - name: event_type
+          in: query
+          schema:
+            $ref: "#/components/schemas/EventType"
+      responses:
+        "200":
+          description: Page of event summaries without raw payload content.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventListResponse"
+  /policies/active:
+    get:
+      tags: [Policies]
+      operationId: getActivePolicy
+      summary: Get the active validated policy and its digest
+      responses:
+        "200":
+          description: Active policy state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivePolicyResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /policies/validate:
+    post:
+      tags: [Policies]
+      operationId: validatePolicy
+      summary: Validate a parsed local policy without activating it
+      security:
+        - LocalMutationCapability: []
+        - ControlRoomSession: []
+          ControlRoomCsrf: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RawPolicyDocument"
+      responses:
+        "200":
+          description: Validation result and canonical content digest.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyValidationResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /policies/activate:
+    post:
+      tags: [Policies]
+      operationId: activatePolicy
+      summary: Validate and activate a local policy, appending PolicyActivated
+      security:
+        - LocalMutationCapability: []
+        - ControlRoomSession: []
+          ControlRoomCsrf: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyActivationRequest"
+      responses:
+        "200":
+          description: Policy was already active as an idempotent replay.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyActivationResponse"
+        "201":
+          description: Policy was activated and an event appended.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyActivationResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "422":
+          description: Activation was rejected and auditable when the ledger remained healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyActivationRejectedResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /ledger/verify:
+    post:
+      tags: [Ledger]
+      operationId: verifyLedger
+      summary: Verify the global chain, payloads, signatures, keys, and view
+      security:
+        - LocalMutationCapability: []
+        - ControlRoomSession: []
+          ControlRoomCsrf: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LedgerVerifyRequest"
+      responses:
+        "200":
+          description: Verification completed, whether valid or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LedgerVerificationResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /ledger/public-key:
+    get:
+      tags: [Ledger]
+      operationId: getLedgerPublicKey
+      summary: Export the installation public key and fingerprint
+      responses:
+        "200":
+          description: Public verification material only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicKeyResponse"
+  /streams:
+    post:
+      tags: [Streaming]
+      operationId: beginStream
+      summary: Begin an isolated transactional memory write
+      security:
+        - LocalMutationCapability: []
+        - ControlRoomSession: []
+          ControlRoomCsrf: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamBeginRequest"
+      responses:
+        "201":
+          description: Stream is open and uncommitted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamStateResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /streams/{stream_id}/chunks:
+    post:
+      tags: [Streaming]
+      operationId: appendStreamChunk
+      summary: Append an ordered chunk to an open stream
+      security:
+        - LocalMutationCapability: []
+        - ControlRoomSession: []
+          ControlRoomCsrf: []
+      parameters:
+        - $ref: "#/components/parameters/StreamId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamAppendRequest"
+      responses:
+        "200":
+          description: Chunk accepted or stream terminated by incremental policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamStateResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /streams/{stream_id}/commit:
+    post:
+      tags: [Streaming]
+      operationId: commitStream
+      summary: Final-scan and atomically commit an open stream
+      security:
+        - LocalMutationCapability: []
+        - ControlRoomSession: []
+          ControlRoomCsrf: []
+      parameters:
+        - $ref: "#/components/parameters/StreamId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamCommitRequest"
+      responses:
+        "200":
+          description: Final decision; blocked streams never partially commit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamCommitResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /streams/{stream_id}/abort:
+    post:
+      tags: [Streaming]
+      operationId: abortStream
+      summary: Abort an open stream without creating active memory
+      security:
+        - LocalMutationCapability: []
+        - ControlRoomSession: []
+          ControlRoomCsrf: []
+      parameters:
+        - $ref: "#/components/parameters/StreamId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamAbortRequest"
+      responses:
+        "200":
+          description: Stream is terminal and auditable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamStateResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+components:
+  securitySchemes:
+    LocalMutationCapability:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-local-capability
+      description: >-
+        Per-installation opaque capability loaded from a restrictive local file.
+        It is never accepted in a query parameter and never appears in logs,
+        telemetry, responses, fixtures, screenshots, or Git.
+    ControlRoomSession:
+      type: apiKey
+      in: cookie
+      name: vc_ui_session
+      description: >-
+        Opaque, short-lived, HttpOnly, SameSite=Strict local browser session.
+        The value is server-managed and never exposed to JavaScript.
+    ControlRoomCsrf:
+      type: apiKey
+      in: header
+      name: X-Verity-CSRF
+      description: >-
+        Short-lived CSRF token returned only by the exact same-origin session
+        bootstrap. The Control Room keeps it in memory and never places it in a
+        URL, DOM node, browser storage, log, or telemetry.
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 512
+    CandidateId:
+      name: candidate_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Identifier"
+    MemoryId:
+      name: memory_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Identifier"
+    StreamId:
+      name: stream_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Identifier"
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Opaque retry key scoped to the operation and authenticated installation.
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9._:-]{16,128}$"
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid local capability. The response never echoes it.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Local browser origin, challenge, or proof was rejected. The response does not distinguish which check failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RateLimited:
+      description: Too many local browser challenge or proof attempts. Retry-After is content-free.
+      headers:
+        Retry-After:
+          schema: {type: integer, minimum: 1, maximum: 300}
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Requested local resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Current state or idempotency record conflicts with the request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    PayloadTooLarge:
+      description: Request exceeded the active bounded limit.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnprocessableEntity:
+      description: Schema-valid transport with invalid domain content.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServiceUnavailable:
+      description: A required local safety dependency is unavailable or unhealthy.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    Identifier:
+      type: string
+      pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"
+    Sha256Hex:
+      type: string
+      pattern: "^[0-9a-f]{64}$"
+    Action:
+      type: string
+      enum: [allow, redact, quarantine, block]
+    Mode:
+      type: string
+      enum: [enforce, shadow]
+    SourceClass:
+      type: string
+      enum:
+        - user_input
+        - tool_output
+        - agent_output
+        - imported_file
+        - prior_memory
+        - compaction
+        - session_summary
+        - external_event
+    MemoryKind:
+      type: string
+      enum:
+        - fact
+        - user_preference
+        - project_convention
+        - operational_instruction
+        - tool_observation
+        - task_summary
+        - identity_assertion
+        - policy_statement
+        - credential_material
+        - unknown
+    MemoryStatus:
+      type: string
+      enum:
+        - active
+        - quarantined
+        - blocked
+        - redacted
+        - revoked
+        - superseded
+        - expired
+    SemanticProviderState:
+      type: string
+      enum: [live_openai, recorded_fixture, deterministic_only, failed, not_required]
+    EventType:
+      type: string
+      enum:
+        - EvidenceCaptured
+        - MemoryCandidateCreated
+        - DetectorVerdictRecorded
+        - SemanticAssessmentRecorded
+        - PolicyDecisionRecorded
+        - MemoryCommitted
+        - MemoryRedacted
+        - MemoryQuarantined
+        - MemoryBlocked
+        - MemoryApproved
+        - MemoryRevoked
+        - MemorySuperseded
+        - MemoryExpired
+        - PolicyActivated
+        - PolicyActivationRejected
+        - LedgerCheckpointCreated
+        - StreamStarted
+        - StreamAborted
+        - StreamCommitted
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [schema_version, status]
+      properties:
+        schema_version:
+          const: 1.0.0
+        status:
+          const: alive
+    StatusResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - daemon
+        - mode
+        - policy
+        - ledger
+        - memory_view
+        - semantic_provider
+        - counts
+      properties:
+        schema_version:
+          const: 1.0.0
+        daemon:
+          type: string
+          enum: [healthy, degraded, read_only, unavailable]
+        mode:
+          $ref: "#/components/schemas/Mode"
+        policy:
+          $ref: "#/components/schemas/PolicySummary"
+        ledger:
+          type: string
+          enum: [verified, unverified, invalid, unavailable]
+        memory_view:
+          type: string
+          enum: [consistent, stale, rebuilding, unavailable]
+        semantic_provider:
+          $ref: "#/components/schemas/SemanticProviderState"
+        counts:
+          $ref: "#/components/schemas/DecisionCounts"
+    DecisionCounts:
+      type: object
+      additionalProperties: false
+      required: [total_candidates, allowed, redacted, quarantined, blocked, revoked]
+      properties:
+        total_candidates: {type: integer, minimum: 0}
+        allowed: {type: integer, minimum: 0}
+        redacted: {type: integer, minimum: 0}
+        quarantined: {type: integer, minimum: 0}
+        blocked: {type: integer, minimum: 0}
+        revoked: {type: integer, minimum: 0}
+    StatisticsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - counts
+        - semantic_timeouts
+        - detector_failures
+        - average_evaluation_latency_ms
+        - ledger_state
+      properties:
+        schema_version:
+          const: 1.0.0
+        counts:
+          $ref: "#/components/schemas/DecisionCounts"
+        semantic_timeouts: {type: integer, minimum: 0}
+        detector_failures: {type: integer, minimum: 0}
+        average_evaluation_latency_ms: {type: number, minimum: 0}
+        ledger_state:
+          type: string
+          enum: [verified, unverified, invalid, unavailable]
+    ControlRoomChallengeResponse:
+      type: object
+      additionalProperties: false
+      required: [schema_version, challenge_id, nonce, salt, kdf, iterations, expires_at]
+      properties:
+        schema_version: {const: 1.0.0}
+        challenge_id:
+          $ref: "#/components/schemas/Identifier"
+        nonce:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{43}$"
+          description: Unpadded base64url encoding of 32 random challenge bytes.
+        salt:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{22}$"
+          description: Unpadded base64url encoding of the 16-byte local verifier salt; it is not secret.
+        kdf: {const: PBKDF2-HMAC-SHA256}
+        iterations: {const: 310000}
+        expires_at: {type: string, format: date-time}
+    ControlRoomSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [challenge_id, proof]
+      properties:
+        challenge_id:
+          $ref: "#/components/schemas/Identifier"
+        proof:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{43}$"
+          description: Unpadded base64url HMAC-SHA256 of the raw nonce using the PBKDF2-derived verifier key. The passphrase itself is never transmitted.
+    ControlRoomSessionResponse:
+      type: object
+      additionalProperties: false
+      required: [schema_version, csrf_token, expires_at]
+      properties:
+        schema_version:
+          const: 1.0.0
+        csrf_token:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{32,128}$"
+          description: Ephemeral in-memory CSRF value; not an authorization capability by itself.
+        expires_at:
+          type: string
+          format: date-time
+    HookEvidenceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - hook_event
+        - session_id
+        - turn_id
+        - cwd
+        - model
+        - permission_mode
+        - captured_at
+        - payload
+      properties:
+        schema_version:
+          const: 1.0.0
+        hook_event:
+          type: string
+          enum: [UserPromptSubmit, PostToolUse, PreCompact, PostCompact, Stop]
+        session_id:
+          $ref: "#/components/schemas/Identifier"
+        turn_id:
+          $ref: "#/components/schemas/Identifier"
+        cwd:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          description: Project routing input; never logged or injected as memory.
+        model:
+          type: string
+          minLength: 1
+          maxLength: 128
+        permission_mode:
+          oneOf:
+            - type: string
+              enum: [default, acceptEdits, plan, dontAsk, bypassPermissions]
+            - type: "null"
+        captured_at:
+          type: string
+          format: date-time
+        payload:
+          type: object
+      allOf:
+        - if:
+            properties:
+              hook_event: {const: UserPromptSubmit}
+          then:
+            properties:
+              permission_mode:
+                type: string
+                enum: [default, acceptEdits, plan, dontAsk, bypassPermissions]
+              payload:
+                $ref: "#/components/schemas/UserPromptPayload"
+        - if:
+            properties:
+              hook_event: {const: PostToolUse}
+          then:
+            properties:
+              permission_mode:
+                type: string
+                enum: [default, acceptEdits, plan, dontAsk, bypassPermissions]
+              payload:
+                $ref: "#/components/schemas/PostToolPayload"
+        - if:
+            properties:
+              hook_event:
+                enum: [PreCompact, PostCompact]
+          then:
+            properties:
+              payload:
+                $ref: "#/components/schemas/CompactPayload"
+        - if:
+            properties:
+              hook_event: {const: Stop}
+          then:
+            properties:
+              permission_mode:
+                type: string
+                enum: [default, acceptEdits, plan, dontAsk, bypassPermissions]
+              payload:
+                $ref: "#/components/schemas/StopPayload"
+    UserPromptPayload:
+      type: object
+      additionalProperties: false
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 262144
+          description: Untrusted evidence; secret screening precedes any model call.
+    PostToolPayload:
+      type: object
+      additionalProperties: false
+      required: [tool_name, tool_use_id, tool_input, tool_response]
+      properties:
+        tool_name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        tool_use_id:
+          $ref: "#/components/schemas/Identifier"
+        tool_input:
+          description: Untrusted tool-specific JSON. Never logged by default.
+        tool_response:
+          description: Untrusted tool-specific JSON. Never logged by default.
+    CompactPayload:
+      type: object
+      additionalProperties: false
+      required: [trigger]
+      properties:
+        trigger:
+          type: string
+          enum: [manual, auto]
+    StopPayload:
+      type: object
+      additionalProperties: false
+      required: [stop_hook_active, last_assistant_message]
+      properties:
+        stop_hook_active:
+          type: boolean
+        last_assistant_message:
+          type: [string, "null"]
+          maxLength: 262144
+          description: Untrusted agent evidence; never logged by default.
+    EvidenceAcceptedResponse:
+      type: object
+      additionalProperties: false
+      required: [schema_version, evidence_id, status, duplicate]
+      properties:
+        schema_version: {const: 1.0.0}
+        evidence_id:
+          $ref: "#/components/schemas/Identifier"
+        status:
+          type: string
+          enum: [captured, queued]
+        duplicate:
+          type: boolean
+    SessionStartRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - hook_event
+        - session_id
+        - source
+        - cwd
+        - model
+        - permission_mode
+        - requested_at
+      properties:
+        schema_version: {const: 1.0.0}
+        hook_event: {const: SessionStart}
+        session_id:
+          $ref: "#/components/schemas/Identifier"
+        source:
+          type: string
+          enum: [startup, resume, clear, compact]
+        cwd:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        model:
+          type: string
+          minLength: 1
+          maxLength: 128
+        permission_mode:
+          type: string
+          enum: [default, acceptEdits, plan, dontAsk, bypassPermissions]
+        requested_at:
+          type: string
+          format: date-time
+    SessionStartResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - injection_state
+        - additional_context
+        - memory_ids
+        - token_estimate
+        - ledger_verified
+        - view_consistent
+        - warning_code
+      properties:
+        schema_version: {const: 1.0.0}
+        injection_state:
+          type: string
+          enum:
+            - ready
+            - disabled_empty
+            - disabled_ledger
+            - disabled_policy
+            - disabled_view
+            - unavailable
+        additional_context:
+          type: [string, "null"]
+          maxLength: 131072
+        memory_ids:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/Identifier"
+        token_estimate:
+          type: integer
+          minimum: 0
+        ledger_verified:
+          type: boolean
+        view_consistent:
+          type: boolean
+        warning_code:
+          type: [string, "null"]
+          enum:
+            - null
+            - no_active_memory
+            - ledger_unverified
+            - policy_invalid
+            - view_inconsistent
+            - daemon_degraded
+      allOf:
+        - if:
+            properties:
+              injection_state: {const: ready}
+          then:
+            properties:
+              additional_context: {type: string, minLength: 1}
+              ledger_verified: {const: true}
+              view_consistent: {const: true}
+              warning_code: {type: "null"}
+          else:
+            properties:
+              additional_context: {type: "null"}
+    CandidateSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - candidate_id
+        - safe_statement
+        - namespace
+        - kind
+        - source_class
+        - session_id
+        - status
+        - actual_action
+        - would_have_action
+        - shadow_mode
+        - policy_version
+        - semantic_provider
+        - created_at
+      properties:
+        candidate_id:
+          $ref: "#/components/schemas/Identifier"
+        safe_statement: {type: string, maxLength: 8192}
+        namespace: {type: string, maxLength: 160}
+        kind:
+          $ref: "#/components/schemas/MemoryKind"
+        source_class:
+          $ref: "#/components/schemas/SourceClass"
+        session_id:
+          $ref: "#/components/schemas/Identifier"
+        status:
+          $ref: "#/components/schemas/MemoryStatus"
+        actual_action:
+          $ref: "#/components/schemas/Action"
+        would_have_action:
+          $ref: "#/components/schemas/Action"
+        shadow_mode: {type: boolean}
+        policy_version: {type: string, maxLength: 64}
+        semantic_provider:
+          $ref: "#/components/schemas/SemanticProviderState"
+        created_at: {type: string, format: date-time}
+    CandidateDetail:
+      type: object
+      additionalProperties: false
+      required:
+        - candidate
+        - status
+        - detector_results
+        - semantic_assessment
+        - policy_decision
+        - event_ids
+        - ledger_verified
+      properties:
+        candidate:
+          $ref: "./memory-candidate.schema.json"
+        status:
+          $ref: "#/components/schemas/MemoryStatus"
+        detector_results:
+          type: array
+          items:
+            $ref: "./detector-result.schema.json"
+        semantic_assessment:
+          oneOf:
+            - $ref: "./semantic-assessment.schema.json"
+            - type: "null"
+        policy_decision:
+          $ref: "#/components/schemas/PolicyDecision"
+        event_ids:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/Identifier"
+        ledger_verified: {type: boolean}
+    PolicyDecision:
+      type: object
+      additionalProperties: false
+      required:
+        - policy_id
+        - policy_version
+        - matched_rule_id
+        - mode
+        - actual_action
+        - would_have_action
+        - shadow_mode
+        - reason
+      properties:
+        policy_id:
+          type: string
+          pattern: "^[a-z][a-z0-9_.-]{2,63}$"
+        policy_version: {type: string, minLength: 1, maxLength: 64}
+        matched_rule_id:
+          type: [string, "null"]
+          maxLength: 64
+        mode:
+          $ref: "#/components/schemas/Mode"
+        actual_action:
+          $ref: "#/components/schemas/Action"
+        would_have_action:
+          $ref: "#/components/schemas/Action"
+        shadow_mode: {type: boolean}
+        reason: {type: string, minLength: 1, maxLength: 1000}
+    CandidateListResponse:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CandidateSummary"
+        next_cursor: {type: [string, "null"], maxLength: 512}
+    CandidateReviewRequest:
+      type: object
+      additionalProperties: false
+      required: [actor_id, reason, confirmed, disposition]
+      properties:
+        actor_id:
+          $ref: "#/components/schemas/Identifier"
+        reason: {type: string, minLength: 1, maxLength: 1000}
+        confirmed: {const: true}
+        disposition:
+          type: string
+          enum: [approve, block, leave_quarantined]
+    OperatorActionRequest:
+      type: object
+      additionalProperties: false
+      required: [actor_id, reason, confirmed]
+      properties:
+        actor_id:
+          $ref: "#/components/schemas/Identifier"
+        reason: {type: string, minLength: 1, maxLength: 1000}
+        confirmed: {const: true}
+    TrustActionResponse:
+      type: object
+      additionalProperties: false
+      required: [event_id, candidate_id, memory_id, status, ledger_verified, view_consistent]
+      properties:
+        event_id:
+          $ref: "#/components/schemas/Identifier"
+        candidate_id:
+          $ref: "#/components/schemas/Identifier"
+        memory_id:
+          oneOf:
+            - $ref: "#/components/schemas/Identifier"
+            - type: "null"
+        status:
+          $ref: "#/components/schemas/MemoryStatus"
+        ledger_verified: {type: boolean}
+        view_consistent: {type: boolean}
+    MemoryRecord:
+      type: object
+      description: Historical safe inventory record. Only active and redacted records may also exist in the strict active-memory injection projection.
+      additionalProperties: false
+      required:
+        - memory_id
+        - commit_event_id
+        - candidate_id
+        - session_id
+        - safe_statement
+        - namespace
+        - kind
+        - source_class
+        - status
+        - trust_decision
+        - policy_id
+        - policy_version
+        - actual_action
+        - would_have_action
+        - committed_at
+        - expires_at
+        - shadow_admitted
+        - manual_approval_event_id
+        - risk_categories
+        - semantic_provider
+        - last_event_id
+        - last_event_sequence
+      properties:
+        memory_id:
+          $ref: "#/components/schemas/Identifier"
+        commit_event_id:
+          $ref: "#/components/schemas/Identifier"
+        candidate_id:
+          $ref: "#/components/schemas/Identifier"
+        session_id:
+          $ref: "#/components/schemas/Identifier"
+        safe_statement: {type: string, minLength: 1, maxLength: 8192}
+        namespace: {type: string, maxLength: 160}
+        kind:
+          $ref: "#/components/schemas/MemoryKind"
+        source_class:
+          $ref: "#/components/schemas/SourceClass"
+        status:
+          type: string
+          enum: [active, redacted, revoked, superseded, expired]
+        trust_decision:
+          type: string
+          enum: [allowed, redacted, manually_approved, shadow_admitted]
+        policy_id:
+          type: string
+          pattern: "^[a-z][a-z0-9_.-]{2,63}$"
+        policy_version: {type: string, minLength: 1, maxLength: 64}
+        actual_action:
+          $ref: "#/components/schemas/Action"
+        would_have_action:
+          $ref: "#/components/schemas/Action"
+        committed_at: {type: string, format: date-time}
+        expires_at: {type: [string, "null"], format: date-time}
+        shadow_admitted: {type: boolean}
+        manual_approval_event_id:
+          oneOf:
+            - $ref: "#/components/schemas/Identifier"
+            - type: "null"
+        risk_categories:
+          type: array
+          uniqueItems: true
+          items: {type: string, maxLength: 64}
+        semantic_provider:
+          $ref: "#/components/schemas/SemanticProviderState"
+        last_event_id:
+          $ref: "#/components/schemas/Identifier"
+        last_event_sequence: {type: integer, minimum: 1}
+    MemoryListResponse:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemoryRecord"
+        next_cursor: {type: [string, "null"], maxLength: 512}
+    RevocationPreviewResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - memory_id
+        - current_status
+        - would_remove_from_active_view
+        - unrelated_active_memories_preserved
+        - resulting_active_count
+      properties:
+        memory_id:
+          $ref: "#/components/schemas/Identifier"
+        current_status:
+          $ref: "#/components/schemas/MemoryStatus"
+        would_remove_from_active_view: {type: boolean}
+        unrelated_active_memories_preserved: {type: integer, minimum: 0}
+        resulting_active_count: {type: integer, minimum: 0}
+    RebuildRequest:
+      type: object
+      additionalProperties: false
+      required: [dry_run]
+      properties:
+        dry_run:
+          type: boolean
+          description: When true, compare replay with the stored view without replacing it.
+    RebuildResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - dry_run
+        - events_replayed
+        - active_count
+        - quarantined_count
+        - differences_found
+        - view_consistent
+        - ledger_verified
+      properties:
+        dry_run: {type: boolean}
+        events_replayed: {type: integer, minimum: 0}
+        active_count: {type: integer, minimum: 0}
+        quarantined_count: {type: integer, minimum: 0}
+        differences_found: {type: integer, minimum: 0}
+        view_consistent: {type: boolean}
+        ledger_verified: {type: boolean}
+    EventSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - event_id
+        - sequence_number
+        - event_type
+        - occurred_at
+        - memory_id
+        - source_class
+        - action
+        - policy_version
+        - event_hash
+        - chain_status
+      properties:
+        event_id:
+          $ref: "#/components/schemas/Identifier"
+        sequence_number: {type: integer, minimum: 1}
+        event_type:
+          $ref: "#/components/schemas/EventType"
+        occurred_at: {type: string, format: date-time}
+        memory_id:
+          oneOf:
+            - $ref: "#/components/schemas/Identifier"
+            - type: "null"
+        source_class:
+          oneOf:
+            - $ref: "#/components/schemas/SourceClass"
+            - type: "null"
+        action:
+          oneOf:
+            - $ref: "#/components/schemas/Action"
+            - type: "null"
+        policy_version: {type: [string, "null"], maxLength: 64}
+        event_hash:
+          $ref: "#/components/schemas/Sha256Hex"
+        chain_status:
+          type: string
+          enum: [verified, unverified, invalid]
+    EventListResponse:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventSummary"
+        next_cursor: {type: [string, "null"], maxLength: 512}
+    PolicySummary:
+      type: object
+      additionalProperties: false
+      required: [policy_id, version, mode, digest, validation_state]
+      properties:
+        policy_id:
+          type: string
+          pattern: "^[a-z][a-z0-9_.-]{2,63}$"
+        version: {type: string, minLength: 1, maxLength: 64}
+        mode:
+          $ref: "#/components/schemas/Mode"
+        digest:
+          $ref: "#/components/schemas/Sha256Hex"
+        validation_state:
+          type: string
+          enum: [valid, invalid, last_known_good]
+    RawPolicyDocument:
+      type: object
+      maxProperties: 64
+      additionalProperties: true
+      description: >-
+        Bounded raw parsed JSON policy input. The transport accepts malformed
+        domain shape deliberately so the service can compute a safe digest,
+        run Pydantic validation, and append PolicyActivationRejected when
+        activation fails. The strict valid shape remains policy.schema.json;
+        request middleware enforces the configured byte limit before parsing.
+    ActivePolicyResponse:
+      type: object
+      additionalProperties: false
+      required: [summary, policy]
+      properties:
+        summary:
+          $ref: "#/components/schemas/PolicySummary"
+        policy:
+          $ref: "./policy.schema.json"
+    PolicyValidationResponse:
+      type: object
+      additionalProperties: false
+      required: [valid, digest, errors]
+      properties:
+        valid: {type: boolean}
+        digest:
+          oneOf:
+            - $ref: "#/components/schemas/Sha256Hex"
+            - type: "null"
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationIssue"
+    ValidationIssue:
+      type: object
+      additionalProperties: false
+      required: [path, code, message]
+      properties:
+        path: {type: string, maxLength: 512}
+        code: {type: string, pattern: "^[a-z][a-z0-9_.-]{2,63}$"}
+        message: {type: string, minLength: 1, maxLength: 1000}
+    PolicyActivationRequest:
+      type: object
+      additionalProperties: false
+      required: [policy, actor_id, reason, confirmed]
+      properties:
+        policy:
+          $ref: "#/components/schemas/RawPolicyDocument"
+        actor_id:
+          $ref: "#/components/schemas/Identifier"
+        reason: {type: string, minLength: 1, maxLength: 1000}
+        confirmed: {const: true}
+    PolicyActivationResponse:
+      type: object
+      additionalProperties: false
+      required: [summary, event_id, duplicate]
+      properties:
+        summary:
+          $ref: "#/components/schemas/PolicySummary"
+        event_id:
+          $ref: "#/components/schemas/Identifier"
+        duplicate: {type: boolean}
+    PolicyActivationRejectedResponse:
+      type: object
+      additionalProperties: false
+      required: [accepted, rejection_event_id, retained_policy, errors]
+      properties:
+        accepted: {const: false}
+        rejection_event_id:
+          oneOf:
+            - $ref: "#/components/schemas/Identifier"
+            - type: "null"
+          description: Null only when the ledger was unavailable and could not record the failure.
+        retained_policy:
+          oneOf:
+            - $ref: "#/components/schemas/PolicySummary"
+            - type: "null"
+        errors:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ValidationIssue"
+    LedgerVerifyRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        verify_materialized_view:
+          type: boolean
+          default: true
+        require_anchored_completeness:
+          type: boolean
+          default: true
+        expected_head:
+          oneOf:
+            - $ref: "#/components/schemas/LedgerExpectedHead"
+            - type: "null"
+    LedgerExpectedHead:
+      type: object
+      additionalProperties: false
+      required: [schema_version, sequence_number, event_hash, signing_key_id, signature]
+      properties:
+        schema_version: {const: 1.0.0}
+        sequence_number: {type: integer, minimum: 0}
+        event_hash:
+          $ref: "#/components/schemas/Sha256Hex"
+        signing_key_id: {type: string, pattern: "^vc-ed25519-[0-9a-f]{64}$"}
+        signature:
+          type: string
+          pattern: "^[A-Za-z0-9+/]{86}==$"
+          description: Ed25519 signature over the raw SHA-256 digest of the VC-CJ-1 expected-head record without this field.
+      allOf:
+        - if:
+            properties:
+              sequence_number: {const: 0}
+          then:
+            properties:
+              event_hash: {const: "0000000000000000000000000000000000000000000000000000000000000000"}
+          else:
+            properties:
+              event_hash:
+                not: {const: "0000000000000000000000000000000000000000000000000000000000000000"}
+    LedgerVerificationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - verified
+        - completeness_state
+        - expected_head_source
+        - expected_head_sequence
+        - observed_head_sequence
+        - total_events
+        - first_invalid_event_id
+        - failure_class
+        - signing_key_id
+        - public_key_fingerprint
+        - materialized_view_consistent
+        - verified_at
+      properties:
+        verified: {type: boolean}
+        completeness_state:
+          type: string
+          enum: [anchored_complete, tail_unproven, invalid]
+        expected_head_source:
+          type: string
+          enum: [local_sidecar, supplied_checkpoint, none]
+        expected_head_sequence: {type: [integer, "null"], minimum: 0}
+        observed_head_sequence: {type: [integer, "null"], minimum: 0}
+        total_events: {type: integer, minimum: 0}
+        first_invalid_event_id:
+          oneOf:
+            - $ref: "#/components/schemas/Identifier"
+            - type: "null"
+        failure_class:
+          type: [string, "null"]
+          enum:
+            - null
+            - sequence_gap
+            - previous_hash_mismatch
+            - event_hash_mismatch
+            - payload_digest_mismatch
+            - invalid_signature
+            - unknown_key
+            - materialized_view_mismatch
+            - expected_head_mismatch
+            - tail_completeness_unproven
+        signing_key_id: {type: string, pattern: "^vc-ed25519-[0-9a-f]{64}$"}
+        public_key_fingerprint:
+          $ref: "#/components/schemas/Sha256Hex"
+        materialized_view_consistent: {type: boolean}
+        verified_at: {type: string, format: date-time}
+      allOf:
+        - if:
+            properties:
+              completeness_state: {const: anchored_complete}
+          then:
+            properties:
+              verified: {const: true}
+              failure_class: {type: "null"}
+              expected_head_source: {enum: [local_sidecar, supplied_checkpoint]}
+              expected_head_sequence: {type: integer, minimum: 0}
+              observed_head_sequence: {type: integer, minimum: 0}
+              first_invalid_event_id: {type: "null"}
+        - if:
+            properties:
+              completeness_state: {const: tail_unproven}
+          then:
+            properties:
+              verified: {const: false}
+              expected_head_source: {const: none}
+              expected_head_sequence: {type: "null"}
+              failure_class: {const: tail_completeness_unproven}
+        - if:
+            properties:
+              completeness_state: {const: invalid}
+          then:
+            properties:
+              verified: {const: false}
+              failure_class:
+                enum:
+                  - sequence_gap
+                  - previous_hash_mismatch
+                  - event_hash_mismatch
+                  - payload_digest_mismatch
+                  - invalid_signature
+                  - unknown_key
+                  - materialized_view_mismatch
+                  - expected_head_mismatch
+    PublicKeyResponse:
+      type: object
+      additionalProperties: false
+      required: [algorithm, signing_key_id, public_key_base64, fingerprint_sha256]
+      properties:
+        algorithm: {const: Ed25519}
+        signing_key_id: {type: string, pattern: "^vc-ed25519-[0-9a-f]{64}$"}
+        public_key_base64:
+          type: string
+          pattern: "^[A-Za-z0-9+/]{43}=$"
+          description: Standard padded base64 encoding of the raw 32-byte public key.
+        fingerprint_sha256:
+          $ref: "#/components/schemas/Sha256Hex"
+    StreamBeginRequest:
+      type: object
+      additionalProperties: false
+      required: [session_id, task_id, source_class, namespace, kind]
+      properties:
+        session_id:
+          $ref: "#/components/schemas/Identifier"
+        task_id:
+          oneOf:
+            - $ref: "#/components/schemas/Identifier"
+            - type: "null"
+        source_class:
+          $ref: "#/components/schemas/SourceClass"
+        namespace: {type: string, minLength: 1, maxLength: 160}
+        kind:
+          $ref: "#/components/schemas/MemoryKind"
+    StreamAppendRequest:
+      type: object
+      additionalProperties: false
+      required: [chunk_sequence, chunk]
+      properties:
+        chunk_sequence: {type: integer, minimum: 1}
+        chunk:
+          type: string
+          minLength: 1
+          maxLength: 262144
+          description: Untrusted text; never logged and never visible as memory before commit.
+    StreamCommitRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_chunk_count]
+      properties:
+        expected_chunk_count: {type: integer, minimum: 1, maximum: 10000}
+    StreamAbortRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: Content-safe reason; must not contain buffered stream text.
+    StreamStateResponse:
+      type: object
+      additionalProperties: false
+      required: [stream_id, state, chunks_received, bytes_received, active_memory_created]
+      properties:
+        stream_id:
+          $ref: "#/components/schemas/Identifier"
+        state:
+          type: string
+          enum: [open, blocked, aborted]
+        chunks_received: {type: integer, minimum: 0}
+        bytes_received: {type: integer, minimum: 0}
+        active_memory_created: {const: false}
+    StreamCommitResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - stream_id
+        - state
+        - actual_action
+        - would_have_action
+        - shadow_mode
+        - memory_id
+        - event_ids
+      properties:
+        stream_id:
+          $ref: "#/components/schemas/Identifier"
+        state:
+          type: string
+          enum: [blocked, aborted, committed]
+        actual_action:
+          $ref: "#/components/schemas/Action"
+        would_have_action:
+          $ref: "#/components/schemas/Action"
+        shadow_mode: {type: boolean}
+        memory_id:
+          oneOf:
+            - $ref: "#/components/schemas/Identifier"
+            - type: "null"
+        event_ids:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/Identifier"
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+              pattern: "^[a-z][a-z0-9_.-]{2,63}$"
+            message:
+              type: string
+              minLength: 1
+              maxLength: 1000
+              description: Content-free diagnostic; never contains request bodies or secrets.
+            request_id:
+              $ref: "#/components/schemas/Identifier"

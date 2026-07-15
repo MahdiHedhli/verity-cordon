@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:verity-cordon:schema:memory-candidate:1.0.0",
+  "title": "Verity Cordon Memory Candidate",
+  "description": "An atomic, attributable proposal for durable memory. The statement is the sanitized candidate representation; raw evidence and redaction mappings are not part of this contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "candidate_id",
+    "namespace",
+    "kind",
+    "statement",
+    "source_class",
+    "source_refs",
+    "session_id",
+    "task_id",
+    "confidence",
+    "durability_rationale",
+    "sensitivity",
+    "requested_ttl_seconds",
+    "persistence_requested",
+    "authority_signal",
+    "secrecy_signal",
+    "contains_redactions",
+    "extractor_provider",
+    "extractor_version",
+    "content_digest",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "candidate_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^(facts|preferences|project|instructions|policies|tool_results|scratch|credentials)(\\.[a-z0-9][a-z0-9_-]*)*$",
+      "maxLength": 160
+    },
+    "kind": {
+      "enum": [
+        "fact",
+        "user_preference",
+        "project_convention",
+        "operational_instruction",
+        "tool_observation",
+        "task_summary",
+        "identity_assertion",
+        "policy_statement",
+        "credential_material",
+        "unknown"
+      ]
+    },
+    "statement": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8192,
+      "description": "Sanitized atomic statement. Detected secrets MUST already be replaced with typed placeholders."
+    },
+    "source_class": {
+      "$ref": "#/$defs/sourceClass"
+    },
+    "source_refs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "evidence_id",
+          "evidence_digest"
+        ],
+        "properties": {
+          "evidence_id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "evidence_digest": {
+            "$ref": "#/$defs/sha256Hex"
+          }
+        }
+      }
+    },
+    "session_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "task_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/identifier"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "durability_rationale": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000,
+      "description": "Content-safe explanation of why the candidate may be useful in a later session."
+    },
+    "sensitivity": {
+      "enum": [
+        "public",
+        "internal",
+        "sensitive",
+        "restricted",
+        "credential"
+      ]
+    },
+    "requested_ttl_seconds": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 60,
+      "maximum": 31536000
+    },
+    "persistence_requested": {
+      "type": "boolean"
+    },
+    "authority_signal": {
+      "enum": [
+        "none",
+        "implied",
+        "explicit",
+        "unknown"
+      ],
+      "description": "Extractor-observed attempt to claim operational authority; this is advisory and does not grant trust."
+    },
+    "secrecy_signal": {
+      "enum": [
+        "none",
+        "implied",
+        "explicit",
+        "unknown"
+      ],
+      "description": "Extractor-observed request to conceal the candidate or its instruction from the operator."
+    },
+    "contains_redactions": {
+      "type": "boolean"
+    },
+    "extractor_provider": {
+      "enum": [
+        "live_openai",
+        "recorded_fixture",
+        "deterministic"
+      ]
+    },
+    "extractor_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "content_digest": {
+      "$ref": "#/$defs/sha256Hex",
+      "description": "SHA-256 of the canonical sanitized candidate statement."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"
+    },
+    "sha256Hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sourceClass": {
+      "enum": [
+        "user_input",
+        "tool_output",
+        "agent_output",
+        "imported_file",
+        "prior_memory",
+        "compaction",
+        "session_summary",
+        "external_event"
+      ]
+    }
+  }
+}
