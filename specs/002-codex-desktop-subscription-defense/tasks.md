@@ -226,7 +226,7 @@ gate, and leave only honest operator-owned submission work.
 - The delayed-attack, subscription-child, fixed synthetic sink, Desktop installer, unsigned-receipt, signed-ledger, and residual-risk boundaries are explicit across the security and positioning documents; the focused security matrix passed 41 tests.
 - Trojan Hippo is attributed at inspected commit `a67d3261338120c606fcf6afda2547f622809922` as threat-model inspiration only. No benchmark code, dataset, prompts, implementation, or reported result was copied or executed.
 - `uv run python evals/runners/run_fixture_evaluation.py` recorded 20 original synthetic samples: 7/7 benign allowed, 13/13 risky protected, 0 fixture-scoped false positives, 0 fixture-scoped false negatives, 326 verified events, and a consistent materialized view. `uv run python evals/runners/run_fixture_evaluation.py --check` and the three evaluation-runner tests passed.
-- [ ] T055 Run Ruff, mypy, tracked backend unit/contract/integration/adversarial/end-to-end tests with coverage, frontend lint/type/test/build, schema/OpenAPI validation, dependency audit, and `./scripts/verify.sh` from a clean checkout; record exact outcomes in `docs/hackathon/HACKATHON_WORK.md`
+- [x] T055 Run Ruff, mypy, tracked backend unit/contract/integration/adversarial/end-to-end tests with coverage, frontend lint/type/test/build, schema/OpenAPI validation, dependency audit, and `./scripts/verify.sh` from a clean checkout; record exact outcomes in `docs/hackathon/HACKATHON_WORK.md`
 - [ ] T056 Perform browser smoke/accessibility checks and a timed manual Codex Desktop attack-enforcement-clean-task-revocation-ledger rehearsal; record elapsed time and clearly separate automated from manual evidence in `docs/hackathon/HACKATHON_WORK.md`
 - [x] T057 Run Spec Kit consistency analysis and convergence, append and complete any remaining build tasks in `specs/002-codex-desktop-subscription-defense/tasks.md`, and update the constitution sync report in `.specify/memory/constitution.md`
 - [ ] T058 Record branch, final commit, tests, known limitations, deferred roadmap confirmation, submission status, exact operator actions, and the real `/feedback` reminder in `docs/hackathon/HACKATHON_WORK.md`
@@ -235,7 +235,16 @@ gate, and leave only honest operator-owned submission work.
 
 - Prerequisite discovery selected only `002-codex-desktop-subscription-defense`; all 93 feature checklist items are complete and no `VC-FUT-*` capability appears in the active task graph.
 - Cross-artifact analysis covered 4 user stories, 26 functional requirements, 10 security/failure requirements, 10 measurable outcomes, the plan, data model, contracts, checklists, and task graph. The review found no unresolved critical or high-severity inconsistency after the Desktop readiness, path, receipt, fixture-probe, config-secret, typed-event, and claims remediations.
-- Convergence found no remaining unbuilt implementation requirement, so no new implementation task was appended. T055, T056, and T058 remain release-evidence/operator handoff work rather than product gaps.
+- Convergence found no remaining unbuilt implementation requirement, so no new implementation task was appended. T056 and T058 remain release-evidence/operator handoff work rather than product gaps.
+
+**T055 clean-checkout and T056 browser evidence (2026-07-15)**:
+
+- Pushed remote checkpoint `104e0f06d3d2b3be5d36e2f3884af1adf3076c04` passed bootstrap and the no-key offline demo from a fresh clone beneath a private trusted parent. The demo exercised real policy, ledger, and materialization logic and ended with 65 verified events and a consistent view.
+- The clean-checkout `./scripts/verify.sh` gate passed 506 backend tests, 13 isolated example/plugin tests, 10 frontend tests, 80% coverage, formatting, linting, type checking, frontend build, schema/OpenAPI validation, dependency audits, and the 20-fixture evaluation at 0 fixture-scoped false positives and 0 fixture-scoped false negatives.
+- Verification-hardening checkpoint `c70db7296427f1525d52e0b2a0854fa34f123d2d` passed bootstrap and the same complete gate from a second fresh private clone after pinning checks to the bootstrapped `.venv`, removing inherited `PYTHONPATH`, and enforcing the declared Node.js engine.
+- A clone below `/tmp` was intentionally rejected by the trusted-root security boundary; acceptance moved to a private trusted parent instead of weakening that control.
+- Browser smoke verified Overview, a typed `MemoryRevoked` detail event, quarantine Block, selective revocation with unrelated memory preserved, enforce-to-shadow-to-enforce mode changes ending on policy `1.0.2`, and a 69-event ledger with anchored completeness and a consistent view. At 1280x720 it showed no horizontal overflow, 0 console errors or warnings, the expected main/navigation/heading/skip-link structure, 0 unlabeled controls, and 0 duplicate IDs.
+- T056 remains open because the timed, operator-visible Codex Desktop app rehearsal has not been performed. The completed Control Room browser smoke is recorded separately and is not treated as Desktop app evidence.
 
 ---
 

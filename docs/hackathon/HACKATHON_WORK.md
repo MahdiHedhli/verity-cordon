@@ -43,6 +43,9 @@ renamed codebase.
 | `c632e62` | Converged specifications and hackathon release materials | Complete |
 | `c632e62..95459ac` | Fresh-clone, audit, repeatable verification, and publication evidence | Complete |
 | `95459ac` | Initial verified public `main` commit | Complete |
+| `485e49b..5bd85ff` | Sprint 002 specification, subscription boundary, Desktop defense, and secure demo vertical slice | Complete |
+| `104e0f0` | Pushed Sprint 002 clean-verification checkpoint with deterministic uncached Ruff checks | Complete |
+| `c70db72` | Pinned release verification to the bootstrapped environment and enforced the declared Node engine | Complete |
 
 The feature branch was fast-forwarded into `main` without rewriting history or
 force-pushing.
@@ -181,6 +184,29 @@ fixture-scoped false negatives, a verified 326-event ledger, and a consistent
 materialized view. These are automated contract and fixture results; an actual
 timed Codex Desktop UI rehearsal remains separately operator-visible evidence.
 
+Fresh-clone Sprint 002 acceptance then ran at pushed remote checkpoint
+`104e0f06d3d2b3be5d36e2f3884af1adf3076c04` from a new clone beneath a
+private trusted parent. Bootstrap completed without an OpenAI API key, and the
+no-key offline demo exercised the real policy engine, signed ledger, memory
+materialization, and recovery flow. It finished with 65 events, a verified
+chain, and a consistent materialized view. The complete clean-checkout
+`./scripts/verify.sh` gate passed 506 backend tests, 13 isolated
+example/plugin tests, 10 frontend tests, 80% backend coverage, Ruff, mypy,
+frontend lint/type/test/build, schema and OpenAPI validation, Python and npm
+dependency audits, and the 20-fixture evaluation with 0 fixture-scoped false
+positives and 0 fixture-scoped false negatives.
+
+An earlier acceptance attempt below `/tmp` was rejected by the intentional
+trusted-root security boundary because the clone inherited a shared writable
+ancestor. The boundary was not weakened to make the test pass; clean
+acceptance was rerun from the private trusted parent instead.
+
+The environment-pinning hardening at
+`c70db7296427f1525d52e0b2a0854fa34f123d2d` then passed bootstrap and the
+complete verification gate again from a second fresh private clone. This run
+used the checked-out `.venv` directly, ignored caller `PYTHONPATH` state, and
+enforced the Control Room's declared Node.js engine before frontend work.
+
 The timed final post-hardening `./scripts/verify.sh` run reported 267 backend tests,
 10 example/plugin tests, 7 frontend tests, 80% backend coverage, a successful
 frontend production build, valid OpenAPI, clean formatting/lint/type checks,
@@ -298,6 +324,22 @@ bounded subagent implemented and verified that isolated integration; the
 primary thread reviewed and integrated it. No operator's real Codex configuration
 was needed for the acceptance check.
 
+The Sprint 002 browser smoke used an ephemeral clean-clone runtime at
+1280x720. It verified Overview, Candidate Detail with a typed
+`MemoryRevoked` event, the quarantine Block action, and selective revocation
+while preserving one unrelated active memory. The mode sequence was
+enforce-to-shadow-to-enforce and ended in enforce mode on policy `1.0.2`.
+Ledger Verification reported 69 events with anchored completeness and a
+consistent materialized view. The browser console had 0 errors and 0 warnings,
+and the page had no horizontal overflow. The accessibility smoke found the
+expected main landmark, navigation landmark, level-one heading, and skip link,
+with 0 unlabeled controls and 0 duplicate IDs.
+
+This browser evidence exercises the local Control Room, not the Codex Desktop
+app itself. The timed, operator-visible Codex Desktop
+attack-enforcement-clean-task-revocation-ledger rehearsal remains open and is
+not represented as completed.
+
 ## New Work versus Prior Art
 
 Verity Cordon's implemented contribution is an async-first local daemon, a
@@ -330,6 +372,9 @@ submission-checklist item remain intentionally unchecked.
 
 - Exercise the credentialed live GPT-5.6 path if a suitable local key is
   available; otherwise disclose it as unexercised.
+- Perform and time the operator-visible Codex Desktop app rehearsal; automated
+  fixture, subscription, Control Room, and hook-contract evidence does not
+  substitute for that app-level observation.
 - Run `/feedback` in the primary project thread and record the real Session ID.
 - Record and upload a public YouTube video with audio under three minutes.
 - Keep the free judge path available through 2026-08-05 17:00 PT.
