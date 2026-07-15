@@ -5,6 +5,14 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT_DIR"
 export PYTHONPATH="$ROOT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
 
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  # uv can recreate the underscore-prefixed editable-install .pth file with
+  # macOS's hidden flag after an earlier command. Python's site loader skips
+  # that file, so normalize disposable virtual-environment metadata before
+  # every standalone verification run as well as during bootstrap.
+  chflags -R nohidden .venv 2>/dev/null || true
+fi
+
 env -u PYTHONPATH .venv/bin/python -c "import verity_cordon"
 env -u PYTHONPATH .venv/bin/verity --help >/dev/null
 uv run pip-audit --local --skip-editable

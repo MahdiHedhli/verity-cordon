@@ -232,6 +232,7 @@ the product scope or concealing an environment-dependent validation gap.
 - [x] T079 Record the elapsed critical verification-suite time for SC-010 and reconcile the plan-only Control Room responsiveness target by measuring it or removing an unsupported hard SLO
 - [ ] T080 Exercise the live OpenAI semantic path with the configured GPT-5.6 model and record the provider result; leave this task open and disclose it when no operator-provided API key is available
 - [x] T081 Record the final clarification-pass outcome and confirm that no material ambiguity required an operator decision before implementation
+- [x] T082 Make repeated standalone macOS verification resilient to uv recreating the editable-install path file with the hidden flag, then rerun the complete gate
 
 ---
 

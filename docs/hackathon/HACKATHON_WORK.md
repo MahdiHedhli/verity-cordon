@@ -95,6 +95,13 @@ negatives on the repository's 14 original synthetic samples. After the
 documented bootstrap, the complete gate took 28.94 seconds of wall time on the
 exercised macOS developer host, satisfying SC-010's five-minute bound.
 
+A later exact-commit rerun revealed that `uv` could recreate its
+underscore-prefixed editable-install path file with macOS's hidden flag after a
+prior run. `scripts/verify.sh` now normalizes that disposable virtual-environment
+metadata on every standalone run, matching bootstrap behavior. The complete
+post-fix gate passed in 30.71 seconds, and the immediate direct package import
+also succeeded.
+
 Bootstrap was rerun after fixing editable-install metadata on macOS. A built
 wheel was also installed into an isolated temporary environment and its package
 import and CLI entry point succeeded.
