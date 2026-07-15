@@ -991,6 +991,9 @@ components:
         - ledger
         - memory_view
         - semantic_provider
+        - semantic_provider_isolation
+        - semantic_provider_ready
+        - semantic_provider_failure_class
         - counts
       properties:
         schema_version:
@@ -1013,6 +1016,14 @@ components:
           enum: [consistent, stale, rebuilding, unavailable]
         semantic_provider:
           $ref: "#/components/schemas/SemanticProviderState"
+        semantic_provider_isolation:
+          type: string
+          enum: [tool_free_api, agentic_sandboxed, recorded_fixture, local_deterministic, failed]
+        semantic_provider_ready:
+          type: boolean
+        semantic_provider_failure_class:
+          type: [string, "null"]
+          maxLength: 64
         counts:
           $ref: "#/components/schemas/DecisionCounts"
     DecisionCounts:

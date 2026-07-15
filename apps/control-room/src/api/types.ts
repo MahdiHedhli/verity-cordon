@@ -69,7 +69,7 @@ export interface StatusResponse {
   semantic_provider: SemanticProviderState;
   semantic_provider_isolation: ProviderIsolation;
   semantic_provider_ready: boolean;
-  semantic_provider_failure_class?: string | null;
+  semantic_provider_failure_class: string | null;
   counts: DecisionCounts;
 }
 
