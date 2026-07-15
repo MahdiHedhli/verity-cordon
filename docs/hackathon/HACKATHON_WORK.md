@@ -47,10 +47,11 @@ renamed codebase.
 | `104e0f0` | Pushed Sprint 002 clean-verification checkpoint with deterministic uncached Ruff checks | Complete |
 | `c70db72` | Pinned release verification to the bootstrapped environment and enforced the declared Node engine | Complete |
 | `79a12d0` | Recorded fresh-clone and Control Room browser acceptance evidence | Complete |
+| `a831e3e` | Closed subscription schema, hook-trust, runbook, screenshot, and release-audit gaps | Complete |
 
 The feature-001 branch was fast-forwarded into `main` without rewriting history
-or force-pushing. Sprint 002 remains on its public feature branch pending
-operator review and merge.
+or force-pushing. At this pre-PR checkpoint, Sprint 002 remained on its public
+feature branch pending review and merge.
 
 ## Sprint 002 Baseline
 
@@ -444,6 +445,8 @@ evidence.
 - **Branch**: `codex/002-desktop-subscription-defense`
 - **Pre-closure public branch head**:
   `d54532e12a478226939a30ce3b4e8da9beb181eb`
+- **Locally verified release implementation commit**:
+  `a831e3e20bbdc656b3d8199ad75ab76eeb3a7c3d`
 - **Prior clean-checkout implementation/evidence checkpoint**:
   `79a12d0c8058d579664c90740a8bd44ae3359c68`
 - **Automated verification**: 506 backend tests, 13 isolated example/plugin
@@ -466,13 +469,14 @@ evidence.
   exporter ecosystems remain outside the active feature task graph
 - **Submission status**: not submitted; video, final form entry, logged-out link
   checks, and the real `/feedback` Session ID remain operator-owned
-- **Exact next operator sequence**: close every ChatGPT Desktop task, exit all
+- **Release sequence at this checkpoint**: close every ChatGPT Desktop task, exit all
   Codex CLI TUI and IDE sessions, and fully quit the ChatGPT desktop app;
   preview and apply the normal Verity integration; deliberately start CLI,
   use `/hooks` to trust the exact reviewed Verity hook definitions, exit CLI,
   and set the post-review assertion; follow the preview/digest-confirmed setup
   in `scripts/demo-desktop.sh`; start the daemon and pass doctor/status before
-  restarting Desktop; verify `/mcp` and a benign hook canary; run and time the documented attack,
+  restarting Desktop; verify `/mcp` and a benign hook canary; run and time the
+  documented attack,
   enforcement, clean-task, revocation, and ledger sequence; immediately tear
   down the user-wide fixture; review and merge the feature branch; record and
   upload the under-three-minute public video; run `/feedback` in this primary
