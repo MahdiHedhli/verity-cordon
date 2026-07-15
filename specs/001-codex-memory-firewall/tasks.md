@@ -216,9 +216,9 @@ Deferred `VC-FUT-*` capabilities are not implementation tasks.
 - [x] T071 Run Python formatting, lint, type checking, unit, contract, integration, adversarial, end-to-end, and coverage gates through `scripts/verify.sh`
 - [x] T072 Run frontend type checking, linting, unit/component tests, and production build through `scripts/verify.sh`; run keyboard/focus accessibility and console-error checks in the separate browser smoke
 - [x] T073 Run a real desktop-width browser smoke of Overview, candidate detail, quarantine/block, revocation/replay, policy, and ledger verification and record the result in `docs/hackathon/HACKATHON_WORK.md`
-- [ ] T074 Run the offline demo from a fresh isolated clone, verify no real credential is required or logged, and record exact commands/results in `docs/hackathon/HACKATHON_WORK.md`
-- [ ] T075 Run final Spec Kit consistency analysis and convergence; close only verified checklist items in `specs/001-codex-memory-firewall/checklists/` and `docs/hackathon/SUBMISSION_CHECKLIST.md`
-- [ ] T076 Audit tracked files and Git history under `.` for credentials, private keys, mutation capabilities, raw evidence, generated databases, and unsupported claims before publication
+- [x] T074 Run the offline demo from a fresh isolated clone, verify no real credential is required or logged, and record exact commands/results in `docs/hackathon/HACKATHON_WORK.md`
+- [x] T075 Run final Spec Kit consistency analysis and convergence; close only verified checklist items in `specs/001-codex-memory-firewall/checklists/` and `docs/hackathon/SUBMISSION_CHECKLIST.md`
+- [x] T076 Audit tracked files and Git history under `.` for credentials, private keys, mutation capabilities, raw evidence, generated databases, and unsupported claims before publication
 - [ ] T077 Create intentional feature commits, integrate without force-push, create the authorized public GitHub repository, push the verified default branch, and record the exact repository URL and commit in `docs/hackathon/HACKATHON_WORK.md`
 
 ---

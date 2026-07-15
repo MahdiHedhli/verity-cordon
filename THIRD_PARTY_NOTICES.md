@@ -17,4 +17,3 @@ modified.
 
 Python and JavaScript dependencies retain their respective upstream licenses;
 the lockfiles provide the exact resolved package set.
-

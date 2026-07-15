@@ -15,7 +15,7 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 
 ## Project
 
-- [ ] Working project installs and runs consistently on each claimed platform.
+- [x] Working project installs and runs consistently on each claimed platform.
 - [x] Developer Tools is the selected category.
 - [x] Offline path exercises real policy, ledger, view, API, and UI code.
 - [ ] Live path visibly exercises GPT-5.6 structured extraction and assessment.
@@ -33,7 +33,7 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 - [x] README includes installation, sample data, supported platforms, and judge
   test path without reconstructing the project.
 - [x] README explains Codex collaboration, operator decisions, and GPT-5.6 use.
-- [ ] No private keys, API keys, bearer capabilities, raw secrets, or unsafe logs
+- [x] No private keys, API keys, bearer capabilities, raw secrets, or unsafe logs
   are tracked.
 - [ ] Final branch, commit, tags, and verification results are recorded.
 

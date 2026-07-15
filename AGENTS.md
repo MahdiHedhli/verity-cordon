@@ -21,4 +21,3 @@ in `docs/product/positioning.md` and `docs/security/`.
   from a compromised host.
 
 Run `./scripts/verify.sh` before publishing changes.
-

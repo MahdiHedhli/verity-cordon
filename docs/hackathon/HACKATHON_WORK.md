@@ -36,7 +36,9 @@ renamed codebase.
 | `cdba594` | Ledger verification, revocation, and replay | Complete |
 | `2ac638e` | Secure daemon, streaming, and live semantic implementation | Complete |
 | `5a2aa36` | Explicit demo and signed memory-expiration lifecycle | Complete |
-| `5a2aa36..HEAD` | Control Room, Codex integration, tests, security hardening, documentation, and publication preparation | In progress |
+| `9f2089b` | Complete Control Room, Codex integration, security hardening, and verification suite | Complete |
+| `c632e62` | Converged specifications and hackathon release materials | Complete |
+| `c632e62..HEAD` | Fresh-clone, audit, and publication evidence | In progress |
 
 The final commit, public URL, and integrated default-branch range must be added
 after publication.
@@ -59,9 +61,9 @@ after publication.
 - [x] Real bounded-stdio poisoned-tool fixture and approved-only simulated
   `SessionStart` demo assertion
 - [x] Control Room polish and desktop browser verification
-- [ ] Final clean-checkout offline demonstration
+- [x] Final clean-checkout offline demonstration
 - [x] Final full verification after security hardening
-- [ ] Final Spec Kit analysis and checklist convergence
+- [x] Final Spec Kit analysis and checklist convergence
 - [ ] Public repository creation and push
 - [ ] Operator video, `/feedback`, and Devpost submission
 
@@ -95,8 +97,25 @@ exercised macOS developer host, satisfying SC-010's five-minute bound.
 
 Bootstrap was rerun after fixing editable-install metadata on macOS. A built
 wheel was also installed into an isolated temporary environment and its package
-import and CLI entry point succeeded. Final fresh-clone acceptance remains
-pending.
+import and CLI entry point succeeded.
+
+Fresh-clone acceptance then ran against committed feature state `c632e62` in an
+isolated `/tmp` clone with `OPENAI_API_KEY` explicitly absent:
+
+```bash
+env -u OPENAI_API_KEY ./scripts/bootstrap.sh
+env -u OPENAI_API_KEY VERITY_DEMO_NO_SERVE=1 ./scripts/demo-offline.sh
+/usr/bin/time -p ./scripts/verify.sh
+```
+
+Bootstrap completed without creating a credential. The offline demo used the
+real policy, signed ledger, materialized view, rescan/revocation/rebuild path,
+approved-only session context, and bounded local stdio fixture; it reported a
+verified, consistent 65-event ledger and no external transmission. The full
+clean-clone gate passed in 38.67 seconds with 267 backend tests, 10
+example/plugin tests, 7 frontend tests, 80% backend coverage, valid contracts,
+zero dependency-audit findings, and the 14-sample fixture evaluation at 0 false
+positives and 0 false negatives. No credential value was required or logged.
 
 After targeted rescan and demo hardening, the five rescan acceptance tests, a
 10-test rescan/demo/CLI focus set, and a 41-test related
@@ -105,7 +124,7 @@ the reviewed bounded-stdio fixture, performed current-policy rescan and
 revocation, rebuilt the view, rendered approved-only simulated `SessionStart`
 context through the real memory service, and verified a consistent 65-event
 ledger. These were focused checkpoint results; the later final full
-verification passed, while the fresh-clone gate remains pending.
+verification and fresh-clone gates passed.
 
 The subsequent corruption-startup contract test passed: after tampering with a
 signed ledger event, runtime restart exposed content-safe read-only Control Room
@@ -122,6 +141,22 @@ content-safe detail projection. Additional focused tests passed for
 source-label and stream-reason sanitization, local-path hardening, and Codex
 receipt/current-Python binding. These changes are included in the final full
 gate above.
+
+### Publication security audit
+
+An independent read-only audit of all 234 intended tracked files and reachable
+history found no real credentials, private keys, mutation capabilities, runtime
+databases, ledger heads, salts, receipts, personal absolute paths, unsafe file
+types or modes, large blobs, or unsupported product claims. Fresh wheel and
+source distributions were also scanned; the wheel installed and its CLI ran in
+an isolated environment. `git fsck --full --strict`, Ruff, mypy, dependency
+audits, and focused security tests passed.
+
+The audit identified only synthetic credential-shaped strings in explicitly
+marked test fixtures. They are not secrets, but GitHub push protection may
+still ask for a false-positive review. Secret scanning will not be disabled to
+work around a hypothetical block. Ignored demo runtime state was removed before
+publication.
 
 ### Browser and Codex integration
 
@@ -167,14 +202,13 @@ analysis then added four explicit convergence tasks: privacy-safe span coverage,
 performance evidence, the still-unexercised credentialed live-model gate, and
 the clarification record. The telemetry, measurement, and clarification gaps
 are closed; the live-model task remains openly pending because no API key is
-present. Final release-gate analysis remains pending until the clean-clone and
-security-audit evidence is recorded.
+present. After the clean-clone and security-audit evidence was recorded, the
+final read-only analysis found no critical or high consistency gap, no active
+deferred capability, and no unresolved material ambiguity. T080 and the live
+submission-checklist item remain intentionally unchecked.
 
 ## Open Issues and Operator Actions
 
-- Run the offline demo from a fresh isolated clone at the final commit.
-- Run final Spec Kit consistency analysis and close only supported checklist
-  items.
 - Exercise the credentialed live GPT-5.6 path if a suitable local key is
   available; otherwise disclose it as unexercised.
 - Create and verify the authorized public GitHub repository, then record its URL
