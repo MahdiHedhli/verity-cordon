@@ -49,6 +49,8 @@ renamed codebase.
 | `79a12d0` | Recorded fresh-clone and Control Room browser acceptance evidence | Complete |
 | `a831e3e` | Closed subscription schema, hook-trust, runbook, screenshot, and release-audit gaps | Complete |
 | `e458786` | Aligned runtime status and semantic-failure contracts after post-merge review | Complete |
+| `0da11e5` | Bound actual runtime status responses to the public OpenAPI contract | Complete |
+| `8540cbb` | Unified CLI and daemon subscription-readiness reporting | Complete |
 
 The feature-001 branch was fast-forwarded into `main` without rewriting history
 or force-pushing. At this pre-PR checkpoint, Sprint 002 remained on its public
@@ -395,8 +397,10 @@ then exposed real public-contract drift: the runtime status response had three
 fields absent from its closed OpenAPI schema, and the semantic failure JSON
 Schema omitted six runtime failure classes. Commit `e458786` centralized the
 provider-isolation mapping, aligned both contracts and the frontend type, and
-added executable equality and response-validation regressions. The complete
-post-fix gate passed 509 backend tests, 13 isolated example/plugin tests, 10
+added executable equality and response-validation regressions. A follow-up
+review also found that CLI status could report a subscription provider ready
+without a runner; `8540cbb` aligned it with daemon fail-safe behavior and added
+a regression. The complete post-fix gate passed 510 backend tests, 13 isolated example/plugin tests, 10
 frontend tests, 80% backend coverage, dependency audits, production build, and
 the 20-fixture evaluation.
 
@@ -459,9 +463,11 @@ evidence.
   `a831e3e20bbdc656b3d8199ad75ab76eeb3a7c3d`
 - **Locally verified contract-alignment commit**:
   `e458786`
+- **Locally verified readiness-alignment commit**:
+  `8540cbb`
 - **Prior clean-checkout implementation/evidence checkpoint**:
   `79a12d0c8058d579664c90740a8bd44ae3359c68`
-- **Automated verification**: 509 backend tests, 13 isolated example/plugin
+- **Automated verification**: 510 backend tests, 13 isolated example/plugin
   tests, 10 frontend tests, 80% backend coverage, schema/OpenAPI validation,
   dependency audits, type checks, lint, production build, and 20 fixture
   evaluations with 0 fixture-scoped false positives and 0 fixture-scoped false
