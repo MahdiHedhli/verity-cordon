@@ -22,7 +22,7 @@ from verity_cordon.core.errors import (
     ResourceLimitError,
     VerityError,
 )
-from verity_cordon.core.models import SourceClass
+from verity_cordon.core.models import SourceClass, provider_isolation_for
 from verity_cordon.crypto.canonical import canonical_json
 from verity_cordon.daemon.contracts import (
     CandidateReviewRequest,
@@ -233,11 +233,6 @@ def create_app(runtime: Runtime) -> FastAPI:
         verification = await runtime.event_store.verify()
         operational = runtime.event_store.healthy and verification.verified
         provider_label = runtime.memory_service.semantic_adjudicator.provider_label
-        isolation_by_provider = {
-            "live_openai": "tool_free_api",
-            "live_codex_subscription": "agentic_sandboxed",
-            "recorded_fixture": "recorded_fixture",
-        }
         provider_ready = provider_label != "live_codex_subscription"
         provider_failure_class: str | None = None
         if runtime.subscription_runner is not None:
@@ -258,10 +253,7 @@ def create_app(runtime: Runtime) -> FastAPI:
             "ledger": "verified" if operational else "invalid",
             "memory_view": ("consistent" if verification.materialized_view_consistent else "stale"),
             "semantic_provider": provider_label,
-            "semantic_provider_isolation": isolation_by_provider.get(
-                provider_label,
-                "failed",
-            ),
+            "semantic_provider_isolation": provider_isolation_for(provider_label).value,
             "semantic_provider_ready": provider_ready,
             "semantic_provider_failure_class": provider_failure_class,
             "counts": statistics["counts"],

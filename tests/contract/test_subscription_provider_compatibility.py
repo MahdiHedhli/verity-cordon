@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import yaml
 from jsonschema import Draft202012Validator, FormatChecker  # type: ignore[import-untyped]
@@ -16,6 +16,8 @@ from verity_cordon.core.models import (
     ProviderState,
     ProviderSummaryState,
     SemanticAssessment,
+    SemanticFailure,
+    provider_isolation_for,
 )
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
@@ -132,6 +134,20 @@ def test_provider_summary_adds_subscription_without_renaming_historical_values()
     } <= {item.value for item in ProviderSummaryState}
 
 
+def test_provider_isolation_mapping_matches_the_documented_boundary() -> None:
+    expected = {
+        "live_openai": "tool_free_api",
+        "live_codex_subscription": "agentic_sandboxed",
+        "recorded_fixture": "recorded_fixture",
+        "deterministic_only": "local_deterministic",
+        "not_required": "local_deterministic",
+        "failed": "failed",
+        "unknown_provider": "failed",
+    }
+
+    assert {provider: provider_isolation_for(provider).value for provider in expected} == expected
+
+
 def test_candidate_extractor_accepts_the_additive_subscription_value() -> None:
     candidate = MemoryCandidate.model_validate(
         _candidate_payload(extractor_provider="live_codex_subscription")
@@ -154,6 +170,15 @@ def test_feature_001_json_schemas_accept_subscription_provider_payloads() -> Non
     ).validate(_assessment_payload(provider_state="live_codex_subscription"))
 
 
+def test_semantic_failure_schema_matches_every_runtime_failure_class() -> None:
+    assessment_schema = _load_json_schema("semantic-assessment.schema.json")
+    failure_schema = assessment_schema["properties"]["failure"]["anyOf"][0]
+    contract_values = set(failure_schema["properties"]["class"]["enum"])
+    runtime_values = set(get_args(SemanticFailure.model_fields["class_name"].annotation))
+
+    assert contract_values == runtime_values
+
+
 def test_feature_001_openapi_accepts_subscription_provider_summary() -> None:
     contract_path = CONTRACTS / "verity-ipc.openapi.yaml"
     document = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
@@ -161,6 +186,43 @@ def test_feature_001_openapi_accepts_subscription_provider_summary() -> None:
     provider_schema = document["components"]["schemas"]["SemanticProviderState"]
 
     Draft202012Validator(provider_schema).validate("live_codex_subscription")
+
+
+def test_feature_001_openapi_accepts_the_runtime_subscription_status() -> None:
+    contract_path = CONTRACTS / "verity-ipc.openapi.yaml"
+    document = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    status_schema = dict(document["components"]["schemas"]["StatusResponse"])
+    status_schema["components"] = document["components"]
+    payload = {
+        "schema_version": "1.0.0",
+        "daemon": "healthy",
+        "mode": "enforce",
+        "policy": {
+            "policy_id": "default-policy",
+            "version": "1.0.0",
+            "mode": "enforce",
+            "digest": SHA256,
+            "validation_state": "valid",
+        },
+        "ledger": "verified",
+        "memory_view": "consistent",
+        "semantic_provider": "live_codex_subscription",
+        "semantic_provider_isolation": "agentic_sandboxed",
+        "semantic_provider_ready": False,
+        "semantic_provider_failure_class": "unsupported_auth",
+        "counts": {
+            "total_candidates": 0,
+            "allowed": 0,
+            "redacted": 0,
+            "quarantined": 0,
+            "blocked": 0,
+            "revoked": 0,
+            "pending_evidence": 0,
+            "failed_evidence": 0,
+        },
+    }
+
+    Draft202012Validator(status_schema).validate(payload)
 
 
 def test_historical_live_provider_payloads_round_trip_without_mutation() -> None:

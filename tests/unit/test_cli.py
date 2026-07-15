@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from typer.testing import CliRunner
@@ -27,6 +28,42 @@ def test_serve_rejects_invalid_port_override() -> None:
 
     assert result.exit_code == 1
     assert "valid range" in result.output
+
+
+def test_status_reports_subscription_unavailable_without_a_runner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = SimpleNamespace(
+        mode=SimpleNamespace(value="enforce"),
+        policy_id="default-policy",
+        version="1.0.0",
+    )
+    runtime = SimpleNamespace(
+        event_store=SimpleNamespace(
+            verify=AsyncMock(
+                return_value=SimpleNamespace(
+                    verified=True,
+                    materialized_view_consistent=True,
+                )
+            )
+        ),
+        queries=SimpleNamespace(statistics=AsyncMock(return_value={"counts": {}})),
+        memory_service=SimpleNamespace(
+            policy_engine=SimpleNamespace(policy=policy),
+            semantic_adjudicator=SimpleNamespace(provider_label="live_codex_subscription"),
+        ),
+        subscription_runner=None,
+    )
+    monkeypatch.setattr(cli_main, "build_runtime", AsyncMock(return_value=runtime))
+
+    result = CliRunner().invoke(app, ["status"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["semantic_provider"] == "live_codex_subscription"
+    assert payload["semantic_provider_isolation"] == "agentic_sandboxed"
+    assert payload["semantic_provider_ready"] is False
+    assert payload["semantic_provider_failure_class"] is None
 
 
 def test_memory_rescan_requires_explicit_confirmation() -> None:

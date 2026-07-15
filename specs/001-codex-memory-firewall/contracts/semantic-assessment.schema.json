@@ -188,7 +188,13 @@
                 "incomplete",
                 "invalid_schema",
                 "invalid_response",
-                "internal_error"
+                "internal_error",
+                "unsupported_auth",
+                "executable_drift",
+                "tool_activity",
+                "output_limit",
+                "process_exit",
+                "cancelled"
               ]
             },
             "retryable": {

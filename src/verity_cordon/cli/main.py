@@ -29,6 +29,7 @@ from verity_cordon.codex import (
 )
 from verity_cordon.core.config import Settings, loopback_origin, validate_loopback_host
 from verity_cordon.core.errors import ConfigurationError, VerityError
+from verity_cordon.core.models import provider_isolation_for
 from verity_cordon.crypto.keys import FileKeyProvider
 from verity_cordon.daemon.app import create_app
 from verity_cordon.daemon.runtime import build_runtime
@@ -289,12 +290,8 @@ def status() -> None:
         statistics = await runtime.queries.statistics()
         policy = runtime.memory_service.policy_engine.policy
         provider_label = runtime.memory_service.semantic_adjudicator.provider_label
-        provider_isolation = {
-            "live_openai": "tool_free_api",
-            "live_codex_subscription": "agentic_sandboxed",
-            "recorded_fixture": "recorded_fixture",
-        }.get(provider_label, "failed")
-        provider_ready = True
+        provider_isolation = provider_isolation_for(provider_label).value
+        provider_ready = provider_label != "live_codex_subscription"
         provider_failure_class: str | None = None
         if runtime.subscription_runner is not None:
             try:

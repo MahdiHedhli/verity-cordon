@@ -150,6 +150,19 @@ class ProviderIsolation(StrEnum):
     FAILED = "failed"
 
 
+def provider_isolation_for(provider_state: str) -> ProviderIsolation:
+    """Return the documented presentation boundary for a semantic provider state."""
+
+    return {
+        ProviderSummaryState.LIVE_OPENAI.value: ProviderIsolation.TOOL_FREE_API,
+        ProviderSummaryState.LIVE_CODEX_SUBSCRIPTION.value: ProviderIsolation.AGENTIC_SANDBOXED,
+        ProviderSummaryState.RECORDED_FIXTURE.value: ProviderIsolation.RECORDED_FIXTURE,
+        ProviderSummaryState.DETERMINISTIC_ONLY.value: ProviderIsolation.LOCAL_DETERMINISTIC,
+        ProviderSummaryState.NOT_REQUIRED.value: ProviderIsolation.LOCAL_DETERMINISTIC,
+        ProviderSummaryState.FAILED.value: ProviderIsolation.FAILED,
+    }.get(provider_state, ProviderIsolation.FAILED)
+
+
 class PersistenceIntent(StrEnum):
     NONE = "none"
     IMPLICIT = "implicit"
