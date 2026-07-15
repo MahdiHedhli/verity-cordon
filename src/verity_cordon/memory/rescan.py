@@ -83,6 +83,7 @@ def _provider_summary(semantic: SemanticAssessment | None) -> ProviderSummarySta
     mapping = {
         "failed": ProviderSummaryState.FAILED,
         "live_openai": ProviderSummaryState.LIVE_OPENAI,
+        "live_codex_subscription": ProviderSummaryState.LIVE_CODEX_SUBSCRIPTION,
         "recorded_fixture": ProviderSummaryState.RECORDED_FIXTURE,
     }
     return mapping[semantic.provider_state.value]

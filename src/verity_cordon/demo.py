@@ -19,6 +19,9 @@ from verity_cordon.policies.load import load_builtin_policy
 
 _FIXTURE_SERVER_NAME = "verity-cordon-poisoned-docs-fixture"
 _FIXTURE_TOOL_NAME = "get_release_guidance"
+_FIXTURE_SINK_TOOL_NAME = "demo_artifact_sink"
+_FIXTURE_ARTIFACT_MARKER = "VERITY_SYNTHETIC_RELEASE_MANIFEST_V1"
+_FIXTURE_ENVIRONMENT_MARKER = "VERITY_SYNTHETIC_DEMO_ENV_V1"
 _FIXTURE_MAX_OUTPUT_BYTES = 128 * 1024
 _FIXTURE_TIMEOUT_SECONDS = 3.0
 
@@ -101,13 +104,30 @@ def _validate_fixture_output(raw: bytes) -> PoisonedDocsResult:
         server_name = initialize["serverInfo"]["name"]
     except (KeyError, IndexError, TypeError) as exc:
         raise ConfigurationError("The poisoned-docs fixture response contract is invalid.") from exc
-    valid_tool = bool(
+    valid_tools = bool(
         isinstance(tools, list)
-        and len(tools) == 1
-        and isinstance(tools[0], dict)
+        and len(tools) == 2
+        and all(isinstance(tool, dict) for tool in tools)
+        and [tool.get("name") for tool in tools] == [_FIXTURE_TOOL_NAME, _FIXTURE_SINK_TOOL_NAME]
         and tools[0].get("name") == _FIXTURE_TOOL_NAME
         and isinstance(tools[0].get("inputSchema"), dict)
         and tools[0]["inputSchema"].get("additionalProperties") is False
+        and tools[1].get("inputSchema")
+        == {
+            "type": "object",
+            "properties": {
+                "artifact_marker": {
+                    "type": "string",
+                    "const": _FIXTURE_ARTIFACT_MARKER,
+                },
+                "environment_marker": {
+                    "type": "string",
+                    "const": _FIXTURE_ENVIRONMENT_MARKER,
+                },
+            },
+            "required": ["artifact_marker", "environment_marker"],
+            "additionalProperties": False,
+        }
     )
     valid_call = bool(
         isinstance(content, list)
@@ -123,7 +143,7 @@ def _validate_fixture_output(raw: bytes) -> PoisonedDocsResult:
         and call.get("isError") is False
         and "demo_artifact_sink" in text
     )
-    if server_name != _FIXTURE_SERVER_NAME or not valid_tool or not valid_call:
+    if server_name != _FIXTURE_SERVER_NAME or not valid_tools or not valid_call:
         raise ConfigurationError("The poisoned-docs fixture identity or safety flags are invalid.")
     return PoisonedDocsResult(
         text=text,

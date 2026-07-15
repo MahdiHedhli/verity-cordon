@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal
 
 from verity_cordon.core.config import Settings, load_or_create_capability
-from verity_cordon.core.errors import KeyHealthError, LedgerIntegrityError, PolicyValidationError
+from verity_cordon.core.errors import (
+    ConfigurationError,
+    KeyHealthError,
+    LedgerIntegrityError,
+    PolicyValidationError,
+)
 from verity_cordon.core.models import Mode
 from verity_cordon.crypto.keys import FileKeyProvider
 from verity_cordon.daemon.idempotency import IdempotencyStore
@@ -44,6 +51,7 @@ class Runtime:
     idempotency: IdempotencyStore
     capability: str
     policy_validation_state: Literal["valid", "invalid"]
+    subscription_runner: Any | None
 
     def replace_policy(self, policy: PolicyDocument) -> None:
         self.memory_service.policy_engine = PolicyEngine(policy)
@@ -94,9 +102,36 @@ async def build_runtime(settings: Settings | None = None) -> Runtime:
     elif policy_configuration_invalid:
         store._mark_unhealthy("policy_configuration_invalid")
 
+    subscription_runner: Any | None = None
+    semantic_model = selected.openai_model
+    if selected.semantic_provider == "codex_subscription":
+        from verity_cordon.semantic.codex_subscription import CodexSubscriptionRunner
+
+        home_raw = os.environ.get("HOME")
+        if not home_raw:
+            raise ConfigurationError(
+                "HOME is required for the explicit Codex subscription provider."
+            )
+        home = Path(home_raw)
+        codex_home_raw = os.environ.get("CODEX_HOME")
+        subscription_runner = CodexSubscriptionRunner(
+            executable=selected.codex_executable,
+            model=selected.codex_model,
+            home=home,
+            codex_home=Path(codex_home_raw) if codex_home_raw else None,
+            semantic_timeout_seconds=selected.codex_semantic_timeout_seconds,
+            auth_timeout_seconds=selected.codex_auth_timeout_seconds,
+            max_input_bytes=selected.codex_max_input_bytes,
+            max_jsonl_bytes=selected.codex_max_jsonl_bytes,
+            max_stderr_bytes=selected.codex_max_stderr_bytes,
+            max_final_bytes=selected.codex_max_final_bytes,
+            termination_grace_seconds=selected.codex_termination_grace_seconds,
+        )
+        semantic_model = selected.codex_model
     extractor, adjudicator = build_semantic_components(
         provider=selected.semantic_provider,
-        model=selected.openai_model,
+        model=semantic_model,
+        codex_runner=subscription_runner,
     )
     view = SQLiteMemoryView(store)
     statistics = Statistics()
@@ -144,5 +179,6 @@ async def build_runtime(settings: Settings | None = None) -> Runtime:
         idempotency=IdempotencyStore(store),
         capability=capability,
         policy_validation_state=policy_validation_state,
+        subscription_runner=subscription_runner,
     )
     return runtime

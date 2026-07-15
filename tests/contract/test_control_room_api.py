@@ -7,6 +7,7 @@ import hashlib
 import hmac
 from dataclasses import replace
 from pathlib import Path
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -139,6 +140,52 @@ async def test_health_status_and_statistics_are_content_safe(tmp_path) -> None:
     assert status.json()["ledger"] == "verified"
     assert status.json()["mode"] == "enforce"
     assert statistics.json()["counts"]["total_candidates"] == 0
+
+
+@pytest.mark.asyncio
+async def test_subscription_status_reports_lower_isolation_and_readiness(tmp_path) -> None:
+    class SubscriptionAdjudicator:
+        provider_label = "live_codex_subscription"
+
+    class ReadyRunner:
+        async def check_chatgpt_auth(self) -> str:
+            return "ready_chatgpt"
+
+    client, runtime = await app_client(tmp_path)
+    runtime.memory_service.semantic_adjudicator = cast(Any, SubscriptionAdjudicator())
+    runtime.subscription_runner = ReadyRunner()
+    async with client:
+        response = await client.get("/api/v1/status")
+
+    assert response.status_code == 200
+    assert response.json()["semantic_provider"] == "live_codex_subscription"
+    assert response.json()["semantic_provider_isolation"] == "agentic_sandboxed"
+    assert response.json()["semantic_provider_ready"] is True
+    assert response.json()["semantic_provider_failure_class"] is None
+
+
+@pytest.mark.asyncio
+async def test_subscription_status_failure_is_content_safe(tmp_path) -> None:
+    class SubscriptionAdjudicator:
+        provider_label = "live_codex_subscription"
+
+    class SafeFailure(RuntimeError):
+        failure_class = "unsupported_auth"
+
+    class UnavailableRunner:
+        async def check_chatgpt_auth(self) -> str:
+            raise SafeFailure("raw child detail must not cross the API")
+
+    client, runtime = await app_client(tmp_path)
+    runtime.memory_service.semantic_adjudicator = cast(Any, SubscriptionAdjudicator())
+    runtime.subscription_runner = UnavailableRunner()
+    async with client:
+        response = await client.get("/api/v1/status")
+
+    rendered = response.text
+    assert response.json()["semantic_provider_ready"] is False
+    assert response.json()["semantic_provider_failure_class"] == "unsupported_auth"
+    assert "raw child detail" not in rendered
 
 
 @pytest.mark.asyncio

@@ -22,4 +22,29 @@ describe("OverviewPage", () => {
     expect(screen.getByText("Memory Committed")).toBeVisible();
     expect(screen.getAllByText("verified").length).toBeGreaterThan(0);
   });
+
+  it("labels subscription semantic review as lower-isolation agentic execution", async () => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>((input) => {
+      const url = requestUrl(input);
+      if (url.endsWith("/status")) {
+        return Promise.resolve(jsonResponse({
+          ...safeStatus,
+          semantic_provider: "live_codex_subscription",
+          semantic_provider_isolation: "agentic_sandboxed",
+          semantic_provider_ready: true,
+        }));
+      }
+      if (url.endsWith("/statistics")) return Promise.resolve(jsonResponse(safeStatistics));
+      if (url.includes("/events")) return Promise.resolve(jsonResponse({ items: [], next_cursor: null }));
+      if (url.includes("/memories")) return Promise.resolve(jsonResponse({ items: [], next_cursor: null }));
+      return Promise.resolve(jsonResponse({}, 404));
+    }));
+
+    render(<TestProviders><OverviewPage /></TestProviders>);
+
+    expect(await screen.findByText(/live codex subscription/i)).toBeVisible();
+    expect(screen.getByText(/Codex subscription semantic review uses lower isolation/i)).toBeVisible();
+    expect(screen.getByText(/agentic_sandboxed/i)).toBeVisible();
+    expect(screen.getByText(/tool activity invalidates the result/i)).toBeVisible();
+  });
 });

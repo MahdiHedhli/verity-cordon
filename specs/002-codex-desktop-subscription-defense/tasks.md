@@ -7,8 +7,9 @@
 `contracts/`, `quickstart.md`, and the feature checklists
 
 **Tests**: Security-sensitive stories use test-first slices. A completed task
-must preserve the implemented `001-codex-memory-firewall` baseline and must not
-stage or alter the operator's unrelated untracked `* 2.*` files.
+must preserve the implemented `001-codex-memory-firewall` baseline. The
+operator-authorized workspace cleanup that removed unrelated duplicate
+`* 2.*` files is recorded separately in the hackathon work log.
 
 **Organization**: Tasks are grouped by user story so each story has a distinct
 goal and independent acceptance path. Deferred outbound information-flow
@@ -73,17 +74,23 @@ the poisoned instruction is absent.
 
 ### Tests for User Story 1
 
-- [ ] T012 [P] [US1] Add failing two-tool fixture, exact synthetic sink allow-list, forbidden-import, size-bound, and no-side-effect tests in `examples/poisoned-docs-mcp/tests/test_server.py`
-- [ ] T013 [P] [US1] Add failing benign-quote, conditional-command, weak-signal fact, compaction-origin, and procedural-instruction evaluation cases in `tests/adversarial/test_delayed_poisoning.py`
-- [ ] T014 [US1] Add a failing hook-to-queue-to-policy-to-ledger-to-fresh-session matrix covering benign, malicious, false-positive, daemon/policy/ledger/view failure, cross-session, and ledger-tamper cases in `tests/end_to_end/test_desktop_memory_defense.py`
+- [x] T012 [P] [US1] Add failing two-tool fixture, exact synthetic sink allow-list, forbidden-import, size-bound, and no-side-effect tests in `examples/poisoned-docs-mcp/tests/test_server.py`
+- [x] T013 [P] [US1] Add failing benign-quote, conditional-command, weak-signal fact, compaction-origin, and procedural-instruction evaluation cases in `tests/adversarial/test_delayed_poisoning.py`
+- [x] T014 [US1] Add a failing hook-to-queue-to-policy-to-ledger-to-fresh-session matrix covering benign, malicious, false-positive, daemon/policy/ledger/view failure, cross-session, and ledger-tamper cases in `tests/end_to_end/test_desktop_memory_defense.py`
 
 ### Implementation for User Story 1
 
-- [ ] T015 [US1] Extend the clean-room stdio fixture with inert `demo_artifact_sink` behavior and exact marker validation in `examples/poisoned-docs-mcp/src/poisoned_docs_mcp/server.py`
-- [ ] T016 [P] [US1] Document the fixture's synthetic Trojan Hippo-inspired boundary and no-host-data properties in `examples/poisoned-docs-mcp/README.md`
-- [ ] T017 [US1] Add the delayed-trigger taxonomy and expected outcomes to `evals/datasets/memory-poisoning-fixtures-v1.json` and `evals/expected/semantic-fixtures.json`
-- [ ] T018 [US1] Expose pending versus signed-terminal evidence status needed by the Desktop checkpoint in `src/verity_cordon/daemon/app.py` and `src/verity_cordon/ledger/queries.py`
-- [ ] T019 [US1] Make the complete US1 security matrix pass and verify fail-closed injection plus the signed ledger/materialized view in `tests/end_to_end/test_desktop_memory_defense.py`
+- [x] T015 [US1] Extend the clean-room stdio fixture with inert `demo_artifact_sink` behavior and exact marker validation in `examples/poisoned-docs-mcp/src/poisoned_docs_mcp/server.py`
+- [x] T016 [P] [US1] Document the fixture's synthetic Trojan Hippo-inspired boundary and no-host-data properties in `examples/poisoned-docs-mcp/README.md`
+- [x] T017 [US1] Add the delayed-trigger taxonomy and expected outcomes to `evals/datasets/memory-poisoning-fixtures-v1.json` and `evals/expected/semantic-fixtures.json`
+- [x] T018 [US1] Expose pending versus signed-terminal evidence status needed by the Desktop checkpoint in `src/verity_cordon/daemon/app.py` and `src/verity_cordon/ledger/queries.py`
+- [x] T019 [US1] Make the complete US1 security matrix pass and verify fail-closed injection plus the signed ledger/materialized view in `tests/end_to_end/test_desktop_memory_defense.py`
+
+**US1 verification (2026-07-15)**:
+
+- The tracked backend suite passed after integration, including the delayed-poisoning adversarial and Desktop memory-defense matrices.
+- `uv run --group test pytest -q -c pyproject.toml tests/test_server.py` from `examples/poisoned-docs-mcp/` — 9 passed.
+- `PYTHONPATH=src uv run python evals/runners/run_fixture_evaluation.py --output-dir /tmp/verity-eval-results --check` — 20 synthetic samples, 0 fixture-scoped false positives, and 0 fixture-scoped false negatives.
 
 **Checkpoint**: The fixture demonstrates selective memory trust under
 enforcement without subscription access or Desktop UI automation.
@@ -103,23 +110,29 @@ does not call another provider.
 
 ### Tests for User Story 2
 
-- [ ] T020 [P] [US2] Add failing exact argv, stdin-only prompt, allow-listed environment, private-path mode, executable identity, HOME/CODEX_HOME ancestor ownership/mode, symlink, replacement, and drift tests in `tests/unit/test_codex_subscription_runner.py`
-- [ ] T021 [P] [US2] Add failing ChatGPT-login acceptance and API-key, absent, ambiguous, oversized, nonzero, and timeout status rejection tests in `tests/unit/test_codex_subscription_auth.py`
-- [ ] T022 [P] [US2] Add failing JSONL lifecycle allow-list plus known-tool, unknown-item, duplicate-key, malformed, partial-line, and output-cap rejection tests in `tests/unit/test_codex_subscription_events.py`
-- [ ] T023 [P] [US2] Add failing extraction/assessment schema, identity, digest, sanitization, provider-label, daemon readiness API, and no-fallback tests in `tests/integration/test_codex_subscription_semantic.py` and `tests/contract/test_control_room_api.py`
-- [ ] T024 [P] [US2] Add failing timeout, cancellation, process-group descendant cleanup, executable drift, and recursion adversarial tests in `tests/adversarial/test_codex_subscription_isolation.py`
+- [x] T020 [P] [US2] Add failing exact argv, stdin-only prompt, allow-listed environment, private-path mode, executable identity, HOME/CODEX_HOME ancestor ownership/mode, symlink, replacement, and drift tests in `tests/unit/test_codex_subscription_runner.py`
+- [x] T021 [P] [US2] Add failing ChatGPT-login acceptance and API-key, absent, ambiguous, oversized, nonzero, and timeout status rejection tests in `tests/unit/test_codex_subscription_auth.py`
+- [x] T022 [P] [US2] Add failing JSONL lifecycle allow-list plus known-tool, unknown-item, duplicate-key, malformed, partial-line, and output-cap rejection tests in `tests/unit/test_codex_subscription_events.py`
+- [x] T023 [P] [US2] Add failing extraction/assessment schema, identity, digest, sanitization, provider-label, daemon readiness API, and no-fallback tests in `tests/integration/test_codex_subscription_semantic.py` and `tests/contract/test_control_room_api.py`
+- [x] T024 [P] [US2] Add failing timeout, cancellation, process-group descendant cleanup, executable drift, and recursion adversarial tests in `tests/adversarial/test_codex_subscription_isolation.py`
 
 ### Implementation for User Story 2
 
-- [ ] T025 [US2] Implement trusted executable resolution, bounded auth readiness, fixed child launch, concurrent output caps, JSONL allow-listing, process-group cleanup, and private temporary I/O in `src/verity_cordon/semantic/codex_subscription.py`
-- [ ] T026 [US2] Implement strict subscription candidate extraction and semantic assessment envelopes in `src/verity_cordon/semantic/codex_subscription.py`
-- [ ] T027 [US2] Wire explicit provider construction with a shared runner and no silent fallback in `src/verity_cordon/semantic/factory.py` and `src/verity_cordon/daemon/runtime.py`
-- [ ] T028 [US2] Map the additive provider state through commit, rescan, materialization, and candidate queries in `src/verity_cordon/memory/service.py`, `src/verity_cordon/memory/rescan.py`, `src/verity_cordon/memory/materializer.py`, and `src/verity_cordon/ledger/queries.py`
-- [ ] T029 [US2] Add content-safe Codex subscription readiness and isolation status to the daemon status API, `verity doctor`, and `verity status` in `src/verity_cordon/daemon/app.py` and `src/verity_cordon/cli/main.py`
-- [ ] T030 [P] [US2] Add failing Control Room provider-label and lower-isolation warning tests in `apps/control-room/src/routes/CandidateDetailPage.test.tsx` and `apps/control-room/src/routes/OverviewPage.test.tsx`
-- [ ] T031 [US2] Add `live_codex_subscription` types, filters, status, and the `agentic_sandboxed` warning in `apps/control-room/src/api/types.ts`, `apps/control-room/src/routes/MemoryInventoryPage.tsx`, `apps/control-room/src/routes/OverviewPage.tsx`, and `apps/control-room/src/routes/CandidateDetailPage.tsx`
-- [ ] T032 [US2] Run all fake-child unit, integration, adversarial, replay, direct API, frontend type, and frontend component tests and record results in `specs/002-codex-desktop-subscription-defense/tasks.md`
-- [ ] T033 [US2] Exercise one explicitly selected, sanitized synthetic live subscription assessment when supported and record exact version/provider/outcome evidence without raw child output in `docs/hackathon/HACKATHON_WORK.md`
+- [x] T025 [US2] Implement trusted executable resolution, bounded auth readiness, fixed child launch, concurrent output caps, JSONL allow-listing, process-group cleanup, and private temporary I/O in `src/verity_cordon/semantic/codex_subscription.py`
+- [x] T026 [US2] Implement strict subscription candidate extraction and semantic assessment envelopes in `src/verity_cordon/semantic/codex_subscription.py`
+- [x] T027 [US2] Wire explicit provider construction with a shared runner and no silent fallback in `src/verity_cordon/semantic/factory.py` and `src/verity_cordon/daemon/runtime.py`
+- [x] T028 [US2] Map the additive provider state through commit, rescan, materialization, and candidate queries in `src/verity_cordon/memory/service.py`, `src/verity_cordon/memory/rescan.py`, `src/verity_cordon/memory/materializer.py`, and `src/verity_cordon/ledger/queries.py`
+- [x] T029 [US2] Add content-safe Codex subscription readiness and isolation status to the daemon status API, `verity doctor`, and `verity status` in `src/verity_cordon/daemon/app.py` and `src/verity_cordon/cli/main.py`
+- [x] T030 [P] [US2] Add failing Control Room provider-label and lower-isolation warning tests in `apps/control-room/src/routes/CandidateDetailPage.test.tsx` and `apps/control-room/src/routes/OverviewPage.test.tsx`
+- [x] T031 [US2] Add `live_codex_subscription` types, filters, status, and the `agentic_sandboxed` warning in `apps/control-room/src/api/types.ts`, `apps/control-room/src/routes/MemoryInventoryPage.tsx`, `apps/control-room/src/routes/OverviewPage.tsx`, and `apps/control-room/src/routes/CandidateDetailPage.tsx`
+- [x] T032 [US2] Run all fake-child unit, integration, adversarial, replay, direct API, frontend type, and frontend component tests and record results in `specs/002-codex-desktop-subscription-defense/tasks.md`
+- [x] T033 [US2] Exercise one explicitly selected, sanitized synthetic live subscription assessment when supported and record exact version/provider/outcome evidence without raw child output in `docs/hackathon/HACKATHON_WORK.md`
+
+**US2 verification (2026-07-15)**:
+
+- Fake-child, auth, event-gate, structured-provider, isolation, hook, and Control Room API tests passed together. After security review added success-path descendant cleanup, stdin-deadline, opened-output identity, and post-rescan checkpoint regressions, the canonical repository gate passed all 400 backend tests.
+- Control Room: ESLint and TypeScript passed; 6 Vitest files / 9 tests passed; Vite production build passed with 1,855 modules transformed.
+- Live subscription smoke: Codex CLI `0.144.4`, ChatGPT sign-in, model `gpt-5.6-luna`, provider `live_codex_subscription`, 11,026 ms, synthetic operational instruction recommended `quarantine`, no fallback. The separately attempted base `gpt-5.6` identifier failed content-safely as unavailable for this identity.
 
 **Checkpoint**: Subscription mode either returns a strictly bound advisory
 result labeled `live_codex_subscription` or fails content-safely without

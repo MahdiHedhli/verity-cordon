@@ -44,7 +44,7 @@ credential. Verification must pass before installing the integration.
 ```bash
 export VERITY_DATA_DIR="$PWD/.verity-desktop-demo"
 export VERITY_SEMANTIC_PROVIDER=codex_subscription
-export VERITY_CODEX_MODEL=gpt-5.6
+export VERITY_CODEX_MODEL=gpt-5.6-luna
 ```
 
 Do not populate or commit an `.env` file. Provider selection is explicit; a

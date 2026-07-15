@@ -123,6 +123,8 @@ def _provider_summary(semantic: SemanticAssessment | None) -> ProviderSummarySta
         return ProviderSummaryState.FAILED
     if semantic.provider_state == ProviderState.LIVE_OPENAI:
         return ProviderSummaryState.LIVE_OPENAI
+    if semantic.provider_state == ProviderState.LIVE_CODEX_SUBSCRIPTION:
+        return ProviderSummaryState.LIVE_CODEX_SUBSCRIPTION
     return ProviderSummaryState.RECORDED_FIXTURE
 
 

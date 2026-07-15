@@ -34,6 +34,7 @@ build.
 
 - [Codex authentication](https://learn.chatgpt.com/docs/auth)
 - [Codex pricing and plan access](https://learn.chatgpt.com/docs/pricing)
+- [Codex models](https://learn.chatgpt.com/docs/models)
 - [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode)
 - [Codex app server](https://learn.chatgpt.com/docs/app-server)
 
@@ -114,11 +115,23 @@ group- or world-writable, and the identity/mode chain is rechecked before
 launch. This keeps subscription auth available to Codex without treating an
 attacker-replaceable parent or arbitrary parent environment as trusted.
 
-`gpt-5.6` is the sprint's requested default model value, not a promise that
-every subscription or workspace exposes it. The current CLI exposes no model
-listing command used by this integration. Model availability is established
-only by an explicit live invocation; unavailable access fails content-safely
-with no provider fallback.
+The current official Codex model guidance describes GPT-5.6 Luna as appropriate
+for clear, repeatable extraction, classification, transformation, and structured
+summary work. The sprint therefore uses `gpt-5.6-luna` as its configurable
+subscription default while retaining `gpt-5.6` as the separate direct-API
+default. This does not promise that every subscription or workspace exposes
+either identifier. The current CLI exposes no model-listing command used by
+this integration; model availability is established only by an explicit live
+invocation, and unavailable access fails content-safely with no provider
+fallback.
+
+On 2026-07-15, Codex CLI `0.144.4` under the operator's ChatGPT sign-in rejected
+the base `gpt-5.6` identifier as unavailable, then accepted
+`gpt-5.6-luna`. One sanitized synthetic operational-instruction assessment
+completed as `live_codex_subscription` in 11,026 ms and recommended
+`quarantine`. This is environment-specific smoke evidence, not a universal
+entitlement or latency claim. The failed base-model attempt remained
+`failed/process_exit`; no fixture or API fallback ran.
 
 **Output boundary**: JSONL progress and the final structured file are both
 untrusted. Verity applies byte and line limits, rejects duplicate JSON keys,

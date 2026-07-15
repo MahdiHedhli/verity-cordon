@@ -207,6 +207,21 @@ def create_app(runtime: Runtime) -> FastAPI:
         statistics["counts"].update(await runtime.memory_service.evidence_queue_counts())
         verification = await runtime.event_store.verify()
         operational = runtime.event_store.healthy and verification.verified
+        provider_label = runtime.memory_service.semantic_adjudicator.provider_label
+        isolation_by_provider = {
+            "live_openai": "tool_free_api",
+            "live_codex_subscription": "agentic_sandboxed",
+            "recorded_fixture": "recorded_fixture",
+        }
+        provider_ready = provider_label != "live_codex_subscription"
+        provider_failure_class: str | None = None
+        if runtime.subscription_runner is not None:
+            try:
+                await runtime.subscription_runner.check_chatgpt_auth()
+                provider_ready = True
+            except Exception as error:
+                provider_ready = False
+                provider_failure_class = str(getattr(error, "failure_class", "unavailable"))[:64]
         return {
             "schema_version": "1.0.0",
             "daemon": "healthy" if operational else "read_only",
@@ -217,7 +232,13 @@ def create_app(runtime: Runtime) -> FastAPI:
             ),
             "ledger": "verified" if operational else "invalid",
             "memory_view": ("consistent" if verification.materialized_view_consistent else "stale"),
-            "semantic_provider": runtime.memory_service.semantic_adjudicator.provider_label,
+            "semantic_provider": provider_label,
+            "semantic_provider_isolation": isolation_by_provider.get(
+                provider_label,
+                "failed",
+            ),
+            "semantic_provider_ready": provider_ready,
+            "semantic_provider_failure_class": provider_failure_class,
             "counts": statistics["counts"],
         }
 
@@ -292,29 +313,69 @@ def create_app(runtime: Runtime) -> FastAPI:
 
     @app.post("/api/v1/hooks/session-start", dependencies=[mutation])
     async def session_start(body: SessionStartRequest) -> dict[str, Any]:
-        context = await runtime.memory_service.session_start_context(
-            session_id=body.session_id,
-            token_budget=runtime.memory_service.policy_engine.policy.limits.injection_token_budget,
-        )
         verification = await runtime.event_store.verify()
-        operational = runtime.event_store.healthy and verification.verified
-        memories = await runtime.memory_view.list_active() if context and operational else []
+        view_invalid = verification.failure_class == "materialized_view_drift"
+        ledger_valid = bool(
+            runtime.event_store.healthy and verification.verified and not view_invalid
+        )
+        policy_valid = runtime.policy_validation_state == "valid"
+        context = ""
+        if ledger_valid and policy_valid and verification.materialized_view_consistent:
+            context = await runtime.memory_service.session_start_context(
+                session_id=body.session_id,
+                token_budget=(
+                    runtime.memory_service.policy_engine.policy.limits.injection_token_budget
+                ),
+            )
+            verification = await runtime.event_store.verify()
+            view_invalid = verification.failure_class == "materialized_view_drift"
+            ledger_valid = bool(
+                runtime.event_store.healthy and verification.verified and not view_invalid
+            )
+            if not ledger_valid or not verification.materialized_view_consistent:
+                context = ""
+        ready = bool(
+            context and ledger_valid and policy_valid and verification.materialized_view_consistent
+        )
+        memories = await runtime.memory_view.list_active() if ready else []
+        injection_state = (
+            "disabled_view"
+            if view_invalid
+            else "disabled_ledger"
+            if not ledger_valid
+            else "disabled_policy"
+            if not policy_valid
+            else "ready"
+            if ready
+            else "disabled_empty"
+        )
+        warning_code = (
+            "view_inconsistent"
+            if injection_state == "disabled_view"
+            else "ledger_unverified"
+            if injection_state == "disabled_ledger"
+            else "policy_invalid"
+            if injection_state == "disabled_policy"
+            else None
+        )
         return {
             "schema_version": "1.0.0",
-            "injection_state": (
-                "ready"
-                if context and operational
-                else "disabled_empty"
-                if operational
-                else "disabled_ledger"
-            ),
-            "additional_context": context if operational else None,
+            "injection_state": injection_state,
+            "additional_context": context if ready else None,
             "memory_ids": [memory.memory_id for memory in memories],
-            "token_estimate": (len(context) + 3) // 4 if operational else 0,
-            "ledger_verified": operational,
-            "view_consistent": operational and verification.materialized_view_consistent,
-            "warning_code": None if operational else "ledger_unverified",
+            "token_estimate": (len(context) + 3) // 4 if ready else 0,
+            "ledger_verified": verification.verified,
+            "view_consistent": verification.materialized_view_consistent,
+            "warning_code": warning_code,
         }
+
+    @app.get("/api/v1/evidence/{evidence_id}/status")
+    async def evidence_status(evidence_id: str) -> dict[str, Any]:
+        checkpoint = await runtime.queries.get_evidence_status(evidence_id)
+        if runtime.policy_validation_state != "valid":
+            checkpoint["fresh_session_ready"] = False
+            checkpoint["warning_code"] = "policy_invalid"
+        return checkpoint
 
     @app.get("/api/v1/candidates")
     async def candidates(

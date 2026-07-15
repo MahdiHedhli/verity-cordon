@@ -543,6 +543,9 @@ class HookAdapter:
     def process(self, expected_event: str, raw: bytes) -> dict[str, Any]:
         """Return a valid Codex continuation response for every outcome."""
 
+        if os.environ.get("VERITY_SEMANTIC_CHILD") == "1":
+            return {"continue": True}
+
         try:
             parsed = parse_one_object(raw)
             path, request, idempotency_key = normalize_hook_input(parsed, expected_event)

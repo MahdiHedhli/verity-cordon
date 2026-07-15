@@ -13,7 +13,12 @@ from verity_cordon.semantic.fixture import (
 )
 
 
-def build_semantic_components(*, provider: str, model: str) -> tuple[Any, Any]:
+def build_semantic_components(
+    *,
+    provider: str,
+    model: str,
+    codex_runner: Any | None = None,
+) -> tuple[Any, Any]:
     if provider == "fixture":
         return FixtureCandidateExtractor(), FixtureSemanticAdjudicator()
     if provider == "openai":
@@ -26,4 +31,21 @@ def build_semantic_components(*, provider: str, model: str) -> tuple[Any, Any]:
         extractor_type = live_module.OpenAICandidateExtractor
         adjudicator_type = live_module.OpenAISemanticAdjudicator
         return extractor_type(model=model), adjudicator_type(model=model)
-    raise ConfigurationError("VERITY_SEMANTIC_PROVIDER must be 'fixture' or 'openai'.")
+    if provider == "codex_subscription":
+        if codex_runner is None:
+            raise ConfigurationError(
+                "The explicit Codex subscription provider requires a verified runner."
+            )
+        try:
+            subscription_module = import_module("verity_cordon.semantic.codex_subscription")
+        except ModuleNotFoundError as exc:
+            raise ConfigurationError(
+                "The Codex subscription semantic provider is unavailable."
+            ) from exc
+        return (
+            subscription_module.CodexSubscriptionCandidateExtractor(runner=codex_runner),
+            subscription_module.CodexSubscriptionSemanticAdjudicator(runner=codex_runner),
+        )
+    raise ConfigurationError(
+        "VERITY_SEMANTIC_PROVIDER must be 'fixture', 'openai', or 'codex_subscription'."
+    )

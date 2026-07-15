@@ -102,7 +102,22 @@ def doctor(
                     ),
                 ]
             )
+            provider_label = runtime.memory_service.semantic_adjudicator.provider_label
+            if runtime.subscription_runner is not None:
+                try:
+                    _run(runtime.subscription_runner.check_chatgpt_auth())
+                    provider_status = "ready (agentic_sandboxed)"
+                    provider_ready = True
+                except Exception as error:
+                    failure_class = str(getattr(error, "failure_class", "unavailable"))[:64]
+                    provider_status = f"not ready ({failure_class})"
+                    provider_ready = False
+            else:
+                provider_status = f"ready ({provider_label})"
+                provider_ready = True
+            checks.append(("Semantic provider", provider_status))
             ok = ok and verification.verified
+            ok = ok and provider_ready
         except Exception as error:
             _safe_error(error)
             checks.append(("Runtime", "unavailable"))
@@ -243,12 +258,29 @@ def status() -> None:
         verification = await runtime.event_store.verify()
         statistics = await runtime.queries.statistics()
         policy = runtime.memory_service.policy_engine.policy
+        provider_label = runtime.memory_service.semantic_adjudicator.provider_label
+        provider_isolation = {
+            "live_openai": "tool_free_api",
+            "live_codex_subscription": "agentic_sandboxed",
+            "recorded_fixture": "recorded_fixture",
+        }.get(provider_label, "failed")
+        provider_ready = True
+        provider_failure_class: str | None = None
+        if runtime.subscription_runner is not None:
+            try:
+                await runtime.subscription_runner.check_chatgpt_auth()
+            except Exception as error:
+                provider_ready = False
+                provider_failure_class = str(getattr(error, "failure_class", "unavailable"))[:64]
         return {
             "mode": policy.mode.value,
             "policy": f"{policy.policy_id}@{policy.version}",
             "ledger_verified": verification.verified,
             "view_consistent": verification.materialized_view_consistent,
-            "semantic_provider": runtime.memory_service.semantic_adjudicator.provider_label,
+            "semantic_provider": provider_label,
+            "semantic_provider_isolation": provider_isolation,
+            "semantic_provider_ready": provider_ready,
+            "semantic_provider_failure_class": provider_failure_class,
             "counts": statistics["counts"],
         }
 

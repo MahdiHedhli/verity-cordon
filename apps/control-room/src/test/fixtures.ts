@@ -21,6 +21,9 @@ export const safeStatus: StatusResponse = {
   ledger: "verified",
   memory_view: "consistent",
   semantic_provider: "recorded_fixture",
+  semantic_provider_isolation: "recorded_fixture",
+  semantic_provider_ready: true,
+  semantic_provider_failure_class: null,
   counts: {
     total_candidates: 3,
     allowed: 1,

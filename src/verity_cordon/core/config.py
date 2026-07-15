@@ -139,7 +139,7 @@ class Settings:
     control_room_origin: str
     detector_plugins: tuple[str, ...] = ()
     control_room_dist: Path | None = None
-    codex_model: str = "gpt-5.6"
+    codex_model: str = "gpt-5.6-luna"
     codex_executable: Path | None = None
     codex_semantic_timeout_seconds: int = 30
     codex_auth_timeout_seconds: int = 5
@@ -193,7 +193,7 @@ class Settings:
             control_room_passphrase=os.getenv("VERITY_CONTROL_ROOM_PASSPHRASE"),
             control_room_origin=loopback_origin(host, port),
             detector_plugins=detector_plugins,
-            codex_model=_validated_codex_model(os.getenv("VERITY_CODEX_MODEL", "gpt-5.6")),
+            codex_model=_validated_codex_model(os.getenv("VERITY_CODEX_MODEL", "gpt-5.6-luna")),
             codex_executable=_optional_absolute_env_path("VERITY_CODEX_EXECUTABLE"),
             codex_semantic_timeout_seconds=_bounded_env_int(
                 "VERITY_CODEX_SEMANTIC_TIMEOUT_SECONDS",

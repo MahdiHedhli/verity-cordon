@@ -23,8 +23,8 @@ renamed codebase.
   `7b91c1eda46e1107a53831cd3f14f608b4b7bad0`
 - Codex CLI observed and used for isolated integration verification: `0.144.4`
 - Spec Kit source-of-truth commit: `d7c2cd7`
-- GPT-5.6 runtime target implemented with configured alias `gpt-5.6`; no
-  successful credentialed live API run is recorded yet
+- Direct API runtime target remains configured as `gpt-5.6`; the exercised
+  ChatGPT-subscription provider uses `gpt-5.6-luna`
 
 ## Commit Record
 
@@ -57,9 +57,10 @@ provider while preserving the implemented feature-001 controls and no-key
 fallback.
 
 The operator workspace contained unrelated untracked duplicate files named
-`* 2.*` before sprint work began. They are excluded from staging, editing, test
-discovery, and cleanup. Tracked-path test commands or a clean checkout are used
-for authoritative verification.
+`* 2.*` before sprint work began. They were excluded from early staging and
+test discovery, then removed only after the operator explicitly authorized a
+workspace cleanup on 2026-07-15. Generated frontend dependencies were rebuilt
+with `npm ci`.
 
 The first tracked-path baseline run executed the 267 root backend tests. It
 reported 266 passing tests and one timeout in the three-second bounded stdio
@@ -83,6 +84,28 @@ every security story received its required scenario matrix, executable/home
 trust rules were made normative, and the privacy criterion now excludes only
 the fixed literals in designated source definitions. No deferred capability
 entered active scope.
+
+## Sprint 002 Live Subscription Evidence
+
+- **Date**: 2026-07-15
+- **Codex CLI**: `0.144.4`
+- **Authentication boundary**: supported ChatGPT sign-in status; Verity did not
+  read credential files or print raw status output
+- **First requested model**: `gpt-5.6`; unavailable for the signed-in identity,
+  recorded content-safely as `failed/process_exit` with no fallback
+- **Exercised model**: `gpt-5.6-luna`
+- **Input**: fixed sanitized synthetic operational instruction only
+- **Provider outcome**: `live_codex_subscription`
+- **Isolation label**: `agentic_sandboxed`
+- **Policy input recommendation**: `quarantine`; deterministic policy remains
+  final authority
+- **Observed provider latency**: 11,026 ms
+- **Raw child output retained or logged**: no
+
+This smoke proves only that the configured local subscription path completed on
+the recorded host and date. It does not establish universal model entitlement,
+latency, tool absence inside the Codex binary, or protection from a compromised
+host.
 
 ## Milestones
 
@@ -126,6 +149,18 @@ performance. The exact dataset digest and timings are in
 `evals/results/latest.md` and `evals/results/latest.json`.
 
 ### Automated gates
+
+The Sprint 002 US1/US2 checkpoint ran the canonical `./scripts/verify.sh`
+after an independent containment review found and test-first repaired three
+pre-publication issues: successful Codex child descendants were not accounted
+for, blocked stdin transfer sat outside the semantic deadline, and signed
+evidence status could regress to pending after a rescan. The repaired gate
+passed 400 backend tests, 13 example/plugin tests, 9 frontend tests, Ruff,
+mypy, OpenAPI validation, frontend type/lint/build, Python and npm dependency
+audits, 80% backend coverage, and the 20-sample fixture evaluation with 0
+fixture-scoped false positives and 0 fixture-scoped false negatives. The
+success-path descendant, blocked-stdin, opened-output inode, safe-rescan, and
+revoking-rescan cases now have explicit regressions.
 
 The timed final post-hardening `./scripts/verify.sh` run reported 267 backend tests,
 10 example/plugin tests, 7 frontend tests, 80% backend coverage, a successful

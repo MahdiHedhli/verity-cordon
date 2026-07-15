@@ -63,7 +63,7 @@ Validated settings extend the existing `Settings` model:
 | Field | Type | Default | Rule |
 |---|---|---|---|
 | `semantic_provider` | enum | existing default | Adds explicit value `codex_subscription`; no automatic selection. |
-| `codex_model` | string | requested `gpt-5.6` | 1-128 safe identifier characters; passed as one fixed argument. Availability is checked only by an explicit invocation and failure does not trigger fallback. |
+| `codex_model` | string | requested `gpt-5.6-luna` | 1-128 safe identifier characters; passed as one fixed argument. Luna is the exercised GPT-5.6-family subscription model for bounded extraction and classification. Availability is checked only by an explicit invocation and failure does not trigger fallback. |
 | `codex_executable` | absolute path/null | null | When null, resolve `codex` once from absolute PATH entries whose complete ancestor chains are effective-user/root-owned and not group/world-writable. Explicit paths must be absolute. The resolved regular executable and every ancestor obey the same rule. |
 | `codex_semantic_timeout_seconds` | decimal | 30 | Greater than zero and no more than 120 seconds. |
 | `codex_auth_timeout_seconds` | decimal | 5 | Greater than zero and no more than 15 seconds. |

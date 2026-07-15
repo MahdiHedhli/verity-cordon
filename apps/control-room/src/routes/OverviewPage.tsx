@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Archive, Clock, OctagonX, ShieldCheck, TimerReset } from "lucide-react";
+import { Activity, Archive, Bot, Clock, OctagonX, ShieldCheck, TimerReset } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { Card } from "../components/Card";
@@ -60,6 +60,16 @@ export function OverviewPage(): React.JSX.Element {
         </div>
       ) : null}
 
+      {status.semantic_provider_isolation === "agentic_sandboxed" ? (
+        <div className="mode-banner" role="status">
+          <Bot aria-hidden="true" size={19} />
+          <div>
+            <strong>Codex subscription semantic review uses lower isolation.</strong>
+            <span><span className="mono">agentic_sandboxed</span> execution is advisory; observed tool activity invalidates the result.</span>
+          </div>
+        </div>
+      ) : null}
+
       <section aria-label="Key memory metrics" className="metric-grid">
         <MetricCard
           detail={memoriesQuery.data?.next_cursor ? "At least 200 materialized" : "Eligible for injection"}
@@ -102,6 +112,11 @@ export function OverviewPage(): React.JSX.Element {
             <div><dt>Ledger chain</dt><dd><StatusPill value={status.ledger} /></dd></div>
             <div><dt>Memory view</dt><dd><StatusPill value={status.memory_view} /></dd></div>
             <div><dt>Semantic provider</dt><dd><StatusPill value={status.semantic_provider} tone="info" /></dd></div>
+            <div><dt>Provider isolation</dt><dd><StatusPill value={status.semantic_provider_isolation} tone={status.semantic_provider_isolation === "agentic_sandboxed" ? "warning" : "neutral"} /></dd></div>
+            <div><dt>Provider readiness</dt><dd><StatusPill value={status.semantic_provider_ready ? "ready" : "unavailable"} tone={status.semantic_provider_ready ? "positive" : "danger"} /></dd></div>
+            {status.semantic_provider_failure_class ? (
+              <div><dt>Provider failure</dt><dd className="mono">{status.semantic_provider_failure_class}</dd></div>
+            ) : null}
             <div><dt>Active policy</dt><dd><span className="mono">{status.policy.policy_id}@{status.policy.version}</span></dd></div>
           </dl>
         </Card>

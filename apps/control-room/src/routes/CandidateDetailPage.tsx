@@ -115,6 +115,11 @@ export function CandidateDetailPage(): React.JSX.Element {
               <StatusPill value={semantic.provider_state} tone={semantic.provider_state === "failed" ? "danger" : "info"} />
             </div>
             <div>
+              {semantic.provider_state === "live_codex_subscription" ? (
+                <p className="shadow-callout">
+                  This assessment used the lower-isolation agentic provider <span className="mono">agentic_sandboxed</span>. Tool activity invalidates the result; deterministic policy retains final authority.
+                </p>
+              ) : null}
               <p>{semantic.rationale ?? "The semantic provider failed without producing a risk recommendation."}</p>
               <dl className="score-grid">
                 <div><dt>Persistence</dt><dd>{formatLabel(semantic.persistence_intent)}</dd></div>
