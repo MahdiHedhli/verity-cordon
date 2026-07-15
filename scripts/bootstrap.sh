@@ -12,6 +12,20 @@ if ! command -v npm >/dev/null 2>&1; then
   echo "Node.js and npm are required for the Control Room." >&2
   exit 1
 fi
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js is required for the Control Room." >&2
+  exit 1
+fi
+NODE_VERSION="$(node -p 'process.versions.node')"
+if ! node -e '
+const [major, minor] = process.versions.node.split(".").map(Number);
+const supported = (major === 20 && minor >= 19) ||
+  (major === 22 && minor >= 13) || major > 22;
+process.exit(supported ? 0 : 1);
+'; then
+  echo "Unsupported Node.js ${NODE_VERSION}; expected ^20.19.0 or >=22.13.0." >&2
+  exit 1
+fi
 
 uv sync --all-groups --frozen
 if [[ "$(uname -s)" == "Darwin" ]]; then
