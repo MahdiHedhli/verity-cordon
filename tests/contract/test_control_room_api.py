@@ -12,6 +12,8 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+import yaml
+from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 
 from tests.factories import make_candidate
 from verity_cordon.core.config import Settings
@@ -24,6 +26,16 @@ from verity_cordon.memory.service import EvidenceSubmission
 
 ORIGIN = "http://127.0.0.1:8765"
 PASSPHRASE = "synthetic-demo-passphrase"
+STATUS_CONTRACT = (
+    Path(__file__).parents[2] / "specs/001-codex-memory-firewall/contracts/verity-ipc.openapi.yaml"
+)
+
+
+def assert_status_matches_openapi(payload: dict[str, Any]) -> None:
+    document = yaml.safe_load(STATUS_CONTRACT.read_text(encoding="utf-8"))
+    status_schema = dict(document["components"]["schemas"]["StatusResponse"])
+    status_schema["components"] = document["components"]
+    Draft202012Validator(status_schema).validate(payload)
 
 
 def settings_for(tmp_path: Path) -> Settings:
@@ -237,6 +249,7 @@ async def test_subscription_status_reports_lower_isolation_and_readiness(tmp_pat
     assert response.json()["semantic_provider_isolation"] == "agentic_sandboxed"
     assert response.json()["semantic_provider_ready"] is True
     assert response.json()["semantic_provider_failure_class"] is None
+    assert_status_matches_openapi(response.json())
 
 
 @pytest.mark.asyncio
@@ -261,6 +274,7 @@ async def test_subscription_status_failure_is_content_safe(tmp_path) -> None:
     assert response.json()["semantic_provider_ready"] is False
     assert response.json()["semantic_provider_failure_class"] == "unsupported_auth"
     assert "raw child detail" not in rendered
+    assert_status_matches_openapi(response.json())
 
 
 @pytest.mark.asyncio
