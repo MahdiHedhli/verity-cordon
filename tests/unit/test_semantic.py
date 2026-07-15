@@ -98,6 +98,14 @@ class _MalformedAdjudicator:
         return {"assessment_id": new_id(), "candidate_id": candidate.candidate_id}
 
 
+class _WrongDigestAdjudicator:
+    provider_label = "synthetic-wrong-digest"
+
+    async def assess(self, candidate):
+        assessment = await FixtureSemanticAdjudicator().assess(candidate)
+        return assessment.model_copy(update={"sanitized_content_digest": "0" * 64})
+
+
 @pytest.mark.asyncio
 async def test_semantic_timeout_is_an_explicit_failed_assessment() -> None:
     target = make_candidate(kind=MemoryKind.OPERATIONAL_INSTRUCTION)
@@ -115,6 +123,17 @@ async def test_invalid_semantic_schema_is_an_explicit_failed_assessment() -> Non
     target = make_candidate()
 
     result = await run_semantic_assessment(_MalformedAdjudicator(), target, timeout_ms=100)
+
+    assert result.provider_state is ProviderState.FAILED
+    assert result.failure is not None and result.failure.class_name == "invalid_schema"
+    assert result.sanitized_content_digest == target.content_digest
+
+
+@pytest.mark.asyncio
+async def test_semantic_assessment_must_bind_to_the_candidate_digest() -> None:
+    target = make_candidate()
+
+    result = await run_semantic_assessment(_WrongDigestAdjudicator(), target, timeout_ms=100)
 
     assert result.provider_state is ProviderState.FAILED
     assert result.failure is not None and result.failure.class_name == "invalid_schema"

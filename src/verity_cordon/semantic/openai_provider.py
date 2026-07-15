@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from typing import Any, Literal
 
 from openai import AsyncOpenAI, OpenAIError
-from pydantic import Field
+from pydantic import Field, ValidationError
 
-from verity_cordon.core.errors import ResourceLimitError, SemanticProviderError
+from verity_cordon.core.errors import ConfigurationError, ResourceLimitError, SemanticProviderError
 from verity_cordon.core.models import (
     Action,
     MemoryCandidate,
@@ -42,6 +43,129 @@ SemanticCategory = Literal[
     "benign_preference",
     "ambiguous",
 ]
+
+_MAX_CANDIDATES = 16
+_MAX_DURABILITY_RATIONALE_CHARACTERS = 1_000
+_MAX_DURABILITY_RATIONALE_BYTES = 4_096
+_MAX_SEMANTIC_CATEGORIES = 12
+_MAX_SEMANTIC_CATEGORY_CHARACTERS = 64
+_MAX_SEMANTIC_CATEGORY_BYTES = 256
+_MAX_SEMANTIC_RATIONALE_CHARACTERS = 2_000
+_MAX_SEMANTIC_RATIONALE_BYTES = 8_192
+_MODEL_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
+
+
+class _InvalidModelOutput(ValueError):
+    """Structured model output crossed a schema or resource boundary."""
+
+
+def _raw_field(value: Any, field: str) -> Any:
+    if isinstance(value, dict):
+        return value.get(field)
+    return getattr(value, field, None)
+
+
+def _bounded_model_text(
+    sanitizer: SecretSanitizer,
+    value: Any,
+    *,
+    max_characters: int,
+    max_bytes: int,
+) -> str:
+    if not isinstance(value, str) or not value or len(value) > max_characters:
+        raise _InvalidModelOutput
+    try:
+        if len(value.encode("utf-8", errors="strict")) > max_bytes:
+            raise _InvalidModelOutput
+    except UnicodeEncodeError as exc:
+        raise _InvalidModelOutput from exc
+    sanitized = sanitizer.sanitize(value).text
+    try:
+        if (
+            not sanitized
+            or len(sanitized) > max_characters
+            or len(sanitized.encode("utf-8", errors="strict")) > max_bytes
+        ):
+            raise _InvalidModelOutput
+    except UnicodeEncodeError as exc:
+        raise _InvalidModelOutput from exc
+    return sanitized
+
+
+def _model_identifier(sanitizer: SecretSanitizer, value: Any) -> str:
+    """Accept a bounded provider identifier only when sanitization is a no-op."""
+
+    if not isinstance(value, str) or _MODEL_IDENTIFIER.fullmatch(value) is None:
+        raise _InvalidModelOutput
+    sanitized = sanitizer.sanitize(value).text
+    if sanitized != value:
+        raise _InvalidModelOutput
+    return value
+
+
+def _optional_returned_model(sanitizer: SecretSanitizer, response: Any) -> str | None:
+    value = getattr(response, "model", None)
+    if value is None:
+        return None
+    try:
+        return _model_identifier(sanitizer, value)
+    except _InvalidModelOutput:
+        return None
+
+
+def _validate_candidate_output_shape(parsed: Any) -> None:
+    candidates = _raw_field(parsed, "candidates")
+    if not isinstance(candidates, list) or len(candidates) > _MAX_CANDIDATES:
+        raise _InvalidModelOutput
+    for candidate in candidates:
+        rationale = _raw_field(candidate, "durability_rationale")
+        if (
+            not isinstance(rationale, str)
+            or not rationale
+            or len(rationale) > _MAX_DURABILITY_RATIONALE_CHARACTERS
+        ):
+            raise _InvalidModelOutput
+        try:
+            if len(rationale.encode("utf-8", errors="strict")) > _MAX_DURABILITY_RATIONALE_BYTES:
+                raise _InvalidModelOutput
+        except UnicodeEncodeError as exc:
+            raise _InvalidModelOutput from exc
+
+
+def _validate_semantic_output_shape(parsed: Any) -> None:
+    categories = _raw_field(parsed, "categories")
+    rationale = _raw_field(parsed, "rationale")
+    if (
+        not isinstance(categories, list)
+        or not categories
+        or len(categories) > _MAX_SEMANTIC_CATEGORIES
+    ):
+        raise _InvalidModelOutput
+    if len(categories) != len(set(categories)):
+        raise _InvalidModelOutput
+    for category in categories:
+        if (
+            not isinstance(category, str)
+            or not category
+            or len(category) > _MAX_SEMANTIC_CATEGORY_CHARACTERS
+        ):
+            raise _InvalidModelOutput
+        try:
+            if len(category.encode("utf-8", errors="strict")) > _MAX_SEMANTIC_CATEGORY_BYTES:
+                raise _InvalidModelOutput
+        except UnicodeEncodeError as exc:
+            raise _InvalidModelOutput from exc
+    if (
+        not isinstance(rationale, str)
+        or not rationale
+        or len(rationale) > _MAX_SEMANTIC_RATIONALE_CHARACTERS
+    ):
+        raise _InvalidModelOutput
+    try:
+        if len(rationale.encode("utf-8", errors="strict")) > _MAX_SEMANTIC_RATIONALE_BYTES:
+            raise _InvalidModelOutput
+    except UnicodeEncodeError as exc:
+        raise _InvalidModelOutput from exc
 
 
 class ExtractedCandidate(StrictModel):
@@ -112,12 +236,15 @@ class _OpenAIBase:
         max_attempts: int = 2,
         max_input_characters: int = 262_144,
     ) -> None:
-        self.model = model
+        self.sanitizer = SecretSanitizer()
+        try:
+            self.model = _model_identifier(self.sanitizer, model)
+        except _InvalidModelOutput:
+            raise ConfigurationError("The configured OpenAI model identifier is invalid.") from None
         self.client = client or AsyncOpenAI(timeout=timeout_seconds, max_retries=0)
         self.timeout_seconds = timeout_seconds
         self.max_attempts = max(1, min(max_attempts, 2))
         self.max_input_characters = max_input_characters
-        self.sanitizer = SecretSanitizer()
 
     async def _parse(
         self,
@@ -184,23 +311,52 @@ class OpenAICandidateExtractor(_OpenAIBase):
         if parsed is None:
             classification = "refused" if _contains_refusal(response) else "incomplete"
             raise SemanticProviderError(f"Live candidate extraction {classification}.")
-        output = (
-            parsed
-            if isinstance(parsed, CandidateExtractionOutput)
-            else CandidateExtractionOutput.model_validate(parsed)
-        )
-        returned_model = str(getattr(response, "model", self.model))
+        try:
+            _validate_candidate_output_shape(parsed)
+            output = CandidateExtractionOutput.model_validate(
+                parsed.model_dump(mode="python")
+                if isinstance(parsed, CandidateExtractionOutput)
+                else parsed
+            )
+        except (
+            AttributeError,
+            TypeError,
+            ValueError,
+            ValidationError,
+            _InvalidModelOutput,
+        ):
+            raise SemanticProviderError(
+                "Live candidate extraction returned invalid structured output."
+            ) from None
+        try:
+            returned_model = _model_identifier(
+                self.sanitizer,
+                getattr(response, "model", self.model),
+            )
+        except _InvalidModelOutput:
+            raise SemanticProviderError(
+                "Live candidate extraction returned invalid structured output."
+            ) from None
         candidates: list[MemoryCandidate] = []
         for item in output.candidates:
             statement = self.sanitizer.sanitize(item.statement).text
+            try:
+                durability_rationale = _bounded_model_text(
+                    self.sanitizer,
+                    item.durability_rationale,
+                    max_characters=_MAX_DURABILITY_RATIONALE_CHARACTERS,
+                    max_bytes=_MAX_DURABILITY_RATIONALE_BYTES,
+                )
+            except _InvalidModelOutput:
+                raise SemanticProviderError(
+                    "Live candidate extraction returned invalid structured output."
+                ) from None
             contains_redactions = "<REDACTED:" in statement
             candidates.append(
                 MemoryCandidate(
                     candidate_id=new_id(),
                     namespace=("credentials.redacted" if contains_redactions else item.namespace),
-                    kind=(
-                        MemoryKind.CREDENTIAL_MATERIAL if contains_redactions else item.kind
-                    ),
+                    kind=(MemoryKind.CREDENTIAL_MATERIAL if contains_redactions else item.kind),
                     statement=statement,
                     source_class=SourceClass(source_class),
                     source_refs=[
@@ -212,7 +368,7 @@ class OpenAICandidateExtractor(_OpenAIBase):
                     session_id=session_id,
                     task_id=task_id,
                     confidence=item.confidence,
-                    durability_rationale=item.durability_rationale,
+                    durability_rationale=durability_rationale,
                     sensitivity=(
                         Sensitivity.CREDENTIAL if contains_redactions else item.sensitivity
                     ),
@@ -278,32 +434,74 @@ class OpenAISemanticAdjudicator(_OpenAIBase):
             ).model_copy(
                 update={
                     "requested_model": self.model,
-                    "returned_model": getattr(response, "model", None),
+                    "returned_model": _optional_returned_model(self.sanitizer, response),
                     "prompt_version": self.prompt_version,
                     "sanitized_content_digest": digest,
                 }
             )
-        output = (
-            parsed
-            if isinstance(parsed, SemanticRiskOutput)
-            else SemanticRiskOutput.model_validate(parsed)
-        )
+        try:
+            _validate_semantic_output_shape(parsed)
+            output = SemanticRiskOutput.model_validate(
+                parsed.model_dump(mode="python")
+                if isinstance(parsed, SemanticRiskOutput)
+                else parsed
+            )
+            returned_model = _model_identifier(
+                self.sanitizer,
+                getattr(response, "model", self.model),
+            )
+            categories: list[str] = []
+            for category in output.categories:
+                safe_category = _bounded_model_text(
+                    self.sanitizer,
+                    category,
+                    max_characters=_MAX_SEMANTIC_CATEGORY_CHARACTERS,
+                    max_bytes=_MAX_SEMANTIC_CATEGORY_BYTES,
+                )
+                if safe_category != category:
+                    raise _InvalidModelOutput
+                categories.append(safe_category)
+            rationale = _bounded_model_text(
+                self.sanitizer,
+                output.rationale,
+                max_characters=_MAX_SEMANTIC_RATIONALE_CHARACTERS,
+                max_bytes=_MAX_SEMANTIC_RATIONALE_BYTES,
+            )
+        except (
+            AttributeError,
+            TypeError,
+            ValueError,
+            ValidationError,
+            _InvalidModelOutput,
+        ):
+            return failed_assessment(
+                candidate,
+                failure_class="invalid_schema",
+                retryable=False,
+                latency_ms=0,
+            ).model_copy(
+                update={
+                    "requested_model": self.model,
+                    "prompt_version": self.prompt_version,
+                    "sanitized_content_digest": digest,
+                }
+            )
         return SemanticAssessment(
             assessment_id=new_id(),
             candidate_id=candidate.candidate_id,
             provider_state=ProviderState.LIVE_OPENAI,
             requested_model=self.model,
-            returned_model=str(getattr(response, "model", self.model)),
+            returned_model=returned_model,
             prompt_version=self.prompt_version,
             risk_score=output.risk_score,
-            categories=list(output.categories),
+            categories=categories,
             persistence_intent=output.persistence_intent,
             authority_claim=output.authority_claim,
             exfiltration_risk=output.exfiltration_risk,
             tool_hijack_risk=output.tool_hijack_risk,
             cross_task_risk=output.cross_task_risk,
             secret_risk=output.secret_risk,
-            rationale=output.rationale,
+            rationale=rationale,
             recommended_disposition=output.recommended_disposition,
             sanitized_content_digest=digest,
             cache_hit=False,

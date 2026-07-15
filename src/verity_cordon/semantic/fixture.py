@@ -47,6 +47,15 @@ class FixtureCandidateExtractor:
             return []
         source = SourceClass(source_class)
         lowered = compact.casefold()
+        security_discussion = any(
+            marker in lowered
+            for marker in (
+                "is an example",
+                "not an instruction",
+                "do not follow",
+                "quoted text",
+            )
+        )
         poison_start = min(
             (
                 index
@@ -56,7 +65,7 @@ class FixtureCandidateExtractor:
             default=-1,
         )
         statements: list[tuple[str, MemoryKind, str, bool, Signal, Signal]] = []
-        if poison_start > 0:
+        if poison_start > 0 and not security_discussion:
             safe_part = compact[:poison_start].strip(" .")
             unsafe_part = compact[poison_start:].strip()
             if safe_part:
@@ -191,11 +200,7 @@ class FixtureSemanticAdjudicator:
                 else "benign_fact"
             )
         malicious = bool(
-            persistent
-            or authority
-            or exfiltration
-            or concealed
-            or "secret_material" in categories
+            persistent or authority or exfiltration or concealed or "secret_material" in categories
         )
         risk = 0.97 if malicious else 0.06
         return SemanticAssessment(

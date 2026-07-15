@@ -23,12 +23,12 @@ from verity_cordon.crypto.canonical import canonical_json, parse_json_strict
 from verity_cordon.detectors.builtin import SecretSanitizer
 from verity_cordon.ledger.store import SQLiteEventStore
 from verity_cordon.memory.materializer import SQLiteMemoryView
+from verity_cordon.telemetry.instrumentation import span
 
 
 def _operator_actor(actor_id: str) -> Actor:
     safe = "".join(
-        character if character.isalnum() or character in "._:-" else "-"
-        for character in actor_id
+        character if character.isalnum() or character in "._:-" else "-" for character in actor_id
     )
     if len(safe) < 8:
         safe = f"operator.{safe}"
@@ -136,8 +136,13 @@ class TrustActions:
             if cursor.rowcount != 1:
                 raise ConflictError("The memory inventory changed during revocation.")
 
-        await self.store.append_with_projection([event], project)
-        verification = await self.store.verify()
+        async with span(
+            "verity.memory.revoke",
+            memory_id=target.memory_id,
+            action="revoke",
+        ):
+            await self.store.append_with_projection([event], project)
+            verification = await self.store.verify()
         if not verification.verified:
             raise LedgerIntegrityError("Revocation committed but replay verification failed.")
         return target.model_copy(

@@ -19,6 +19,7 @@ from verity_cordon.core.models import (
     new_id,
 )
 from verity_cordon.core.protocols import SemanticAdjudicator
+from verity_cordon.telemetry.instrumentation import span
 
 
 def failed_assessment(
@@ -58,17 +59,38 @@ async def run_semantic_assessment(
     *,
     timeout_ms: int,
 ) -> SemanticAssessment:
+    async with span(
+        "verity.semantic.assess",
+        candidate_id=candidate.candidate_id,
+        semantic_provider=getattr(adjudicator, "provider_label", "unknown"),
+    ) as timing:
+        result = await _run_semantic_assessment_untraced(
+            adjudicator,
+            candidate,
+            timeout_ms=timeout_ms,
+        )
+    return result.model_copy(
+        update={"latency_ms": max(result.latency_ms, int(timing["latency_ms"]))}
+    )
+
+
+async def _run_semantic_assessment_untraced(
+    adjudicator: SemanticAdjudicator | Any,
+    candidate: MemoryCandidate,
+    *,
+    timeout_ms: int,
+) -> SemanticAssessment:
     started = perf_counter()
     try:
         async with asyncio.timeout(timeout_ms / 1000):
             raw = await adjudicator.assess(candidate)
         result = (
-            raw
-            if isinstance(raw, SemanticAssessment)
-            else SemanticAssessment.model_validate(raw)
+            raw if isinstance(raw, SemanticAssessment) else SemanticAssessment.model_validate(raw)
         )
         if result.candidate_id != candidate.candidate_id:
             raise ValueError("semantic candidate identity mismatch")
+        if result.sanitized_content_digest != candidate.content_digest:
+            raise ValueError("semantic candidate digest mismatch")
         return result
     except TimeoutError:
         failure_class, retryable = "timeout", True

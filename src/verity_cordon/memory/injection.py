@@ -39,6 +39,21 @@ def _render_record(record: MemoryRecord) -> str:
     )
 
 
+def _token_upper_bound(value: str) -> int:
+    """Return a conservative token upper bound for OpenAI byte tokenizers.
+
+    Every token spans at least one UTF-8 byte, so the encoded byte length cannot
+    undercount tokens. This deliberately trades capacity for a hard budget
+    boundary without coupling the hook process to a model-specific tokenizer.
+    """
+
+    return len(value.encode("utf-8"))
+
+
+def _render_document(prefix: str, selected: list[str], suffix: str) -> str:
+    return f"{prefix}\n\n" + "\n\n".join(selected) + f"\n\n{suffix}"
+
+
 def render_approved_memory(memories: list[MemoryRecord], *, token_budget: int) -> str:
     if not memories or token_budget <= 0:
         return ""
@@ -50,16 +65,13 @@ def render_approved_memory(memories: list[MemoryRecord], *, token_budget: int) -
     )
     prefix = f"{START}\n{header}"
     suffix = END
-    maximum_characters = token_budget * 4
     selected: list[str] = []
-    current_size = len(prefix) + len(suffix) + 2
     for memory in sorted(memories, key=lambda item: (item.namespace, item.memory_id)):
         block = _render_record(memory)
-        addition = len(block) + 2
-        if current_size + addition > maximum_characters:
+        candidate_document = _render_document(prefix, [*selected, block], suffix)
+        if _token_upper_bound(candidate_document) > token_budget:
             continue
         selected.append(block)
-        current_size += addition
     if not selected:
         return ""
-    return f"{prefix}\n\n" + "\n\n".join(selected) + f"\n\n{suffix}"
+    return _render_document(prefix, selected, suffix)

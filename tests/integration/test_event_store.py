@@ -53,7 +53,78 @@ async def test_initialize_creates_versioned_schema_public_key_and_empty_head(tmp
     assert key[1] == "Ed25519"
     assert head["sequence_number"] == 0
     assert head["event_hash"] == "0" * 64
+    assert store.database_path.stat().st_mode & 0o077 == 0
     assert store.head_path.stat().st_mode & 0o077 == 0
+
+
+@pytest.mark.asyncio
+async def test_initialize_refuses_database_symlink_without_touching_target(tmp_path) -> None:
+    target = tmp_path / "unrelated.txt"
+    target.write_text("must remain unchanged", encoding="utf-8")
+    original_mode = target.stat().st_mode
+    database_path = tmp_path / "verity.sqlite3"
+    database_path.symlink_to(target)
+    provider = FileKeyProvider.generate(tmp_path / "key.pem")
+    store = SQLiteEventStore(database_path, provider, tmp_path / "ledger-head.json")
+
+    with pytest.raises(LedgerError, match="must not be a symbolic link"):
+        await store.initialize()
+
+    assert target.read_text(encoding="utf-8") == "must remain unchanged"
+    assert target.stat().st_mode == original_mode
+
+
+@pytest.mark.asyncio
+async def test_initialize_refuses_nonregular_database_path(tmp_path) -> None:
+    database_path = tmp_path / "verity.sqlite3"
+    database_path.mkdir()
+    provider = FileKeyProvider.generate(tmp_path / "key.pem")
+    store = SQLiteEventStore(database_path, provider, tmp_path / "ledger-head.json")
+
+    with pytest.raises(LedgerError, match="invalid file type"):
+        await store.initialize()
+
+
+@pytest.mark.asyncio
+async def test_connect_refuses_database_replaced_by_symlink(tmp_path) -> None:
+    store = await make_store(tmp_path)
+    target = tmp_path / "unrelated.txt"
+    target.write_text("must remain unchanged", encoding="utf-8")
+    store.database_path.unlink()
+    store.database_path.symlink_to(target)
+
+    with pytest.raises(LedgerError, match="must not be a symbolic link"):
+        await store.list_events()
+
+    assert target.read_text(encoding="utf-8") == "must remain unchanged"
+
+
+@pytest.mark.asyncio
+async def test_initialize_adds_pre_release_queue_table_to_existing_version_one_schema(
+    tmp_path,
+) -> None:
+    database_path = tmp_path / "verity.sqlite3"
+    with sqlite3.connect(database_path) as database:
+        database.execute(
+            "CREATE TABLE schema_metadata(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
+        )
+        database.execute("INSERT INTO schema_metadata VALUES (1, '2026-07-15T00:00:00Z')")
+    provider = FileKeyProvider.generate(tmp_path / "key.pem")
+    store = SQLiteEventStore(database_path, provider, tmp_path / "ledger-head.json")
+
+    await store.initialize()
+
+    with sqlite3.connect(database_path) as database:
+        columns = {
+            row[1] for row in database.execute("PRAGMA table_info(pending_evidence)").fetchall()
+        }
+    assert {
+        "state",
+        "sanitized_content",
+        "attempts",
+        "failed_at",
+        "terminal_event_id",
+    } <= columns
 
 
 @pytest.mark.asyncio

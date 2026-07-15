@@ -20,6 +20,7 @@ from verity_cordon.core.models import (
 from verity_cordon.crypto.canonical import canonical_json, parse_json_strict
 from verity_cordon.ledger.store import SQLiteEventStore
 from verity_cordon.ledger.verify import LedgerVerifier
+from verity_cordon.telemetry.instrumentation import span
 
 
 class QuarantineRecord(StrictModel):
@@ -49,8 +50,7 @@ class SQLiteMemoryView:
         try:
             rows = await (
                 await connection.execute(
-                    "SELECT record_json FROM active_memories "
-                    "ORDER BY namespace, memory_id"
+                    "SELECT record_json FROM active_memories ORDER BY namespace, memory_id"
                 )
             ).fetchall()
         finally:
@@ -83,14 +83,20 @@ class SQLiteMemoryView:
             raise LedgerError("The quarantine projection is invalid.") from exc
 
     async def rebuild(self, *, dry_run: bool) -> dict[str, object]:
+        async with span(
+            "verity.memory.materialize",
+            action="dry_run" if dry_run else "rebuild",
+        ):
+            return await self._rebuild(dry_run=dry_run)
+
+    async def _rebuild(self, *, dry_run: bool) -> dict[str, object]:
         chain = await self.event_store.verify(verify_view=False)
         if not chain.verified:
             raise LedgerIntegrityError("The signed history is not safe to replay.")
         events = await self.event_store.list_events()
         active, inventory, quarantine = LedgerVerifier.replay_memory_state(events)
         current_active = {
-            item.memory_id: item.model_dump(mode="json")
-            for item in await self.list_active()
+            item.memory_id: item.model_dump(mode="json") for item in await self.list_active()
         }
         current_quarantine = {
             item.candidate_id: item.model_dump(mode="json")

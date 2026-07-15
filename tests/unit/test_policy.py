@@ -327,8 +327,7 @@ def test_semantic_predicates_require_successful_assessment() -> None:
 
     assert engine.evaluate(target, [], None).decision.would_have_action is Action.ALLOW
     assert (
-        engine.evaluate(target, [], assessment(target)).decision.would_have_action
-        is Action.BLOCK
+        engine.evaluate(target, [], assessment(target)).decision.would_have_action is Action.BLOCK
     )
 
 

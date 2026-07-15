@@ -1,0 +1,85 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "^(startup|resume|clear|compact)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__VERITY_INSTALLER_PINS_PYTHON_3_12__ \"$PLUGIN_ROOT/src/verity_cordon/codex/hooks.py\" SessionStart",
+            "commandWindows": "__VERITY_INSTALLER_PINS_PYTHON_3_12__ \"%PLUGIN_ROOT%\\src\\verity_cordon\\codex\\hooks.py\" SessionStart",
+            "timeout": 3,
+            "statusMessage": "Loading verified Verity memory"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__VERITY_INSTALLER_PINS_PYTHON_3_12__ \"$PLUGIN_ROOT/src/verity_cordon/codex/hooks.py\" UserPromptSubmit",
+            "commandWindows": "__VERITY_INSTALLER_PINS_PYTHON_3_12__ \"%PLUGIN_ROOT%\\src\\verity_cordon\\codex\\hooks.py\" UserPromptSubmit",
+            "timeout": 3,
+            "statusMessage": "Capturing Verity evidence"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__VERITY_INSTALLER_PINS_PYTHON_3_12__ \"$PLUGIN_ROOT/src/verity_cordon/codex/hooks.py\" PostToolUse",
+            "commandWindows": "__VERITY_INSTALLER_PINS_PYTHON_3_12__ \"%PLUGIN_ROOT%\\src\\verity_cordon\\codex\\hooks.py\" PostToolUse",
+            "timeout": 3,
+            "statusMessage": "Capturing Verity tool evidence"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "^(manual|auto)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__VERITY_INSTALLER_PINS_PYTHON_3_12__ \"$PLUGIN_ROOT/src/verity_cordon/codex/hooks.py\" PreCompact",
+            "commandWindows": "__VERITY_INSTALLER_PINS_PYTHON_3_12__ \"%PLUGIN_ROOT%\\src\\verity_cordon\\codex\\hooks.py\" PreCompact",
+            "timeout": 3,
+            "statusMessage": "Recording Verity compaction boundary"
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "^(manual|auto)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__VERITY_INSTALLER_PINS_PYTHON_3_12__ \"$PLUGIN_ROOT/src/verity_cordon/codex/hooks.py\" PostCompact",
+            "commandWindows": "__VERITY_INSTALLER_PINS_PYTHON_3_12__ \"%PLUGIN_ROOT%\\src\\verity_cordon\\codex\\hooks.py\" PostCompact",
+            "timeout": 3,
+            "statusMessage": "Recording Verity compaction boundary"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__VERITY_INSTALLER_PINS_PYTHON_3_12__ \"$PLUGIN_ROOT/src/verity_cordon/codex/hooks.py\" Stop",
+            "commandWindows": "__VERITY_INSTALLER_PINS_PYTHON_3_12__ \"%PLUGIN_ROOT%\\src\\verity_cordon\\codex\\hooks.py\" Stop",
+            "timeout": 3,
+            "statusMessage": "Capturing Verity turn evidence"
+          }
+        ]
+      }
+    ]
+  }
+}

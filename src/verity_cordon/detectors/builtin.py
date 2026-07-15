@@ -33,21 +33,42 @@ class SanitizedEvidence:
 class SecretSanitizer:
     """Locally replace obvious secret material before any semantic call."""
 
+    sanitizer_version = "1.1.0"
     _patterns: ClassVar[tuple[tuple[str, re.Pattern[str]], ...]] = (
         (
             "PRIVATE_KEY",
             re.compile(
-                r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?"
-                r"-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
+                r"-----BEGIN (?:(?:RSA|EC|DSA|OPENSSH|ENCRYPTED) )?PRIVATE KEY-----"
+                r"[\s\S]*?"
+                r"-----END (?:(?:RSA|EC|DSA|OPENSSH|ENCRYPTED) )?PRIVATE KEY-----",
             ),
         ),
         ("OPENAI_API_KEY", re.compile(r"\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{16,}\b")),
         ("GITHUB_TOKEN", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b")),
+        ("GITHUB_FINE_GRAINED_TOKEN", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b")),
+        (
+            "SLACK_TOKEN",
+            re.compile(r"\bxox(?:b|p|a|r|s)-[A-Za-z0-9-]{16,}\b"),
+        ),
+        ("GOOGLE_API_KEY", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b")),
         ("AWS_ACCESS_KEY", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+        (
+            "JWT",
+            re.compile(
+                r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\."
+                r"[A-Za-z0-9_-]{16,}\b"
+            ),
+        ),
+        (
+            "BEARER_TOKEN",
+            re.compile(r"(?i)\b(?:authorization\s*:\s*)?bearer\s+[A-Za-z0-9._~+/-]{16,}"),
+        ),
         (
             "ASSIGNED_SECRET",
             re.compile(
-                r"(?i)\b(?:password|passphrase|api[_-]?key|access[_-]?token|secret)"
+                r"(?i)\b(?:[a-z][a-z0-9_-]{0,31}[_-])?"
+                r"(?:password|passphrase|api[_-]?key|access[_-]?token|"
+                r"secret(?:[_-]access)?[_-]?key|client[_-]?secret|secret)"
                 r"\s*[:=]\s*[\"']?[^\s\"']{8,}[\"']?",
             ),
         ),

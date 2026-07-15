@@ -19,6 +19,7 @@ from verity_cordon.core.models import (
     new_id,
 )
 from verity_cordon.crypto.canonical import canonical_json, canonical_sha256_hex, parse_json_strict
+from verity_cordon.detectors.builtin import SecretSanitizer
 from verity_cordon.ledger.store import SQLiteEventStore
 from verity_cordon.policies.models import PolicyDocument
 
@@ -26,8 +27,29 @@ from verity_cordon.policies.models import PolicyDocument
 class SQLitePolicyRepository:
     def __init__(self, store: SQLiteEventStore) -> None:
         self.store = store
+        self.sanitizer = SecretSanitizer()
+
+    def _actor(self, actor_id: str) -> Actor:
+        safe = "".join(
+            character if character.isalnum() or character in "._:-" else "-"
+            for character in actor_id
+        )
+        if len(safe) < 8:
+            safe = f"operator.{safe}"
+        return Actor(type=ActorType.OPERATOR, id=safe[:128])
+
+    def _reason(self, reason: str) -> str:
+        safe = self.sanitizer.sanitize(reason.strip()).text
+        if not safe:
+            raise PolicyValidationError("Policy activation requires a non-empty reason.")
+        return safe[:500]
 
     async def get_active(self) -> PolicyDocument | None:
+        verification = await self.store.verify()
+        if not verification.verified:
+            raise LedgerIntegrityError(
+                "The active policy is unavailable because ledger verification failed."
+            )
         connection = await self.store._connect()
         try:
             row = await (
@@ -48,9 +70,19 @@ class SQLitePolicyRepository:
         active = await self.get_active()
         if active is not None:
             return active
-        return await self.activate(policy, actor_id="verity.bootstrap")
+        return await self.activate(
+            policy,
+            actor_id="verity.bootstrap",
+            reason="Initial validated local policy.",
+        )
 
-    async def record_rejection(self, raw: dict[str, Any], *, actor_id: str) -> None:
+    async def record_rejection(
+        self,
+        raw: dict[str, Any],
+        *,
+        actor_id: str,
+        reason: str,
+    ) -> None:
         if not self.store.healthy:
             return
         try:
@@ -62,11 +94,12 @@ class SQLitePolicyRepository:
                 EventInput(
                     stream_id=new_id(),
                     event_type=EventType.POLICY_ACTIVATION_REJECTED,
-                    actor=Actor(type=ActorType.OPERATOR, id=actor_id),
+                    actor=self._actor(actor_id),
                     source_class=EventSourceClass.OPERATOR_ACTION,
                     payload={
                         "proposed_digest": proposed_digest,
                         "failure_class": "PolicyValidationError",
+                        "reason": self._reason(reason),
                     },
                 )
             ]
@@ -77,19 +110,21 @@ class SQLitePolicyRepository:
         raw: dict[str, Any],
         *,
         actor_id: str,
+        reason: str = "Policy activation requested.",
     ) -> PolicyDocument:
         try:
             policy = PolicyDocument.model_validate(raw)
         except ValidationError as exc:
-            await self.record_rejection(raw, actor_id=actor_id)
+            await self.record_rejection(raw, actor_id=actor_id, reason=reason)
             raise PolicyValidationError("The proposed policy is invalid.") from exc
-        return await self.activate(policy, actor_id=actor_id)
+        return await self.activate(policy, actor_id=actor_id, reason=reason)
 
     async def activate(
         self,
         policy: PolicyDocument,
         *,
         actor_id: str,
+        reason: str = "Policy activation requested.",
     ) -> PolicyDocument:
         verification = await self.store.verify()
         if not verification.verified:
@@ -101,7 +136,7 @@ class SQLitePolicyRepository:
             event_id=event_id,
             stream_id=f"policy.{policy.policy_id}.{policy.version}",
             event_type=EventType.POLICY_ACTIVATED,
-            actor=Actor(type=ActorType.OPERATOR, id=actor_id),
+            actor=self._actor(actor_id),
             source_class=EventSourceClass.OPERATOR_ACTION,
             policy_id=policy.policy_id,
             policy_version=policy.version,
@@ -111,6 +146,7 @@ class SQLitePolicyRepository:
                 "content_digest": policy.content_digest,
                 "mode": policy.mode.value,
                 "policy": validated,
+                "reason": self._reason(reason),
             },
             occurred_at=occurred_at,
         )

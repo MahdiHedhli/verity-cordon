@@ -1,2 +1,1 @@
 """Verity command-line interface."""
-

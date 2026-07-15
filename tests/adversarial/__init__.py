@@ -1,2 +1,1 @@
 """Adversarial security tests."""
-

@@ -80,9 +80,7 @@ class PolicyEngine:
         self, candidate: MemoryCandidate, findings: list[DetectorResult]
     ) -> tuple[Action, str] | None:
         categories = {
-            category
-            for finding in _positive_findings(findings)
-            for category in finding.categories
+            category for finding in _positive_findings(findings) for category in finding.categories
         }
         if "structural_invalidity" in categories:
             return Action.BLOCK, "hard_guard.structural_invalidity"
@@ -147,16 +145,13 @@ class PolicyEngine:
         semantic: SemanticAssessment | None,
     ) -> bool:
         positive = _positive_findings(findings)
-        detector_categories = {
-            category for result in positive for category in result.categories
-        }
+        detector_categories = {category for result in positive for category in result.categories}
         successful_semantic = _successful_semantic(semantic)
 
         if match.source_classes is not None and candidate.source_class not in match.source_classes:
             return False
         if match.namespace_patterns is not None and not any(
-            _namespace_matches(candidate.namespace, pattern)
-            for pattern in match.namespace_patterns
+            _namespace_matches(candidate.namespace, pattern) for pattern in match.namespace_patterns
         ):
             return False
         if match.memory_kinds is not None and candidate.kind not in match.memory_kinds:
@@ -263,9 +258,7 @@ class PolicyEngine:
         return PolicyEvaluation(
             decision=decision,
             ttl_seconds=(
-                rule.ttl_seconds
-                if rule is not None
-                else self.policy.limits.default_ttl_seconds
+                rule.ttl_seconds if rule is not None else self.policy.limits.default_ttl_seconds
             ),
             manual_review_required=bool(rule and rule.manual_review_required),
         )

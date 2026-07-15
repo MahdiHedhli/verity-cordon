@@ -1,2 +1,1 @@
 """Transactional streamed memory writes."""
-

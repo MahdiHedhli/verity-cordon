@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+.envrc
 .venv/
 __pycache__/
 *.py[cod]
@@ -18,16 +19,31 @@ build/
 # Verity runtime state and credentials never belong in Git.
 .verity/
 .verity-demo/
+.verity-live-demo/
 *.sqlite
 *.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
 *.db
+*.db-wal
+*.db-shm
+*.db-journal
 *.pem
 *.key
+*.p12
+*.pfx
 ledger-head.json
 mutation-capability
+ui-verifier-salt
+codex-integration-receipt.json
+*.verity-cordon-*.bak
+*.log
 
 # Frontend dependencies and transient reports.
 apps/control-room/node_modules/
 apps/control-room/coverage/
 apps/control-room/.vite/
-

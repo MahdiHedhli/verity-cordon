@@ -6,6 +6,7 @@ import asyncio
 import base64
 import hmac
 import os
+import stat
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime
 from pathlib import Path
@@ -31,12 +32,11 @@ from verity_cordon.crypto.canonical import (
 )
 from verity_cordon.crypto.keys import FileKeyProvider
 from verity_cordon.ledger.schema import SCHEMA_SQL, SCHEMA_VERSION
+from verity_cordon.telemetry.instrumentation import span
 
 GENESIS_HASH = "0" * 64
 
-ProjectionWriter = Callable[
-    [aiosqlite.Connection, list[EventEnvelope]], Awaitable[None]
-]
+ProjectionWriter = Callable[[aiosqlite.Connection, list[EventEnvelope]], Awaitable[None]]
 
 
 class _HeadBody(BaseModel):
@@ -78,7 +78,84 @@ class SQLiteEventStore:
         self.healthy = True
         self.health_error: str | None = None
 
+    @staticmethod
+    def _require_owned_path(
+        path: Path,
+        *,
+        expected_kind: str,
+    ) -> os.stat_result:
+        try:
+            metadata = path.lstat()
+        except OSError as exc:
+            raise LedgerError(f"The ledger {expected_kind} is unavailable.") from exc
+        if stat.S_ISLNK(metadata.st_mode):
+            raise LedgerError(f"The ledger {expected_kind} must not be a symbolic link.")
+        kind_matches = (
+            stat.S_ISDIR(metadata.st_mode)
+            if expected_kind == "directory"
+            else stat.S_ISREG(metadata.st_mode)
+        )
+        if not kind_matches:
+            raise LedgerError(f"The ledger {expected_kind} has an invalid file type.")
+        if os.name != "nt" and metadata.st_uid != os.geteuid():
+            raise LedgerError(f"The ledger {expected_kind} has an unexpected owner.")
+        return metadata
+
+    def _validate_database_path(self) -> None:
+        self._require_owned_path(self.database_path.parent, expected_kind="directory")
+        metadata = self._require_owned_path(self.database_path, expected_kind="database")
+        if os.name != "nt" and stat.S_IMODE(metadata.st_mode) & 0o077:
+            raise LedgerError("The ledger database has unsafe permissions.")
+
+    def _prepare_database_path(self) -> None:
+        try:
+            self.database_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        except OSError as exc:
+            raise LedgerError("The ledger directory could not be created safely.") from exc
+        self._require_owned_path(self.database_path.parent, expected_kind="directory")
+        try:
+            self.database_path.parent.chmod(0o700)
+        except OSError as exc:
+            raise LedgerError("The ledger directory permissions could not be restricted.") from exc
+
+        try:
+            metadata = self.database_path.lstat()
+        except FileNotFoundError:
+            flags = os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
+            flags |= getattr(os, "O_NOFOLLOW", 0)
+            try:
+                descriptor = os.open(self.database_path, flags, 0o600)
+            except FileExistsError:
+                # Another creator won the race. Validate its result before SQLite sees it.
+                self._validate_database_path()
+            except OSError as exc:
+                raise LedgerError("The ledger database could not be created safely.") from exc
+            else:
+                try:
+                    created = os.fstat(descriptor)
+                    if not stat.S_ISREG(created.st_mode):
+                        raise LedgerError("The ledger database has an invalid file type.")
+                    if os.name != "nt" and created.st_uid != os.geteuid():
+                        raise LedgerError("The ledger database has an unexpected owner.")
+                finally:
+                    os.close(descriptor)
+        else:
+            if stat.S_ISLNK(metadata.st_mode):
+                raise LedgerError("The ledger database must not be a symbolic link.")
+            if not stat.S_ISREG(metadata.st_mode):
+                raise LedgerError("The ledger database has an invalid file type.")
+            if os.name != "nt" and metadata.st_uid != os.geteuid():
+                raise LedgerError("The ledger database has an unexpected owner.")
+            try:
+                self.database_path.chmod(0o600)
+            except OSError as exc:
+                raise LedgerError(
+                    "The ledger database permissions could not be restricted."
+                ) from exc
+        self._validate_database_path()
+
     async def _connect(self) -> aiosqlite.Connection:
+        self._validate_database_path()
         connection = await aiosqlite.connect(self.database_path)
         connection.row_factory = aiosqlite.Row
         await connection.execute("PRAGMA foreign_keys = ON")
@@ -86,8 +163,7 @@ class SQLiteEventStore:
         return connection
 
     async def initialize(self) -> None:
-        self.database_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        self.database_path.parent.chmod(0o700)
+        self._prepare_database_path()
         connection = await self._connect()
         try:
             await connection.executescript(SCHEMA_SQL)
@@ -119,7 +195,6 @@ class SQLiteEventStore:
             await connection.commit()
         finally:
             await connection.close()
-
         if row is None and not self.head_path.exists():
             await self._write_head(0, GENESIS_HASH)
         elif not self.head_path.exists():
@@ -129,9 +204,8 @@ class SQLiteEventStore:
                 head = await self.read_head()
                 observed_sequence = int(row["sequence_number"]) if row is not None else 0
                 observed_hash = str(row["event_hash"]) if row is not None else GENESIS_HASH
-                if (
-                    head.sequence_number != observed_sequence
-                    or not hmac.compare_digest(head.event_hash, observed_hash)
+                if head.sequence_number != observed_sequence or not hmac.compare_digest(
+                    head.event_hash, observed_hash
                 ):
                     self._mark_unhealthy("expected_head_mismatch")
                 elif row is not None and str(row["signing_key_id"]) != self.key_provider.key_id:
@@ -186,8 +260,12 @@ class SQLiteEventStore:
         if self.head_path.is_symlink():
             raise LedgerError("The expected ledger head must not be a symbolic link.")
         try:
-            metadata = self.head_path.stat()
-            if metadata.st_mode & 0o077:
+            metadata = self.head_path.lstat()
+            if not stat.S_ISREG(metadata.st_mode):
+                raise LedgerError("The expected ledger head is not a regular file.")
+            if os.name != "nt" and metadata.st_uid != os.geteuid():
+                raise LedgerError("The expected ledger head has an unexpected owner.")
+            if stat.S_IMODE(metadata.st_mode) & 0o077:
                 raise LedgerError("The expected ledger head has unsafe permissions.")
             raw = self.head_path.read_bytes()
             head = _SignedHead.model_validate(parse_json_strict(raw))
@@ -223,6 +301,18 @@ class SQLiteEventStore:
     ) -> list[EventEnvelope]:
         if not events:
             return []
+        async with span(
+            "verity.ledger.append",
+            event_id=events[0].event_id,
+            content_length=len(events),
+        ):
+            return await self._append_with_projection(events, projector)
+
+    async def _append_with_projection(
+        self,
+        events: Sequence[EventInput],
+        projector: ProjectionWriter | None,
+    ) -> list[EventEnvelope]:
         async with self._write_lock:
             if not self.healthy:
                 raise LedgerError("The ledger is unhealthy; signed appends are disabled.")
@@ -379,4 +469,5 @@ class SQLiteEventStore:
     async def verify(self, *, verify_view: bool = True) -> LedgerVerification:
         from verity_cordon.ledger.verify import LedgerVerifier
 
-        return await LedgerVerifier(self).verify(verify_view=verify_view)
+        async with span("verity.ledger.verify"):
+            return await LedgerVerifier(self).verify(verify_view=verify_view)

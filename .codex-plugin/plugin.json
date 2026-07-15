@@ -1,0 +1,29 @@
+{
+  "name": "verity-cordon",
+  "version": "0.1.0",
+  "description": "A tamper-evident memory firewall for Codex.",
+  "author": {
+    "name": "Verity Cordon contributors"
+  },
+  "homepage": "https://github.com/mahdihedhli/verity-cordon",
+  "repository": "https://github.com/mahdihedhli/verity-cordon",
+  "license": "Apache-2.0",
+  "keywords": [
+    "codex",
+    "security",
+    "memory",
+    "prompt-injection"
+  ],
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "Verity Cordon",
+    "shortDescription": "Verifiable memory. Revocable trust.",
+    "longDescription": "A controlled memory plane that screens, records, and selectively revokes durable Codex memory.",
+    "developerName": "Verity Cordon contributors",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Lifecycle hooks"
+    ],
+    "websiteURL": "https://github.com/mahdihedhli/verity-cordon"
+  }
+}

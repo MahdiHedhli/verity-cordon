@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.29,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "verity-cordon-poisoned-docs-fixture"
+version = "0.1.0"
+description = "Synthetic poisoned-document MCP fixture for Verity Cordon"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Verity Cordon contributors" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Security",
+]
+dependencies = []
+
+[project.scripts]
+poisoned-docs-mcp = "poisoned_docs_mcp.server:main"
+
+[dependency-groups]
+test = ["pytest>=9.1,<10"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/poisoned_docs_mcp"]

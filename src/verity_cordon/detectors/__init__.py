@@ -1,2 +1,1 @@
 """Deterministic memory-risk detectors."""
-

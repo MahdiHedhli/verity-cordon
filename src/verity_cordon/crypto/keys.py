@@ -29,6 +29,8 @@ def _assert_regular_private_file(descriptor: int) -> None:
     metadata = os.fstat(descriptor)
     if not stat.S_ISREG(metadata.st_mode):
         raise ConfigurationError("The signing key is not a regular file.")
+    if os.name != "nt" and metadata.st_uid != os.geteuid():
+        raise ConfigurationError("The signing key has an unexpected owner.")
     if stat.S_IMODE(metadata.st_mode) & 0o077:
         raise ConfigurationError("The signing key has unsafe permissions.")
 

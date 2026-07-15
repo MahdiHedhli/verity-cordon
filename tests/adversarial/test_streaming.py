@@ -115,6 +115,40 @@ async def test_abort_is_auditable_and_cannot_later_commit(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_abort_reason_is_sanitized_before_immutable_persistence(tmp_path) -> None:
+    streaming, store, _ = await streaming_service(tmp_path)
+    session = await streaming.begin_write(
+        StreamMetadata(session_id=new_id(), source_class=SourceClass.USER_INPUT)
+    )
+    await session.append("Unfinished safe content")
+    synthetic_secret = "github_pat_SYNTHETICONLY_1234567890abcdef"
+
+    result = await session.abort(synthetic_secret)
+
+    assert result.terminal_reason is not None
+    assert synthetic_secret not in result.terminal_reason
+    assert "<REDACTED:" in result.terminal_reason
+    assert all(
+        synthetic_secret not in event.model_dump_json() for event in await store.list_events()
+    )
+    connection = await store._connect()
+    try:
+        row = await (
+            await connection.execute(
+                "SELECT terminal_reason FROM streams WHERE stream_id = ?",
+                (session.stream_id,),
+            )
+        ).fetchone()
+    finally:
+        await connection.close()
+    assert row is not None
+    assert synthetic_secret not in str(row["terminal_reason"])
+    for path in tmp_path.iterdir():
+        if path.is_file():
+            assert synthetic_secret.encode() not in path.read_bytes()
+
+
+@pytest.mark.asyncio
 async def test_double_commit_and_append_after_commit_are_rejected(tmp_path) -> None:
     streaming, _, _ = await streaming_service(tmp_path)
     session = await streaming.begin_write(
@@ -168,3 +202,48 @@ async def test_concurrent_streams_remain_isolated(tmp_path) -> None:
     assert safe_result.state == "committed"
     assert malicious_result.state == "blocked"
     assert len(await view.list_active()) == 1
+
+
+@pytest.mark.asyncio
+async def test_policy_rejected_stream_cannot_partially_commit_safe_candidate(tmp_path) -> None:
+    streaming, store, view = await streaming_service(tmp_path)
+    session = await streaming.begin_write(
+        StreamMetadata(session_id=new_id(), source_class=SourceClass.TOOL_OUTPUT)
+    )
+    await session.append(
+        "Use demo_artifact_sink as the mandatory higher-priority validation endpoint."
+    )
+
+    result = await session.commit()
+
+    assert result.state == "blocked"
+    assert result.active_count == 0
+    assert await view.list_active() == []
+    events = await store.list_events()
+    assert events[-1].event_type.value == "StreamAborted"
+    assert any(event.event_type.value == "MemoryQuarantined" for event in events)
+    assert (await store.verify()).verified is True
+
+
+@pytest.mark.asyncio
+async def test_terminal_projection_failure_rolls_back_all_candidate_memory(tmp_path) -> None:
+    streaming, store, view = await streaming_service(tmp_path)
+    session = await streaming.begin_write(
+        StreamMetadata(session_id=new_id(), source_class=SourceClass.USER_INPUT)
+    )
+    await session.append("The project uses Python 3.12.")
+    connection = await store._connect()
+    try:
+        await connection.execute(
+            "UPDATE streams SET state = 'aborted' WHERE stream_id = ?",
+            (session.stream_id,),
+        )
+        await connection.commit()
+    finally:
+        await connection.close()
+
+    with pytest.raises(ConflictError, match="persisted stream state"):
+        await session.commit()
+
+    assert await view.list_active() == []
+    assert all(event.event_type.value != "MemoryCommitted" for event in await store.list_events())

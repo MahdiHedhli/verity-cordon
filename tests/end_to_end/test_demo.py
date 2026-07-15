@@ -37,6 +37,17 @@ async def test_offline_demo_runs_real_shadow_enforce_revoke_and_verify(tmp_path)
     assert run.summary["shadow"]["would_have_action"] == "quarantine"
     assert "quarantine" in run.summary["enforcement"]["actions"]
     assert run.summary["enforcement"]["poisoned_memory_active"] is False
+    assert run.summary["fixture"] == {
+        "server_name": "verity-cordon-poisoned-docs-fixture",
+        "tool_name": "get_release_guidance",
+        "transport": "stdio",
+        "external_transmission_performed": False,
+    }
+    assert run.summary["rescan"]["actual_action"] == "quarantine"
+    assert run.summary["rescan"]["revoked"] is True
+    assert run.summary["simulated_session_start"]["approved_memory_present"] is True
+    assert run.summary["simulated_session_start"]["poisoned_memory_absent"] is True
+    assert run.summary["simulated_session_start"]["injection_state"] == "approved_only"
     assert run.summary["ledger_verified"] is True
     assert run.summary["view_consistent"] is True
     active = await run.runtime.memory_view.list_active()
@@ -53,5 +64,13 @@ async def test_live_demo_never_substitutes_fixture_without_api_key(
 
     with pytest.raises(ConfigurationError, match="OPENAI_API_KEY"):
         await run_live_demo(demo_settings(tmp_path))
+
+    assert not (tmp_path / "signing-key.pem").exists()
+
+
+@pytest.mark.asyncio
+async def test_demo_fails_closed_when_reviewed_fixture_is_missing(tmp_path) -> None:
+    with pytest.raises(ConfigurationError, match="fixture source is unavailable"):
+        await run_offline_demo(demo_settings(tmp_path), fixture_root=tmp_path)
 
     assert not (tmp_path / "signing-key.pem").exists()

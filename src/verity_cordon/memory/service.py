@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
+import hmac
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 import aiosqlite
-from pydantic import Field
+from pydantic import Field, ValidationError
 
-from verity_cordon.core.errors import LedgerError
+from verity_cordon.core.errors import LedgerError, ResourceLimitError
 from verity_cordon.core.models import (
     Action,
     Actor,
@@ -42,8 +47,15 @@ from verity_cordon.detectors.runner import DetectorRunner
 from verity_cordon.ledger.store import SQLiteEventStore
 from verity_cordon.memory.injection import render_approved_memory
 from verity_cordon.memory.materializer import QuarantineRecord, SQLiteMemoryView
+from verity_cordon.memory.safe_display import display_safe_statement
 from verity_cordon.policies.engine import PolicyEngine, PolicyEvaluation
 from verity_cordon.semantic.base import run_semantic_assessment
+from verity_cordon.telemetry.instrumentation import Statistics, span
+
+ProjectionWriter = Callable[
+    [aiosqlite.Connection, list[EventEnvelope]],
+    Awaitable[None],
+]
 
 
 class EvidenceSubmission(StrictModel):
@@ -69,17 +81,35 @@ class EvidenceEvaluation(StrictModel):
     outcomes: list[CandidateOutcome]
 
 
-def _source_actor(submission: EvidenceSubmission) -> Actor:
+class _QueueIntegrityError(LedgerError):
+    def __init__(self, message: str, *, health_error: str) -> None:
+        super().__init__(message)
+        self.health_error = health_error
+
+
+TerminalCommitFactory = Callable[
+    [list[CandidateOutcome], bool],
+    tuple[EventInput, ProjectionWriter],
+]
+
+
+@dataclass(slots=True)
+class _OutcomeCommit:
+    inputs: list[EventInput]
+    projector: ProjectionWriter
+    outcome: CandidateOutcome
+
+
+def _source_actor(submission: EvidenceSubmission, *, safe_source_name: str | None) -> Actor:
     mapping = {
         SourceClass.USER_INPUT: ActorType.CODEX,
         SourceClass.TOOL_OUTPUT: ActorType.TOOL,
         SourceClass.AGENT_OUTPUT: ActorType.AGENT,
     }
     actor_type = mapping.get(submission.source_class, ActorType.SYSTEM)
-    raw_id = submission.source_name or f"source.{submission.source_class.value}"
+    raw_id = safe_source_name or f"source.{submission.source_class.value}"
     safe_id = "".join(
-        character if character.isalnum() or character in "._:-" else "-"
-        for character in raw_id
+        character if character.isalnum() or character in "._:-" else "-" for character in raw_id
     )
     if len(safe_id) < 8:
         safe_id = f"source.{safe_id}"
@@ -96,6 +126,34 @@ def _provider_summary(semantic: SemanticAssessment | None) -> ProviderSummarySta
     return ProviderSummaryState.RECORDED_FIXTURE
 
 
+def _parse_queue_timestamp(value: object, *, field: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise _QueueIntegrityError(
+            f"Queued evidence has an invalid {field} timestamp.",
+            health_error="queued_evidence_timestamp_invalid",
+        ) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise _QueueIntegrityError(
+            f"Queued evidence {field} timestamp lacks a UTC offset.",
+            health_error="queued_evidence_timestamp_invalid",
+        )
+    normalized = parsed.astimezone(UTC)
+    if str(value) != format_utc(normalized):
+        raise _QueueIntegrityError(
+            f"Queued evidence {field} timestamp is not canonical UTC.",
+            health_error="queued_evidence_timestamp_invalid",
+        )
+    return normalized
+
+
+def _require_aware_utc(value: datetime, *, field: str) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{field} must include a UTC offset.")
+    return value.astimezone(UTC)
+
+
 class MemoryService:
     def __init__(
         self,
@@ -106,7 +164,22 @@ class MemoryService:
         detector_runner: DetectorRunner,
         semantic_adjudicator: SemanticAdjudicator,
         policy_engine: PolicyEngine,
+        statistics: Statistics | None = None,
+        pending_evidence_max_items: int = 256,
+        pending_evidence_max_bytes: int = 16_777_216,
+        pending_evidence_max_attempts: int = 3,
+        pending_evidence_max_age_seconds: int = 3600,
     ) -> None:
+        if (
+            min(
+                pending_evidence_max_items,
+                pending_evidence_max_bytes,
+                pending_evidence_max_attempts,
+                pending_evidence_max_age_seconds,
+            )
+            <= 0
+        ):
+            raise ValueError("Pending-evidence limits must be positive.")
         self.event_store = event_store
         self.memory_view = memory_view
         self.extractor = extractor
@@ -115,6 +188,39 @@ class MemoryService:
         self.policy_engine = policy_engine
         self.sanitizer = SecretSanitizer()
         self.semantic_timeout_ms = policy_engine.policy.limits.semantic_timeout_ms
+        self.statistics = statistics or Statistics()
+        self.pending_evidence_max_items = pending_evidence_max_items
+        self.pending_evidence_max_bytes = pending_evidence_max_bytes
+        self.pending_evidence_max_attempts = pending_evidence_max_attempts
+        self.pending_evidence_max_age_seconds = pending_evidence_max_age_seconds
+        self._pending_evidence_lock = asyncio.Lock()
+
+    def _safe_source_name(self, source_name: str | None) -> str | None:
+        if source_name is None:
+            return None
+        raw = source_name.strip()
+        if not raw:
+            return None
+        try:
+            parsed = urlsplit(raw)
+        except ValueError:
+            parsed = None
+        if parsed is not None and parsed.scheme and parsed.hostname:
+            raw = f"url.{parsed.hostname}"
+        else:
+            raw = raw.split("?", 1)[0].split("#", 1)[0]
+        sanitized = self.sanitizer.sanitize(raw).text
+        safe = "".join(
+            character if character.isalnum() or character in "._:-" else "-"
+            for character in sanitized
+        ).strip("-")
+        return (safe or "source.redacted")[:256]
+
+    def _validate_evidence_size(self, submission: EvidenceSubmission) -> bytes:
+        content_bytes = submission.content.encode("utf-8")
+        if len(content_bytes) > self.policy_engine.policy.limits.max_evidence_bytes:
+            raise ResourceLimitError("Evidence exceeds the active policy size boundary.")
+        return content_bytes
 
     def _requires_semantic(
         self,
@@ -143,29 +249,40 @@ class MemoryService:
         submission: EvidenceSubmission,
         *,
         sanitized_text: str,
+        queued_content: str | None = None,
     ) -> EvidenceRecord:
         evidence_id = new_id()
         event_id = new_id()
         captured_at = format_utc()
         safe_excerpt = sanitized_text[:2000]
+        sanitized_digest = sha256_hex(sanitized_text.encode("utf-8"))
+        sanitization = self.sanitizer.sanitize(submission.content)
+        safe_source_name = self._safe_source_name(submission.source_name)
+        if not hmac.compare_digest(sanitization.text, sanitized_text):
+            raise LedgerError("Sanitized evidence changed before capture.")
         record = EvidenceRecord(
             evidence_id=evidence_id,
             session_id=submission.session_id,
             task_id=submission.task_id,
             source_class=submission.source_class,
-            source_name=submission.source_name,
+            source_name=safe_source_name,
             safe_excerpt=safe_excerpt,
             content_digest=sha256_hex(submission.content.encode("utf-8")),
             content_size=len(submission.content.encode("utf-8")),
             retention_state="digest_only",
             captured_at=captured_at,
-            metadata={},
+            metadata={
+                "sanitized_content_digest": sanitized_digest,
+                "sanitizer_version": self.sanitizer.sanitizer_version,
+                "redaction_count": sanitization.redaction_count,
+                "redaction_types": ",".join(sanitization.redaction_types),
+            },
         )
         event = EventInput(
             event_id=event_id,
             stream_id=evidence_id,
             event_type=EventType.EVIDENCE_CAPTURED,
-            actor=_source_actor(submission),
+            actor=_source_actor(submission, safe_source_name=safe_source_name),
             session_id=submission.session_id,
             task_id=submission.task_id,
             source_class=EventSourceClass(submission.source_class.value),
@@ -199,6 +316,42 @@ class MemoryService:
                     event_id,
                 ),
             )
+            if queued_content is not None:
+                queue_state = await (
+                    await connection.execute(
+                        """
+                        SELECT COUNT(*) AS item_count,
+                               COALESCE(SUM(LENGTH(CAST(sanitized_content AS BLOB))), 0)
+                                   AS byte_count
+                        FROM pending_evidence
+                        WHERE state = 'pending'
+                        """
+                    )
+                ).fetchone()
+                item_count = int(queue_state["item_count"]) if queue_state is not None else 0
+                byte_count = int(queue_state["byte_count"]) if queue_state is not None else 0
+                queued_size = len(queued_content.encode("utf-8"))
+                if (
+                    item_count >= self.pending_evidence_max_items
+                    or byte_count + queued_size > self.pending_evidence_max_bytes
+                ):
+                    raise ResourceLimitError("The durable evidence queue is at capacity.")
+                await connection.execute(
+                    """
+                    INSERT INTO pending_evidence(
+                        evidence_id, state, sanitized_content, sanitized_content_digest,
+                        enqueued_at, attempts, next_attempt_at, last_error_code,
+                        failed_at, terminal_event_id
+                    ) VALUES (?, 'pending', ?, ?, ?, 0, ?, NULL, NULL, NULL)
+                    """,
+                    (
+                        record.evidence_id,
+                        queued_content,
+                        sanitized_digest,
+                        captured_at,
+                        captured_at,
+                    ),
+                )
 
         await self.event_store.append_with_projection([event], project)
         return record
@@ -225,11 +378,18 @@ class MemoryService:
         normalized = candidate.model_copy(update=update)
         if normalized.session_id != evidence.session_id:
             raise LedgerError("Candidate extraction returned a mismatched session identity.")
-        if not any(
-            reference.evidence_id == evidence.evidence_id
+        if normalized.task_id != evidence.task_id:
+            raise LedgerError("Candidate extraction returned a mismatched task identity.")
+        if normalized.source_class != evidence.source_class:
+            raise LedgerError("Candidate extraction returned a mismatched source class.")
+        if not normalized.source_refs:
+            raise LedgerError("Candidate extraction returned mismatched provenance.")
+        if any(
+            reference.evidence_id != evidence.evidence_id
+            or not hmac.compare_digest(reference.evidence_digest, evidence.content_digest)
             for reference in normalized.source_refs
         ):
-            raise LedgerError("Candidate extraction returned mismatched provenance.")
+            raise LedgerError("Candidate extraction returned mismatched evidence provenance.")
         return MemoryCandidate.model_validate(normalized.model_dump(mode="json"))
 
     def _risk_categories(
@@ -248,17 +408,15 @@ class MemoryService:
         return sorted(categories)
 
     def _safe_statement(self, candidate: MemoryCandidate, action: Action) -> str:
-        if action != Action.REDACT or candidate.contains_redactions:
-            return candidate.statement
-        return f"[REDACTED BY POLICY: {candidate.namespace}]"
+        return display_safe_statement(candidate, action=action)
 
-    async def _commit_outcome(
+    def _build_outcome_commit(
         self,
         candidate: MemoryCandidate,
         detector_results: list[DetectorResult],
         semantic: SemanticAssessment | None,
         evaluation: PolicyEvaluation,
-    ) -> CandidateOutcome:
+    ) -> _OutcomeCommit:
         decision = evaluation.decision
         memory_id = new_id() if decision.actual_action in {Action.ALLOW, Action.REDACT} else None
         occurred_at = format_utc()
@@ -513,39 +671,637 @@ class MemoryService:
                     ),
                 )
 
-        await self.event_store.append_with_projection(inputs, project)
         status = {
             Action.ALLOW: "active",
             Action.REDACT: "redacted",
             Action.QUARANTINE: "quarantined",
             Action.BLOCK: "blocked",
         }[decision.actual_action]
-        return CandidateOutcome(
-            candidate=candidate,
-            detector_results=detector_results,
-            semantic_assessment=semantic,
-            decision=decision,
-            memory_id=memory_id,
-            status=status,
+        return _OutcomeCommit(
+            inputs=inputs,
+            projector=project,
+            outcome=CandidateOutcome(
+                candidate=candidate,
+                detector_results=detector_results,
+                semantic_assessment=semantic,
+                decision=decision,
+                memory_id=memory_id,
+                status=status,
+            ),
         )
 
+    async def _commit_outcomes(
+        self,
+        plans: Sequence[_OutcomeCommit],
+        *,
+        terminal: tuple[EventInput, ProjectionWriter] | None = None,
+        finalizer: ProjectionWriter | None = None,
+    ) -> list[CandidateOutcome]:
+        inputs = [event for plan in plans for event in plan.inputs]
+        if terminal is not None:
+            inputs.append(terminal[0])
+        if not inputs:
+            if finalizer is not None:
+                connection = await self.event_store._connect()
+                try:
+                    await connection.execute("BEGIN IMMEDIATE")
+                    await finalizer(connection, [])
+                    await connection.commit()
+                except BaseException:
+                    await connection.rollback()
+                    raise
+                finally:
+                    await connection.close()
+            return []
+
+        async def project(
+            connection: aiosqlite.Connection,
+            envelopes: list[EventEnvelope],
+        ) -> None:
+            for plan in plans:
+                await plan.projector(connection, envelopes)
+            if terminal is not None:
+                await terminal[1](connection, envelopes)
+            if finalizer is not None:
+                await finalizer(connection, envelopes)
+
+        primary = plans[0].outcome if len(plans) == 1 else None
+        async with span(
+            "verity.memory.materialize",
+            candidate_id=primary.candidate.candidate_id if primary is not None else None,
+            action=(primary.decision.actual_action.value if primary is not None else "batch"),
+            content_length=len(plans),
+        ):
+            await self.event_store.append_with_projection(inputs, project)
+        return [plan.outcome for plan in plans]
+
     async def evaluate_evidence(self, submission: EvidenceSubmission) -> EvidenceEvaluation:
+        content_bytes = submission.content.encode("utf-8")
+        async with span(
+            "verity.memory.evaluate",
+            source_class=submission.source_class.value,
+            content_length=len(content_bytes),
+            content_digest_prefix=sha256_hex(content_bytes)[:12],
+        ) as timing:
+            result, _ = await self._evaluate_evidence(submission)
+        await self.statistics.observe_evaluation(timing["latency_ms"])
+        return result
+
+    async def enqueue_evidence(self, submission: EvidenceSubmission) -> EvidenceRecord:
+        """Durably capture sanitized hook evidence without waiting for adjudication."""
+
+        if not self.event_store.healthy:
+            raise LedgerError("The ledger is unhealthy; evidence capture is disabled.")
+        content_bytes = self._validate_evidence_size(submission)
+        sanitized = self.sanitizer.sanitize(submission.content)
+        async with span(
+            "verity.evidence.capture",
+            source_class=submission.source_class.value,
+            content_length=len(content_bytes),
+            content_digest_prefix=sha256_hex(content_bytes)[:12],
+        ) as _:
+            return await self._capture_evidence(
+                submission,
+                sanitized_text=sanitized.text,
+                queued_content=sanitized.text,
+            )
+
+    async def pending_evidence_count(self) -> int:
+        return (await self.evidence_queue_counts())["pending_evidence"]
+
+    async def evidence_queue_counts(self) -> dict[str, int]:
+        connection = await self.event_store._connect()
+        try:
+            row = await (
+                await connection.execute(
+                    """
+                    SELECT
+                        SUM(CASE WHEN state = 'pending' THEN 1 ELSE 0 END) AS pending_count,
+                        SUM(CASE WHEN state = 'failed' THEN 1 ELSE 0 END) AS failed_count
+                    FROM pending_evidence
+                    """
+                )
+            ).fetchone()
+            return {
+                "pending_evidence": int(row["pending_count"] or 0) if row else 0,
+                "failed_evidence": int(row["failed_count"] or 0) if row else 0,
+            }
+        finally:
+            await connection.close()
+
+    @staticmethod
+    def _load_signed_queue_evidence(
+        event: EventEnvelope | None,
+        *,
+        evidence_id: str,
+    ) -> EvidenceRecord:
+        if event is None:
+            raise _QueueIntegrityError(
+                "Queued evidence lacks a signed capture event.",
+                health_error="queued_evidence_capture_missing",
+            )
+        try:
+            evidence = EvidenceRecord.model_validate(event.payload)
+        except ValidationError as exc:
+            raise _QueueIntegrityError(
+                "Queued evidence has an invalid signed capture record.",
+                health_error="queued_evidence_capture_invalid",
+            ) from exc
+        expected_source = EventSourceClass(evidence.source_class.value)
+        if (
+            evidence.evidence_id != evidence_id
+            or event.stream_id != evidence_id
+            or event.session_id != evidence.session_id
+            or event.task_id != evidence.task_id
+            or event.source_class != expected_source
+            or not any(
+                reference.evidence_id == evidence_id
+                and hmac.compare_digest(reference.digest, evidence.content_digest)
+                for reference in event.evidence_references
+            )
+        ):
+            raise _QueueIntegrityError(
+                "Queued evidence identity does not match its signed event.",
+                health_error="queued_evidence_identity_mismatch",
+            )
+        return evidence
+
+    @staticmethod
+    def _validate_pending_queue_row(
+        row: aiosqlite.Row,
+        evidence: EvidenceRecord,
+    ) -> tuple[str, str, datetime]:
+        enqueued_at = _parse_queue_timestamp(row["enqueued_at"], field="enqueue")
+        captured_at = _parse_queue_timestamp(evidence.captured_at, field="capture")
+        _parse_queue_timestamp(row["next_attempt_at"], field="next attempt")
+        if enqueued_at != captured_at:
+            raise _QueueIntegrityError(
+                "Queued evidence enqueue time does not match its signed capture event.",
+                health_error="queued_evidence_timestamp_mismatch",
+            )
+        sanitized_value = row["sanitized_content"]
+        if not isinstance(sanitized_value, str):
+            raise _QueueIntegrityError(
+                "Queued sanitized evidence content is missing.",
+                health_error="queued_evidence_digest_mismatch",
+            )
+        sanitized_digest = sha256_hex(sanitized_value.encode("utf-8"))
+        signed_digest = evidence.metadata.get("sanitized_content_digest")
+        if (
+            not isinstance(signed_digest, str)
+            or not hmac.compare_digest(str(row["sanitized_content_digest"]), sanitized_digest)
+            or not hmac.compare_digest(signed_digest, sanitized_digest)
+        ):
+            raise _QueueIntegrityError(
+                "Queued sanitized evidence failed its signed digest check.",
+                health_error="queued_evidence_digest_mismatch",
+            )
+        return sanitized_value, sanitized_digest, enqueued_at
+
+    async def verify_pending_evidence_integrity(self) -> bool:
+        """Boundedly validate every pending spool row before evaluation or injection."""
+
+        if not self.event_store.healthy:
+            return False
+        verification = await self.event_store.verify()
+        if not verification.verified or not self.event_store.healthy:
+            return False
+        connection = await self.event_store._connect()
+        try:
+            queue_state = await (
+                await connection.execute(
+                    """
+                    SELECT COUNT(*) AS item_count,
+                           COALESCE(SUM(LENGTH(CAST(sanitized_content AS BLOB))), 0)
+                               AS byte_count,
+                           SUM(
+                               CASE WHEN state = 'failed'
+                                   AND last_error_code = 'queue_integrity_error'
+                               THEN 1 ELSE 0 END
+                           ) AS persistent_integrity_failures
+                    FROM pending_evidence
+                    WHERE state = 'pending'
+                       OR (state = 'failed' AND last_error_code = 'queue_integrity_error')
+                    """
+                )
+            ).fetchone()
+            item_count = int(queue_state["item_count"]) if queue_state else 0
+            byte_count = int(queue_state["byte_count"]) if queue_state else 0
+            persistent_failures = (
+                int(queue_state["persistent_integrity_failures"] or 0) if queue_state else 0
+            )
+            if persistent_failures:
+                self.event_store._mark_unhealthy("queued_evidence_integrity_failure_persisted")
+                return False
+            if (
+                item_count > self.pending_evidence_max_items
+                or byte_count > self.pending_evidence_max_bytes
+            ):
+                self.event_store._mark_unhealthy("queued_evidence_capacity_exceeded")
+                return False
+            rows = await (
+                await connection.execute(
+                    """
+                    SELECT evidence_id, sanitized_content, sanitized_content_digest,
+                           enqueued_at, next_attempt_at
+                    FROM pending_evidence
+                    WHERE state = 'pending'
+                    ORDER BY enqueued_at, evidence_id
+                    """
+                )
+            ).fetchall()
+        finally:
+            await connection.close()
+        if not rows:
+            return True
+        capture_events = {
+            event.stream_id: event
+            for event in await self.event_store.list_events()
+            if event.event_type == EventType.EVIDENCE_CAPTURED
+        }
+        for row in rows:
+            evidence: EvidenceRecord | None = None
+            try:
+                evidence_id = str(row["evidence_id"])
+                evidence = self._load_signed_queue_evidence(
+                    capture_events.get(evidence_id),
+                    evidence_id=evidence_id,
+                )
+                self._validate_pending_queue_row(row, evidence)
+            except _QueueIntegrityError as error:
+                if evidence is None:
+                    self.event_store._mark_unhealthy(error.health_error)
+                else:
+                    try:
+                        await self._record_pending_failure(
+                            evidence,
+                            error_code="queue_integrity_error",
+                            now=utc_now(),
+                            force_terminal=True,
+                        )
+                    finally:
+                        self.event_store._mark_unhealthy(error.health_error)
+                return False
+        return True
+
+    async def process_pending_evidence(
+        self,
+        *,
+        limit: int = 25,
+        now: datetime | None = None,
+    ) -> int:
+        """Evaluate due durable queue entries and remove each only with its outcome commit."""
+
+        if not 1 <= limit <= 100:
+            raise ValueError("Pending-evidence limit must be between 1 and 100.")
+        async with self._pending_evidence_lock:
+            return await self._process_pending_evidence(limit=limit, now=now)
+
+    async def _process_pending_evidence(
+        self,
+        *,
+        limit: int,
+        now: datetime | None,
+    ) -> int:
+        if not await self.verify_pending_evidence_integrity():
+            return 0
+        current = utc_now() if now is None else _require_aware_utc(now, field="Queue time")
+        connection = await self.event_store._connect()
+        try:
+            rows = await (
+                await connection.execute(
+                    """
+                    SELECT evidence_id, sanitized_content, sanitized_content_digest,
+                           enqueued_at, next_attempt_at
+                    FROM pending_evidence
+                    WHERE state = 'pending' AND next_attempt_at <= ?
+                    ORDER BY enqueued_at, evidence_id
+                    LIMIT ?
+                    """,
+                    (format_utc(current), limit),
+                )
+            ).fetchall()
+        finally:
+            await connection.close()
+        if not rows:
+            return 0
+
+        capture_events = {
+            event.stream_id: event
+            for event in await self.event_store.list_events()
+            if event.event_type == EventType.EVIDENCE_CAPTURED
+        }
+        processed = 0
+        for row in rows:
+            evidence_id = str(row["evidence_id"])
+            evidence: EvidenceRecord | None = None
+            try:
+                evidence = self._load_signed_queue_evidence(
+                    capture_events.get(evidence_id),
+                    evidence_id=evidence_id,
+                )
+                sanitized_text, sanitized_digest, enqueued_at = self._validate_pending_queue_row(
+                    row, evidence
+                )
+                if current - enqueued_at >= timedelta(
+                    seconds=self.pending_evidence_max_age_seconds
+                ):
+                    await self._record_pending_failure(
+                        evidence,
+                        error_code="queue_expired",
+                        now=current,
+                        force_terminal=True,
+                    )
+                    continue
+                submission = EvidenceSubmission(
+                    session_id=evidence.session_id,
+                    task_id=evidence.task_id,
+                    source_class=evidence.source_class,
+                    source_name=evidence.source_name,
+                    content=sanitized_text,
+                    metadata={},
+                )
+                content_bytes = sanitized_text.encode("utf-8")
+                async with span(
+                    "verity.memory.evaluate",
+                    source_class=submission.source_class.value,
+                    content_length=len(content_bytes),
+                    content_digest_prefix=sanitized_digest[:12],
+                ) as timing:
+                    await self._evaluate_captured_evidence(
+                        submission,
+                        evidence,
+                        sanitized_text=sanitized_text,
+                        pending_evidence_id=evidence_id,
+                    )
+                await self.statistics.observe_evaluation(timing["latency_ms"])
+                processed += 1
+            except Exception as error:
+                if evidence is None:
+                    health_error = (
+                        error.health_error
+                        if isinstance(error, _QueueIntegrityError)
+                        else "queued_evidence_capture_invalid"
+                    )
+                    self.event_store._mark_unhealthy(health_error)
+                    break
+                if isinstance(error, _QueueIntegrityError):
+                    try:
+                        await self._record_pending_failure(
+                            evidence,
+                            error_code="queue_integrity_error",
+                            now=current,
+                            force_terminal=True,
+                        )
+                    finally:
+                        self.event_store._mark_unhealthy(error.health_error)
+                    break
+                else:
+                    await self._record_pending_failure(
+                        evidence,
+                        error_code="evaluation_error",
+                        now=current,
+                    )
+        return processed
+
+    async def _record_pending_failure(
+        self,
+        evidence: EvidenceRecord,
+        *,
+        error_code: str,
+        now: datetime,
+        force_terminal: bool = False,
+    ) -> bool:
+        evidence_id = evidence.evidence_id
+        connection = await self.event_store._connect()
+        try:
+            row = await (
+                await connection.execute(
+                    """
+                    SELECT attempts, enqueued_at
+                    FROM pending_evidence
+                    WHERE evidence_id = ? AND state = 'pending'
+                    """,
+                    (evidence_id,),
+                )
+            ).fetchone()
+        finally:
+            await connection.close()
+        if row is None:
+            return False
+
+        attempts = int(row["attempts"]) + 1
+        terminal = force_terminal or attempts >= self.pending_evidence_max_attempts
+        if not terminal:
+            enqueued_at = _parse_queue_timestamp(row["enqueued_at"], field="enqueue")
+            terminal = now - enqueued_at >= timedelta(seconds=self.pending_evidence_max_age_seconds)
+        if terminal:
+            event_id = new_id()
+            failed_at = format_utc(now)
+            event = EventInput(
+                event_id=event_id,
+                stream_id=evidence_id,
+                event_type=EventType.EVIDENCE_EVALUATION_FAILED,
+                actor=Actor(type=ActorType.SYSTEM, id="verity.evidence-worker"),
+                session_id=evidence.session_id,
+                task_id=evidence.task_id,
+                source_class=EventSourceClass(evidence.source_class.value),
+                evidence_references=[
+                    EvidenceReference(
+                        evidence_id=evidence.evidence_id,
+                        digest=evidence.content_digest,
+                    )
+                ],
+                payload={
+                    "evidence_id": evidence_id,
+                    "error_code": error_code,
+                    "attempts": attempts,
+                    "content_purged": True,
+                },
+                occurred_at=failed_at,
+            )
+
+            async def project_failure(
+                connection: aiosqlite.Connection,
+                _: list[EventEnvelope],
+            ) -> None:
+                cursor = await connection.execute(
+                    """
+                    UPDATE pending_evidence
+                    SET state = 'failed', sanitized_content = NULL, attempts = ?,
+                        next_attempt_at = ?, last_error_code = ?, failed_at = ?,
+                        terminal_event_id = ?
+                    WHERE evidence_id = ? AND state = 'pending'
+                    """,
+                    (
+                        attempts,
+                        failed_at,
+                        error_code,
+                        failed_at,
+                        event_id,
+                        evidence_id,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise LedgerError("Queued evidence changed before terminal failure commit.")
+
+            await self.event_store.append_with_projection([event], project_failure)
+            return True
+
+        delay_seconds = min(300, 2 ** min(attempts, 8))
+        connection = await self.event_store._connect()
+        try:
+            await connection.execute("BEGIN IMMEDIATE")
+            cursor = await connection.execute(
+                """
+                UPDATE pending_evidence
+                SET attempts = ?, next_attempt_at = ?, last_error_code = ?
+                WHERE evidence_id = ? AND state = 'pending'
+                """,
+                (
+                    attempts,
+                    format_utc(now + timedelta(seconds=delay_seconds)),
+                    error_code,
+                    evidence_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise LedgerError("Queued evidence changed before retry scheduling.")
+            await connection.commit()
+        except BaseException:
+            await connection.rollback()
+            raise
+        finally:
+            await connection.close()
+        return False
+
+    async def _complete_pending_without_candidates(
+        self,
+        evidence: EvidenceRecord,
+        *,
+        pending_evidence_id: str,
+    ) -> None:
+        event_id = new_id()
+        occurred_at = format_utc()
+        event = EventInput(
+            event_id=event_id,
+            stream_id=evidence.evidence_id,
+            event_type=EventType.EVIDENCE_EVALUATION_COMPLETED,
+            actor=Actor(type=ActorType.SYSTEM, id="verity.evidence-worker"),
+            session_id=evidence.session_id,
+            task_id=evidence.task_id,
+            source_class=EventSourceClass(evidence.source_class.value),
+            evidence_references=[
+                EvidenceReference(
+                    evidence_id=evidence.evidence_id,
+                    digest=evidence.content_digest,
+                )
+            ],
+            payload={
+                "evidence_id": evidence.evidence_id,
+                "candidate_count": 0,
+                "outcome": "no_candidate",
+            },
+            occurred_at=occurred_at,
+        )
+
+        async def project_completion(
+            connection: aiosqlite.Connection,
+            _: list[EventEnvelope],
+        ) -> None:
+            cursor = await connection.execute(
+                "DELETE FROM pending_evidence WHERE evidence_id = ? AND state = 'pending'",
+                (pending_evidence_id,),
+            )
+            if cursor.rowcount != 1:
+                raise LedgerError("Queued evidence changed before completion commit.")
+
+        await self.event_store.append_with_projection([event], project_completion)
+
+    async def evaluate_transactional_stream(
+        self,
+        submission: EvidenceSubmission,
+        *,
+        terminal_factory: TerminalCommitFactory,
+    ) -> tuple[EvidenceEvaluation, bool]:
+        """Evaluate a complete stream and commit its decisions with one terminal event."""
+
+        content_bytes = submission.content.encode("utf-8")
+        async with span(
+            "verity.memory.evaluate",
+            source_class=submission.source_class.value,
+            content_length=len(content_bytes),
+            content_digest_prefix=sha256_hex(content_bytes)[:12],
+        ) as timing:
+            result, accepted = await self._evaluate_evidence(
+                submission,
+                atomic_stream=True,
+                terminal_factory=terminal_factory,
+            )
+        await self.statistics.observe_evaluation(timing["latency_ms"])
+        return result, accepted
+
+    async def _evaluate_evidence(
+        self,
+        submission: EvidenceSubmission,
+        *,
+        atomic_stream: bool = False,
+        terminal_factory: TerminalCommitFactory | None = None,
+    ) -> tuple[EvidenceEvaluation, bool]:
         if not self.event_store.healthy:
             raise LedgerError("The ledger is unhealthy; memory evaluation is disabled.")
+        self._validate_evidence_size(submission)
         sanitized = self.sanitizer.sanitize(submission.content)
         evidence = await self._capture_evidence(
             submission,
             sanitized_text=sanitized.text,
         )
-        extracted = await self.extractor.extract(
-            sanitized_evidence=sanitized.text,
-            evidence_id=evidence.evidence_id,
-            evidence_digest=evidence.content_digest,
-            source_class=submission.source_class.value,
-            session_id=submission.session_id,
-            task_id=submission.task_id,
+        return await self._evaluate_captured_evidence(
+            submission,
+            evidence,
+            sanitized_text=sanitized.text,
+            atomic_stream=atomic_stream,
+            terminal_factory=terminal_factory,
         )
-        outcomes: list[CandidateOutcome] = []
+
+    async def _evaluate_captured_evidence(
+        self,
+        submission: EvidenceSubmission,
+        evidence: EvidenceRecord,
+        *,
+        sanitized_text: str,
+        atomic_stream: bool = False,
+        terminal_factory: TerminalCommitFactory | None = None,
+        pending_evidence_id: str | None = None,
+    ) -> tuple[EvidenceEvaluation, bool]:
+        async with span(
+            "verity.memory.extract",
+            source_class=submission.source_class.value,
+            content_length=len(sanitized_text.encode("utf-8")),
+            content_digest_prefix=evidence.content_digest[:12],
+        ):
+            extracted = await self.extractor.extract(
+                sanitized_evidence=sanitized_text,
+                evidence_id=evidence.evidence_id,
+                evidence_digest=evidence.content_digest,
+                source_class=submission.source_class.value,
+                session_id=submission.session_id,
+                task_id=submission.task_id,
+            )
+        if pending_evidence_id is not None and not extracted:
+            await self._complete_pending_without_candidates(
+                evidence,
+                pending_evidence_id=pending_evidence_id,
+            )
+            return EvidenceEvaluation(evidence=evidence, outcomes=[]), True
+        evaluated: list[
+            tuple[
+                MemoryCandidate,
+                list[DetectorResult],
+                SemanticAssessment | None,
+                PolicyEvaluation,
+            ]
+        ] = []
         for raw_candidate in extracted:
             candidate = self._normalize_extracted_candidate(raw_candidate, evidence)
             detector_results = await self.detector_runner.run(
@@ -559,24 +1315,81 @@ class MemoryService:
                     candidate,
                     timeout_ms=self.semantic_timeout_ms,
                 )
-            policy_evaluation = self.policy_engine.evaluate(
-                candidate,
-                detector_results,
-                semantic,
-            )
-            outcomes.append(
-                await self._commit_outcome(
+            async with span(
+                "verity.policy.decide",
+                candidate_id=candidate.candidate_id,
+                policy_version=self.policy_engine.policy.version,
+                source_class=candidate.source_class.value,
+            ):
+                policy_evaluation = self.policy_engine.evaluate(
                     candidate,
                     detector_results,
                     semantic,
-                    policy_evaluation,
                 )
-            )
-        return EvidenceEvaluation(evidence=evidence, outcomes=outcomes)
+            evaluated.append((candidate, detector_results, semantic, policy_evaluation))
+        accepted = all(
+            evaluation.decision.actual_action in {Action.ALLOW, Action.REDACT}
+            for _, _, _, evaluation in evaluated
+        )
+        if atomic_stream and not accepted:
+            adjusted: list[
+                tuple[
+                    MemoryCandidate,
+                    list[DetectorResult],
+                    SemanticAssessment | None,
+                    PolicyEvaluation,
+                ]
+            ] = []
+            for candidate, detector_results, semantic, evaluation in evaluated:
+                if evaluation.decision.actual_action in {Action.ALLOW, Action.REDACT}:
+                    evaluation = PolicyEvaluation(
+                        decision=evaluation.decision.model_copy(
+                            update={
+                                "actual_action": Action.BLOCK,
+                                "reason_codes": [
+                                    *evaluation.decision.reason_codes,
+                                    "stream.atomic_abort",
+                                ],
+                            }
+                        ),
+                        ttl_seconds=None,
+                        manual_review_required=evaluation.manual_review_required,
+                    )
+                adjusted.append((candidate, detector_results, semantic, evaluation))
+            evaluated = adjusted
+
+        plans = [
+            self._build_outcome_commit(candidate, detector_results, semantic, evaluation)
+            for candidate, detector_results, semantic, evaluation in evaluated
+        ]
+        preview = [plan.outcome for plan in plans]
+        terminal = terminal_factory(preview, accepted) if terminal_factory is not None else None
+        finalizer: ProjectionWriter | None = None
+        if pending_evidence_id is not None:
+
+            async def finalize_pending(
+                connection: aiosqlite.Connection,
+                _: list[EventEnvelope],
+            ) -> None:
+                cursor = await connection.execute(
+                    "DELETE FROM pending_evidence WHERE evidence_id = ?",
+                    (pending_evidence_id,),
+                )
+                if cursor.rowcount != 1:
+                    raise LedgerError("Queued evidence changed before outcome commit.")
+
+            finalizer = finalize_pending
+        outcomes = await self._commit_outcomes(
+            plans,
+            terminal=terminal,
+            finalizer=finalizer,
+        )
+        return EvidenceEvaluation(evidence=evidence, outcomes=outcomes), accepted
 
     async def session_start_context(self, *, session_id: str, token_budget: int) -> str:
-        del session_id
         if not self.event_store.healthy:
+            return ""
+        if not await self.verify_pending_evidence_integrity():
             return ""
         verification = await self.event_store.verify()
         if not verification.verified:
@@ -584,10 +1397,11 @@ class MemoryService:
         await self.expire_due_memories()
         if not self.event_store.healthy:
             return ""
-        return render_approved_memory(
-            await self.memory_view.list_active(),
-            token_budget=token_budget,
-        )
+        async with span("verity.memory.inject", content_length=0) as _:
+            return render_approved_memory(
+                await self.memory_view.list_active(),
+                token_budget=token_budget,
+            )
 
     async def expire_due_memories(self, *, now: datetime | None = None) -> list[str]:
         """Append explicit expiration events and atomically remove due active memory."""
@@ -600,9 +1414,7 @@ class MemoryService:
             if record.expires_at is None:
                 continue
             try:
-                expires_at = datetime.fromisoformat(
-                    record.expires_at.replace("Z", "+00:00")
-                )
+                expires_at = datetime.fromisoformat(record.expires_at.replace("Z", "+00:00"))
             except ValueError as exc:
                 raise LedgerError("An active memory expiration is invalid.") from exc
             if expires_at.tzinfo is None:

@@ -149,6 +149,8 @@ class PersistenceIntent(StrEnum):
 
 class EventType(StrEnum):
     EVIDENCE_CAPTURED = "EvidenceCaptured"
+    EVIDENCE_EVALUATION_COMPLETED = "EvidenceEvaluationCompleted"
+    EVIDENCE_EVALUATION_FAILED = "EvidenceEvaluationFailed"
     MEMORY_CANDIDATE_CREATED = "MemoryCandidateCreated"
     DETECTOR_VERDICT_RECORDED = "DetectorVerdictRecorded"
     SEMANTIC_ASSESSMENT_RECORDED = "SemanticAssessmentRecorded"

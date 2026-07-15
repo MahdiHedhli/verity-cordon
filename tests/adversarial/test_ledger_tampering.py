@@ -26,7 +26,7 @@ async def populated_store(tmp_path: Path, count: int = 3) -> SQLiteEventStore:
         [
             EventInput(
                 stream_id=new_id(),
-                event_type=EventType.EVIDENCE_CAPTURED,
+                event_type=EventType.LEDGER_CHECKPOINT_CREATED,
                 actor=Actor(type=ActorType.SYSTEM, id="verity.system"),
                 payload={"index": index, "safe": True},
             )

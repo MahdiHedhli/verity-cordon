@@ -69,4 +69,3 @@ class Statistics:
         async with self._lock:
             average = sum(self._latencies) / len(self._latencies) if self._latencies else 0.0
             return {"counts": dict(self._counts), "average_evaluation_latency_ms": average}
-

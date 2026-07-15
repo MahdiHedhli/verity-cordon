@@ -85,6 +85,29 @@ CREATE TABLE IF NOT EXISTS evidence (
     capture_event_id TEXT NOT NULL UNIQUE REFERENCES events(event_id)
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS pending_evidence (
+    evidence_id TEXT PRIMARY KEY REFERENCES evidence(evidence_id),
+    state TEXT NOT NULL CHECK (state IN ('pending', 'failed')),
+    sanitized_content TEXT,
+    sanitized_content_digest TEXT NOT NULL,
+    enqueued_at TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    next_attempt_at TEXT NOT NULL,
+    last_error_code TEXT,
+    failed_at TEXT,
+    terminal_event_id TEXT UNIQUE REFERENCES events(event_id),
+    CHECK (
+        (state = 'pending' AND sanitized_content IS NOT NULL AND failed_at IS NULL
+            AND terminal_event_id IS NULL)
+        OR
+        (state = 'failed' AND sanitized_content IS NULL AND failed_at IS NOT NULL
+            AND terminal_event_id IS NOT NULL)
+    )
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS pending_evidence_due
+ON pending_evidence(state, next_attempt_at, enqueued_at, evidence_id);
+
 CREATE TABLE IF NOT EXISTS memory_candidates (
     candidate_id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
@@ -163,24 +186,6 @@ CREATE TABLE IF NOT EXISTS quarantined_memories (
     record_json TEXT NOT NULL,
     quarantine_event_id TEXT NOT NULL UNIQUE REFERENCES events(event_id),
     resolution_event_id TEXT REFERENCES events(event_id)
-) STRICT;
-
-CREATE TABLE IF NOT EXISTS semantic_cache (
-    cache_key TEXT PRIMARY KEY,
-    sanitized_content_digest TEXT NOT NULL,
-    source_class TEXT NOT NULL,
-    namespace TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    session_id TEXT NOT NULL,
-    task_id TEXT,
-    persistence_requested INTEGER NOT NULL CHECK (persistence_requested IN (0, 1)),
-    authority_signal TEXT NOT NULL,
-    secrecy_signal TEXT NOT NULL,
-    model TEXT NOT NULL,
-    prompt_version TEXT NOT NULL,
-    schema_version TEXT NOT NULL,
-    assessment_json TEXT NOT NULL,
-    created_at TEXT NOT NULL
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS idempotency_keys (

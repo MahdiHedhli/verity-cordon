@@ -26,6 +26,25 @@ rules:
     action: quarantine
     manual_review_required: true
     ttl_seconds: null
+  - rule_id: suspicious-deterministic-risk
+    priority: 130
+    description: Quarantine untrusted authority, concealment, self-reinforcement, or cross-task findings.
+    match:
+      detector_categories_any:
+        [untrusted_authority, concealed_instruction, self_reinforcement, cross_task_contamination]
+    action: quarantine
+    manual_review_required: true
+    ttl_seconds: null
+  - rule_id: suspicious-semantic-risk
+    priority: 140
+    description: Quarantine high-confidence semantic escalation, hijack, exfiltration, contamination, or ambiguity.
+    match:
+      semantic_categories_any:
+        [privilege_escalation, tool_hijack, data_exfiltration, cross_task_contamination, self_reinforcement, concealed_instruction, ambiguous]
+      minimum_semantic_risk: 0.65
+    action: quarantine
+    manual_review_required: true
+    ttl_seconds: null
   - rule_id: clean-low-risk-memory
     priority: 500
     description: Allow low-risk facts, preferences, conventions, observations, and summaries.

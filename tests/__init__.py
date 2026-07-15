@@ -1,2 +1,1 @@
 """Verity Cordon test suite."""
-

@@ -22,7 +22,12 @@ from verity_cordon.core.models import (
 )
 from verity_cordon.crypto.canonical import canonical_json, sha256_hex
 from verity_cordon.ledger.store import SQLiteEventStore
-from verity_cordon.memory.service import EvidenceSubmission, MemoryService
+from verity_cordon.memory.service import (
+    CandidateOutcome,
+    EvidenceSubmission,
+    MemoryService,
+    ProjectionWriter,
+)
 from verity_cordon.streaming.session import (
     StreamingWriteSession,
     StreamMetadata,
@@ -209,7 +214,13 @@ class StreamingMemoryService:
 
         await self.store.append_with_projection([event], project)
 
-    async def append(self, stream_id: str, chunk: str) -> StreamResult:
+    async def append(
+        self,
+        stream_id: str,
+        chunk: str,
+        *,
+        chunk_sequence: int | None = None,
+    ) -> StreamResult:
         state = await self._state(stream_id)
         if not isinstance(chunk, str) or not chunk:
             raise ResourceLimitError("A stream chunk must be a non-empty text value.")
@@ -218,6 +229,8 @@ class StreamingMemoryService:
         async with state.lock:
             if state.state != "open":
                 raise ConflictError("The stream is terminal or currently committing.")
+            if chunk_sequence is not None and chunk_sequence != len(state.chunks) + 1:
+                raise ConflictError("The stream chunk sequence is not the next expected value.")
             chunk_bytes = len(chunk.encode("utf-8"))
             if len(state.chunks) + 1 > self.max_stream_chunks:
                 state.state = "aborted"
@@ -250,16 +263,25 @@ class StreamingMemoryService:
             if state.state != "open":
                 raise ConflictError("The stream is terminal or currently committing.")
             state.state = "aborted"
-            state.terminal_reason = reason[:128] if reason else "operator_aborted"
+            raw_reason = reason.strip() if reason else "operator_aborted"
+            safe_reason = self.memory_service.sanitizer.sanitize(raw_reason).text
+            state.terminal_reason = safe_reason[:128] or "operator_aborted"
             state.content_digest = sha256_hex("".join(state.chunks).encode("utf-8"))
         await self._record_abort(state)
         return self._result(state)
 
-    async def commit(self, stream_id: str) -> StreamResult:
+    async def commit(
+        self,
+        stream_id: str,
+        *,
+        expected_chunk_count: int | None = None,
+    ) -> StreamResult:
         state = await self._state(stream_id)
         async with state.lock:
             if state.state != "open":
                 raise ConflictError("The stream is terminal or currently committing.")
+            if expected_chunk_count is not None and expected_chunk_count != len(state.chunks):
+                raise ConflictError("The stream chunk count does not match the commit request.")
             content = "".join(state.chunks)
             if not content:
                 raise ConflictError("An empty stream cannot be committed.")
@@ -272,8 +294,61 @@ class StreamingMemoryService:
             await self._record_abort(state)
             return self._result(state)
 
+        def terminal_factory(
+            outcomes: list[CandidateOutcome],
+            accepted: bool,
+        ) -> tuple[EventInput, ProjectionWriter]:
+            terminal_state: StreamStateName = "committed" if accepted else "blocked"
+            terminal_reason = None if accepted else "final_policy_rejection"
+            event_type = EventType.STREAM_COMMITTED if accepted else EventType.STREAM_ABORTED
+            payload = {
+                "stream_id": state.stream_id,
+                "content_digest": state.content_digest,
+                "buffer_bytes": state.buffer_bytes,
+                "chunk_count": len(state.chunks),
+                "candidate_ids": [outcome.candidate.candidate_id for outcome in outcomes],
+                "actual_actions": [outcome.decision.actual_action.value for outcome in outcomes],
+                "terminal_state": terminal_state,
+                "reason": terminal_reason,
+            }
+            event = EventInput(
+                stream_id=state.stream_id,
+                event_type=event_type,
+                actor=Actor(type=ActorType.SYSTEM, id="verity.streaming"),
+                session_id=state.metadata.session_id,
+                task_id=state.metadata.task_id,
+                source_class=EventSourceClass(state.metadata.source_class.value),
+                payload=payload,
+            )
+
+            async def project(
+                connection: aiosqlite.Connection,
+                _: list[EventEnvelope],
+            ) -> None:
+                cursor = await connection.execute(
+                    """
+                    UPDATE streams
+                    SET state = ?, buffer_bytes = ?, chunk_count = ?,
+                        content_digest = ?, updated_at = ?, terminal_reason = ?
+                    WHERE stream_id = ? AND state = 'open'
+                    """,
+                    (
+                        terminal_state,
+                        state.buffer_bytes,
+                        len(state.chunks),
+                        state.content_digest,
+                        format_utc(),
+                        terminal_reason,
+                        state.stream_id,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise ConflictError("The persisted stream state changed during commit.")
+
+            return event, project
+
         try:
-            evaluation = await self.memory_service.evaluate_evidence(
+            evaluation, accepted = await self.memory_service.evaluate_transactional_stream(
                 EvidenceSubmission(
                     session_id=state.metadata.session_id,
                     task_id=state.metadata.task_id,
@@ -281,69 +356,30 @@ class StreamingMemoryService:
                     source_name=state.metadata.source_name,
                     content=content,
                     metadata={"stream_id": state.stream_id},
-                )
+                ),
+                terminal_factory=terminal_factory,
             )
         except asyncio.CancelledError:
             async with state.lock:
                 state.state = "aborted"
                 state.terminal_reason = "commit_cancelled"
-            await asyncio.shield(self._record_abort(state))
+            if self.store.healthy:
+                await asyncio.shield(self._record_abort(state))
             raise
         except Exception:
             async with state.lock:
                 state.state = "aborted"
                 state.terminal_reason = "evaluation_failed"
-            await self._record_abort(state)
+            if self.store.healthy:
+                await self._record_abort(state)
             raise
 
         active_count = sum(
             outcome.status in {"active", "redacted"} for outcome in evaluation.outcomes
         )
         async with state.lock:
-            state.state = "committed"
-            state.terminal_reason = None
-        event = EventInput(
-            stream_id=state.stream_id,
-            event_type=EventType.STREAM_COMMITTED,
-            actor=Actor(type=ActorType.SYSTEM, id="verity.streaming"),
-            session_id=state.metadata.session_id,
-            task_id=state.metadata.task_id,
-            source_class=EventSourceClass(state.metadata.source_class.value),
-            payload={
-                "stream_id": state.stream_id,
-                "content_digest": state.content_digest,
-                "buffer_bytes": state.buffer_bytes,
-                "chunk_count": len(state.chunks),
-                "candidate_ids": [
-                    outcome.candidate.candidate_id for outcome in evaluation.outcomes
-                ],
-                "actual_actions": [
-                    outcome.decision.actual_action.value for outcome in evaluation.outcomes
-                ],
-            },
-        )
-
-        async def project(
-            connection: aiosqlite.Connection,
-            _: list[EventEnvelope],
-        ) -> None:
-            await connection.execute(
-                """
-                UPDATE streams
-                SET state = 'committed', buffer_bytes = ?, chunk_count = ?,
-                    content_digest = ?, updated_at = ?, terminal_reason = NULL
-                WHERE stream_id = ?
-                """,
-                (
-                    state.buffer_bytes,
-                    len(state.chunks),
-                    state.content_digest,
-                    format_utc(),
-                    state.stream_id,
-                ),
-            )
-
-        await self.store.append_with_projection([event], project)
+            state.state = "committed" if accepted else "blocked"
+            state.terminal_reason = None if accepted else "final_policy_rejection"
         return self._result(
             state,
             candidate_count=len(evaluation.outcomes),

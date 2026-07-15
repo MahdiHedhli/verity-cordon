@@ -18,8 +18,7 @@ from urllib.parse import urlparse
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.responses import Response
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from verity_cordon.core.config import Settings, assert_private_file
 from verity_cordon.core.errors import AuthorizationError, ConfigurationError, RateLimitError
@@ -207,61 +206,174 @@ class ControlRoomAuth:
             session.last_activity = now
 
 
-class LocalBoundaryMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, *, settings: Settings) -> None:  # type: ignore[no-untyped-def]
-        super().__init__(app)
+class LocalBoundaryMiddleware:
+    def __init__(self, app: ASGIApp, *, settings: Settings) -> None:
+        self.app = app
         self.settings = settings
         self.allowed_host = urlparse(settings.control_room_origin).netloc
 
-    async def dispatch(
+    async def _respond(
         self,
-        request: Request,
-        call_next: RequestResponseEndpoint,
-    ) -> Response:
-        client_host = request.client.host if request.client else ""
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+        *,
+        status_code: int,
+        error: str,
+        message: str,
+    ) -> None:
+        response = JSONResponse(
+            status_code=status_code,
+            content={"error": error, "message": message},
+        )
+        await response(scope, receive, send)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        client = scope.get("client")
+        client_host = str(client[0]) if client else ""
         try:
             if not ipaddress.ip_address(client_host).is_loopback:
                 raise ValueError
         except ValueError:
-            return JSONResponse(
+            await self._respond(
+                scope,
+                receive,
+                send,
                 status_code=403,
-                content={"error": "forbidden", "message": "Loopback access is required."},
+                error="forbidden",
+                message="Loopback access is required.",
             )
-        if request.headers.get("host") != self.allowed_host:
-            return JSONResponse(
+            return
+
+        headers: dict[str, list[str]] = {}
+        for raw_name, raw_value in scope.get("headers", []):
+            name = raw_name.decode("latin-1").lower()
+            headers.setdefault(name, []).append(raw_value.decode("latin-1"))
+
+        host_values = headers.get("host", [])
+        if host_values != [self.allowed_host]:
+            await self._respond(
+                scope,
+                receive,
+                send,
                 status_code=403,
-                content={"error": "forbidden", "message": "The Host header is not authorized."},
+                error="forbidden",
+                message="The Host header is not authorized.",
             )
-        origin = request.headers.get("origin")
-        if origin is not None and origin != self.settings.control_room_origin:
-            return JSONResponse(
+            return
+        origin_values = headers.get("origin", [])
+        if len(origin_values) > 1 or (
+            origin_values and origin_values[0] != self.settings.control_room_origin
+        ):
+            await self._respond(
+                scope,
+                receive,
+                send,
                 status_code=403,
-                content={"error": "forbidden", "message": "The Origin is not authorized."},
+                error="forbidden",
+                message="The Origin is not authorized.",
             )
-        content_length = request.headers.get("content-length")
-        if content_length is not None:
+            return
+
+        content_length_values = headers.get("content-length", [])
+        if len(content_length_values) > 1:
+            await self._respond(
+                scope,
+                receive,
+                send,
+                status_code=400,
+                error="bad_request",
+                message="Content-Length is invalid.",
+            )
+            return
+        if content_length_values:
             try:
-                if int(content_length) > self.settings.max_request_bytes:
-                    return JSONResponse(
+                declared_length = int(content_length_values[0])
+                if declared_length < 0:
+                    raise ValueError
+                if declared_length > self.settings.max_request_bytes:
+                    await self._respond(
+                        scope,
+                        receive,
+                        send,
                         status_code=413,
-                        content={
-                            "error": "payload_too_large",
-                            "message": "The request exceeds the local size boundary.",
-                        },
+                        error="payload_too_large",
+                        message="The request exceeds the local size boundary.",
                     )
+                    return
             except ValueError:
-                return JSONResponse(
+                await self._respond(
+                    scope,
+                    receive,
+                    send,
                     status_code=400,
-                    content={"error": "bad_request", "message": "Content-Length is invalid."},
+                    error="bad_request",
+                    message="Content-Length is invalid.",
                 )
-        if request.method in {"POST", "PUT", "PATCH"}:
-            content_type = request.headers.get("content-type", "").split(";", 1)[0]
+                return
+
+        method = str(scope.get("method", "GET")).upper()
+        if method in {"POST", "PUT", "PATCH"}:
+            content_type_values = headers.get("content-type", [])
+            content_type = (
+                content_type_values[0].split(";", 1)[0] if len(content_type_values) == 1 else ""
+            )
             if content_type != "application/json":
-                return JSONResponse(
+                await self._respond(
+                    scope,
+                    receive,
+                    send,
                     status_code=415,
-                    content={
-                        "error": "unsupported_media_type",
-                        "message": "Mutations require application/json.",
-                    },
+                    error="unsupported_media_type",
+                    message="Mutations require application/json.",
                 )
-        return await call_next(request)
+                return
+
+        received_bytes = 0
+        body_chunks: list[bytes] = []
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                await self._respond(
+                    scope,
+                    receive,
+                    send,
+                    status_code=400,
+                    error="bad_request",
+                    message="The request body ended unexpectedly.",
+                )
+                return
+            chunk = message.get("body", b"")
+            received_bytes += len(chunk)
+            if received_bytes > self.settings.max_request_bytes:
+                await self._respond(
+                    scope,
+                    receive,
+                    send,
+                    status_code=413,
+                    error="payload_too_large",
+                    message="The request exceeds the local size boundary.",
+                )
+                return
+            body_chunks.append(chunk)
+            if not message.get("more_body", False):
+                break
+
+        replayed = False
+
+        async def bounded_receive() -> Message:
+            nonlocal replayed
+            if not replayed:
+                replayed = True
+                return {
+                    "type": "http.request",
+                    "body": b"".join(body_chunks),
+                    "more_body": False,
+                }
+            return await receive()
+
+        await self.app(scope, bounded_receive, send)

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import getpass
+import http.client
 import json
+import os
 from collections.abc import Coroutine
 from dataclasses import replace
 from pathlib import Path
@@ -15,11 +17,18 @@ import uvicorn
 from rich.console import Console
 from rich.table import Table
 
-from verity_cordon.core.config import Settings
-from verity_cordon.core.errors import VerityError
+from verity_cordon.codex import (
+    IntegrationResult,
+    doctor_codex,
+    install_codex,
+    uninstall_codex,
+)
+from verity_cordon.core.config import Settings, loopback_origin, validate_loopback_host
+from verity_cordon.core.errors import ConfigurationError, VerityError
 from verity_cordon.crypto.keys import FileKeyProvider
 from verity_cordon.daemon.app import create_app
 from verity_cordon.daemon.runtime import build_runtime
+from verity_cordon.daemon.static import default_control_room_dist
 from verity_cordon.demo import run_live_demo, run_offline_demo
 from verity_cordon.policies.load import load_policy
 
@@ -52,18 +61,33 @@ def _safe_error(error: Exception) -> None:
 
 
 @app.command()
-def doctor() -> None:
+def doctor(
+    confirm_hook_trust: Annotated[
+        bool,
+        typer.Option(
+            "--confirm-hook-trust",
+            help="Assert that you reviewed and trusted the installed Codex hook definition.",
+        ),
+    ] = False,
+) -> None:
     """Check runtime, key, policy, daemon state, and ledger without printing secrets."""
 
     settings = Settings.from_env()
+    settings.prepare()
     checks: list[tuple[str, str]] = []
     checks.append(("Python", "compatible"))
     checks.append(("Data directory", str(settings.data_dir)))
+    checks.append(
+        (
+            "Database path",
+            "writable" if os.access(settings.database_path.parent, os.W_OK) else "not writable",
+        )
+    )
     checks.append(("Signing key", "present" if settings.key_path.exists() else "missing"))
     checks.append(
         ("OpenAI key", "present" if bool(__import__("os").getenv("OPENAI_API_KEY")) else "absent")
     )
-    ok = settings.key_path.exists()
+    ok = settings.key_path.exists() and os.access(settings.database_path.parent, os.W_OK)
     if ok:
         try:
             runtime = _run(build_runtime(settings))
@@ -76,15 +100,49 @@ def doctor() -> None:
                         "Memory view",
                         "consistent" if verification.materialized_view_consistent else "stale",
                     ),
-                    ("Codex integration", "run 'verity install-codex' to configure"),
-                    ("Control Room", f"http://{settings.host}:{settings.port}"),
                 ]
             )
-            ok = verification.verified
+            ok = ok and verification.verified
         except Exception as error:
             _safe_error(error)
             checks.append(("Runtime", "unavailable"))
             ok = False
+    try:
+        codex = doctor_codex(operator_confirmed_hook_trust=confirm_hook_trust)
+        checks.append(
+            (
+                "Codex integration",
+                "ready" if codex.ready else ", ".join(codex.issues[:3]) or "not ready",
+            )
+        )
+        ok = ok and codex.ready
+    except Exception:
+        checks.append(("Codex integration", "status unavailable"))
+        ok = False
+
+    control_room_dist = settings.control_room_dist or default_control_room_dist()
+    control_room_built = (control_room_dist / "index.html").is_file()
+    checks.append(("Control Room assets", "built" if control_room_built else "missing"))
+    ok = ok and control_room_built
+    daemon_reachable = False
+    connection: http.client.HTTPConnection | None = None
+    try:
+        connection = http.client.HTTPConnection(settings.host, settings.port, timeout=0.5)
+        connection.request(
+            "GET",
+            "/api/v1/health",
+            headers={"Host": f"{settings.host}:{settings.port}"},
+        )
+        response = connection.getresponse()
+        body = response.read(4097)
+        daemon_reachable = response.status == 200 and len(body) <= 4096
+    except (OSError, TimeoutError, http.client.HTTPException):
+        daemon_reachable = False
+    finally:
+        if connection is not None:
+            connection.close()
+    checks.append(("Daemon", "reachable" if daemon_reachable else "not running"))
+    ok = ok and daemon_reachable
     table = Table(title="Verity Cordon Doctor")
     table.add_column("Check")
     table.add_column("Result")
@@ -93,6 +151,87 @@ def doctor() -> None:
     console.print(table)
     if not ok:
         raise typer.Exit(1)
+
+
+def _integration_json(result: IntegrationResult) -> dict[str, Any]:
+    return {
+        "operation": result.operation,
+        "confirmed": result.confirmed,
+        "applied": result.applied,
+        "config_path": str(result.config_path),
+        "backup_path": str(result.backup_path) if result.backup_path else None,
+        "marketplace_root": str(result.marketplace_root),
+        "changes": [
+            {
+                "dotted_key": change.dotted_key,
+                "previous": change.previous,
+                "previous_present": change.previous_present,
+                "required": change.required,
+            }
+            for change in result.changes
+        ],
+        "commands": [list(command) for command in result.commands],
+        "marketplace_registered": result.marketplace_registered,
+        "plugin_installed": result.plugin_installed,
+        "issues": list(result.issues),
+        "operator_actions": list(result.operator_actions),
+    }
+
+
+@app.command("install-codex")
+def install_codex_command(
+    source_root: Annotated[
+        Path,
+        typer.Option(help="Repository root containing the reviewed plugin manifests."),
+    ] = Path("."),
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", help="Apply the previewed Codex configuration changes."),
+    ] = False,
+) -> None:
+    """Preview or install the supported local Codex plugin and memory controls."""
+
+    try:
+        preview = install_codex(source_root.resolve(), confirmed=False)
+        console.print_json(data={"preview": _integration_json(preview)})
+        if not yes:
+            console.print("[yellow]Review the preview, then rerun with --yes.[/yellow]")
+            raise typer.Exit(2)
+        result = install_codex(source_root.resolve(), confirmed=True)
+        console.print_json(data={"result": _integration_json(result)})
+        if result.issues:
+            raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as error:
+        _safe_error(error)
+        raise typer.Exit(1) from error
+
+
+@app.command("uninstall-codex")
+def uninstall_codex_command(
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", help="Remove the plugin and restore recorded config values."),
+    ] = False,
+) -> None:
+    """Preview or remove Verity's Codex integration without overwriting config drift."""
+
+    try:
+        preview = uninstall_codex(confirmed=False)
+        console.print_json(data={"preview": _integration_json(preview)})
+        if not yes:
+            console.print("[yellow]Review the preview, then rerun with --yes.[/yellow]")
+            raise typer.Exit(2)
+        result = uninstall_codex(confirmed=True)
+        console.print_json(data={"result": _integration_json(result)})
+        if result.issues or not result.applied:
+            raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as error:
+        _safe_error(error)
+        raise typer.Exit(1) from error
 
 
 @app.command()
@@ -127,24 +266,22 @@ def serve(
 ) -> None:
     """Start the loopback daemon and Memory Control Room."""
 
-    settings = Settings.from_env()
-    if host is not None:
-        settings = replace(
-            settings,
-            host=host,
-            control_room_origin=f"http://{host}:{port or settings.port}",
-        )
-    if port is not None:
-        settings = replace(
-            settings,
-            port=port,
-            control_room_origin=f"http://{host or settings.host}:{port}",
-        )
-    if settings.control_room_passphrase is None:
-        entered = getpass.getpass("Control Room passphrase (12+ characters): ")
-        settings.validate_control_room_passphrase(entered)
-        settings = replace(settings, control_room_passphrase=entered)
     try:
+        settings = Settings.from_env()
+        selected_host = validate_loopback_host(host or settings.host)
+        selected_port = port or settings.port
+        if not 1 <= selected_port <= 65535:
+            raise ConfigurationError("The local port override is outside the valid range.")
+        settings = replace(
+            settings,
+            host=selected_host,
+            port=selected_port,
+            control_room_origin=loopback_origin(selected_host, selected_port),
+        )
+        if settings.control_room_passphrase is None:
+            entered = getpass.getpass("Control Room passphrase (12+ characters): ")
+            settings.validate_control_room_passphrase(entered)
+            settings = replace(settings, control_room_passphrase=entered)
         runtime = _run(build_runtime(settings))
     except Exception as error:
         _safe_error(error)
@@ -277,6 +414,34 @@ def memory_revoke(
         raise typer.Exit(1) from error
 
 
+@memory_app.command("rescan")
+def memory_rescan(
+    memory_id: str,
+    reason: Annotated[str, typer.Option(prompt=True, help="Content-safe rescan reason.")],
+    actor_id: Annotated[str, typer.Option()] = "operator.local",
+    yes: Annotated[bool, typer.Option("--yes", help="Confirm the retroactive rescan.")] = False,
+) -> None:
+    """Re-evaluate one active memory and atomically revoke an unsafe result."""
+
+    if not yes:
+        console.print("[yellow]Retroactive rescan requires --yes.[/yellow]")
+        raise typer.Exit(2)
+    try:
+        runtime = _run(build_runtime())
+        result = _run(
+            runtime.rescan.rescan(
+                memory_id,
+                actor_id=actor_id,
+                reason=reason,
+                confirmed=True,
+            )
+        )
+        console.print_json(data=result.model_dump(mode="json"))
+    except Exception as error:
+        _safe_error(error)
+        raise typer.Exit(1) from error
+
+
 @memory_app.command("rebuild")
 def memory_rebuild(
     dry_run: Annotated[bool, typer.Option(help="Compare without replacing projections.")] = False,
@@ -327,6 +492,10 @@ def policy_show() -> None:
 def policy_activate(
     path: Path,
     actor_id: Annotated[str, typer.Option()] = "operator.local",
+    reason: Annotated[
+        str,
+        typer.Option(prompt=True, help="Content-safe policy activation reason."),
+    ] = "Local policy activation.",
     yes: Annotated[bool, typer.Option("--yes", help="Confirm policy activation.")] = False,
 ) -> None:
     """Activate a validated local policy and append PolicyActivated."""
@@ -337,7 +506,13 @@ def policy_activate(
     try:
         policy = load_policy(path)
         runtime = _run(build_runtime())
-        activated = _run(runtime.policy_repository.activate(policy, actor_id=actor_id))
+        activated = _run(
+            runtime.policy_repository.activate(
+                policy,
+                actor_id=actor_id,
+                reason=reason,
+            )
+        )
         console.print_json(
             data={
                 "policy_id": activated.policy_id,

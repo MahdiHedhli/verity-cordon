@@ -1,2 +1,1 @@
 """Privacy-safe telemetry interfaces."""
-
