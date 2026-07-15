@@ -6,9 +6,9 @@ import json
 from typing import Any
 
 import pytest
-from verity_cordon.semantic.codex_subscription import CodexSubscriptionRunner
 
 from verity_cordon.core.errors import SemanticProviderError
+from verity_cordon.semantic.codex_subscription import CodexSubscriptionRunner
 
 
 def _stream(events: list[dict[str, Any]]) -> bytes:

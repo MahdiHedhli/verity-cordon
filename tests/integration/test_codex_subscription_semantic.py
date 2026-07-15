@@ -6,11 +6,6 @@ import json
 from typing import Any
 
 import pytest
-from verity_cordon.semantic.codex_subscription import (
-    CodexSubscriptionCandidateExtractor,
-    CodexSubscriptionRunner,
-    CodexSubscriptionSemanticAdjudicator,
-)
 
 from tests.factories import make_candidate
 from tests.unit.test_codex_subscription_runner import (
@@ -31,6 +26,11 @@ from verity_cordon.core.models import (
 )
 from verity_cordon.crypto.canonical import sha256_hex
 from verity_cordon.detectors.builtin import SecretSanitizer
+from verity_cordon.semantic.codex_subscription import (
+    CodexSubscriptionCandidateExtractor,
+    CodexSubscriptionRunner,
+    CodexSubscriptionSemanticAdjudicator,
+)
 from verity_cordon.semantic.factory import build_semantic_components
 
 

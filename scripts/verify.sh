@@ -16,8 +16,8 @@ fi
 env -u PYTHONPATH .venv/bin/python -c "import verity_cordon"
 env -u PYTHONPATH .venv/bin/verity --help >/dev/null
 uv run pip-audit --local --skip-editable
-uv run ruff format --check src tests evals
-uv run ruff check src tests evals
+uv run ruff format --no-cache --check src tests evals
+uv run ruff check --no-cache src tests evals
 uv run mypy src
 uv run python - <<'PY'
 from pathlib import Path
