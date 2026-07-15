@@ -4,103 +4,49 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
-from typing import Any, Literal
+from typing import Any
 
 from openai import AsyncOpenAI, OpenAIError
-from pydantic import Field, ValidationError
+from pydantic import ValidationError
 
 from verity_cordon.core.errors import ConfigurationError, ResourceLimitError, SemanticProviderError
 from verity_cordon.core.models import (
-    Action,
     MemoryCandidate,
     MemoryKind,
-    PersistenceIntent,
     ProviderState,
     SemanticAssessment,
     Sensitivity,
-    Signal,
     SourceClass,
-    StrictModel,
     format_utc,
     new_id,
 )
 from verity_cordon.crypto.canonical import sha256_hex
 from verity_cordon.detectors.builtin import SecretSanitizer
 from verity_cordon.semantic.base import failed_assessment
+from verity_cordon.semantic.structured import (
+    MAX_DURABILITY_RATIONALE_BYTES,
+    MAX_DURABILITY_RATIONALE_CHARACTERS,
+    MAX_SEMANTIC_CATEGORY_BYTES,
+    MAX_SEMANTIC_CATEGORY_CHARACTERS,
+    MAX_SEMANTIC_RATIONALE_BYTES,
+    MAX_SEMANTIC_RATIONALE_CHARACTERS,
+    CandidateExtractionOutput,
+    ExtractedCandidate,
+    InvalidModelOutput,
+    SemanticRiskOutput,
+    bounded_model_text,
+    model_identifier,
+    validate_candidate_output_shape,
+    validate_semantic_output_shape,
+)
 
-SemanticCategory = Literal[
-    "persistent_instruction",
-    "privilege_escalation",
-    "tool_hijack",
-    "data_exfiltration",
-    "cross_task_contamination",
-    "self_reinforcement",
-    "secret_material",
-    "protected_namespace",
-    "concealed_instruction",
-    "benign_fact",
-    "benign_preference",
-    "ambiguous",
+__all__ = [
+    "CandidateExtractionOutput",
+    "ExtractedCandidate",
+    "OpenAICandidateExtractor",
+    "OpenAISemanticAdjudicator",
+    "SemanticRiskOutput",
 ]
-
-_MAX_CANDIDATES = 16
-_MAX_DURABILITY_RATIONALE_CHARACTERS = 1_000
-_MAX_DURABILITY_RATIONALE_BYTES = 4_096
-_MAX_SEMANTIC_CATEGORIES = 12
-_MAX_SEMANTIC_CATEGORY_CHARACTERS = 64
-_MAX_SEMANTIC_CATEGORY_BYTES = 256
-_MAX_SEMANTIC_RATIONALE_CHARACTERS = 2_000
-_MAX_SEMANTIC_RATIONALE_BYTES = 8_192
-_MODEL_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
-
-
-class _InvalidModelOutput(ValueError):
-    """Structured model output crossed a schema or resource boundary."""
-
-
-def _raw_field(value: Any, field: str) -> Any:
-    if isinstance(value, dict):
-        return value.get(field)
-    return getattr(value, field, None)
-
-
-def _bounded_model_text(
-    sanitizer: SecretSanitizer,
-    value: Any,
-    *,
-    max_characters: int,
-    max_bytes: int,
-) -> str:
-    if not isinstance(value, str) or not value or len(value) > max_characters:
-        raise _InvalidModelOutput
-    try:
-        if len(value.encode("utf-8", errors="strict")) > max_bytes:
-            raise _InvalidModelOutput
-    except UnicodeEncodeError as exc:
-        raise _InvalidModelOutput from exc
-    sanitized = sanitizer.sanitize(value).text
-    try:
-        if (
-            not sanitized
-            or len(sanitized) > max_characters
-            or len(sanitized.encode("utf-8", errors="strict")) > max_bytes
-        ):
-            raise _InvalidModelOutput
-    except UnicodeEncodeError as exc:
-        raise _InvalidModelOutput from exc
-    return sanitized
-
-
-def _model_identifier(sanitizer: SecretSanitizer, value: Any) -> str:
-    """Accept a bounded provider identifier only when sanitization is a no-op."""
-
-    if not isinstance(value, str) or _MODEL_IDENTIFIER.fullmatch(value) is None:
-        raise _InvalidModelOutput
-    sanitized = sanitizer.sanitize(value).text
-    if sanitized != value:
-        raise _InvalidModelOutput
-    return value
 
 
 def _optional_returned_model(sanitizer: SecretSanitizer, response: Any) -> str | None:
@@ -108,97 +54,9 @@ def _optional_returned_model(sanitizer: SecretSanitizer, response: Any) -> str |
     if value is None:
         return None
     try:
-        return _model_identifier(sanitizer, value)
-    except _InvalidModelOutput:
+        return model_identifier(sanitizer, value)
+    except InvalidModelOutput:
         return None
-
-
-def _validate_candidate_output_shape(parsed: Any) -> None:
-    candidates = _raw_field(parsed, "candidates")
-    if not isinstance(candidates, list) or len(candidates) > _MAX_CANDIDATES:
-        raise _InvalidModelOutput
-    for candidate in candidates:
-        rationale = _raw_field(candidate, "durability_rationale")
-        if (
-            not isinstance(rationale, str)
-            or not rationale
-            or len(rationale) > _MAX_DURABILITY_RATIONALE_CHARACTERS
-        ):
-            raise _InvalidModelOutput
-        try:
-            if len(rationale.encode("utf-8", errors="strict")) > _MAX_DURABILITY_RATIONALE_BYTES:
-                raise _InvalidModelOutput
-        except UnicodeEncodeError as exc:
-            raise _InvalidModelOutput from exc
-
-
-def _validate_semantic_output_shape(parsed: Any) -> None:
-    categories = _raw_field(parsed, "categories")
-    rationale = _raw_field(parsed, "rationale")
-    if (
-        not isinstance(categories, list)
-        or not categories
-        or len(categories) > _MAX_SEMANTIC_CATEGORIES
-    ):
-        raise _InvalidModelOutput
-    if len(categories) != len(set(categories)):
-        raise _InvalidModelOutput
-    for category in categories:
-        if (
-            not isinstance(category, str)
-            or not category
-            or len(category) > _MAX_SEMANTIC_CATEGORY_CHARACTERS
-        ):
-            raise _InvalidModelOutput
-        try:
-            if len(category.encode("utf-8", errors="strict")) > _MAX_SEMANTIC_CATEGORY_BYTES:
-                raise _InvalidModelOutput
-        except UnicodeEncodeError as exc:
-            raise _InvalidModelOutput from exc
-    if (
-        not isinstance(rationale, str)
-        or not rationale
-        or len(rationale) > _MAX_SEMANTIC_RATIONALE_CHARACTERS
-    ):
-        raise _InvalidModelOutput
-    try:
-        if len(rationale.encode("utf-8", errors="strict")) > _MAX_SEMANTIC_RATIONALE_BYTES:
-            raise _InvalidModelOutput
-    except UnicodeEncodeError as exc:
-        raise _InvalidModelOutput from exc
-
-
-class ExtractedCandidate(StrictModel):
-    namespace: str = Field(
-        pattern=r"^(facts|preferences|project|instructions|policies|tool_results|scratch|credentials)(\.[a-z0-9][a-z0-9_-]*)*$",
-        max_length=160,
-    )
-    kind: MemoryKind
-    statement: str = Field(min_length=1, max_length=8192)
-    confidence: float = Field(ge=0, le=1)
-    durability_rationale: str = Field(min_length=1, max_length=1000)
-    sensitivity: Sensitivity
-    requested_ttl_seconds: int | None = Field(default=None, ge=60, le=31_536_000)
-    persistence_requested: bool
-    authority_signal: Signal
-    secrecy_signal: Signal
-
-
-class CandidateExtractionOutput(StrictModel):
-    candidates: list[ExtractedCandidate] = Field(max_length=16)
-
-
-class SemanticRiskOutput(StrictModel):
-    risk_score: float = Field(ge=0, le=1)
-    categories: list[SemanticCategory] = Field(min_length=1, max_length=12)
-    persistence_intent: PersistenceIntent
-    authority_claim: Signal
-    exfiltration_risk: float = Field(ge=0, le=1)
-    tool_hijack_risk: float = Field(ge=0, le=1)
-    cross_task_risk: float = Field(ge=0, le=1)
-    secret_risk: float = Field(ge=0, le=1)
-    rationale: str = Field(min_length=1, max_length=2000)
-    recommended_disposition: Action
 
 
 EXTRACTION_INSTRUCTIONS = """You are the isolated candidate extractor for Verity Cordon.
@@ -238,8 +96,8 @@ class _OpenAIBase:
     ) -> None:
         self.sanitizer = SecretSanitizer()
         try:
-            self.model = _model_identifier(self.sanitizer, model)
-        except _InvalidModelOutput:
+            self.model = model_identifier(self.sanitizer, model)
+        except InvalidModelOutput:
             raise ConfigurationError("The configured OpenAI model identifier is invalid.") from None
         self.client = client or AsyncOpenAI(timeout=timeout_seconds, max_retries=0)
         self.timeout_seconds = timeout_seconds
@@ -312,7 +170,7 @@ class OpenAICandidateExtractor(_OpenAIBase):
             classification = "refused" if _contains_refusal(response) else "incomplete"
             raise SemanticProviderError(f"Live candidate extraction {classification}.")
         try:
-            _validate_candidate_output_shape(parsed)
+            validate_candidate_output_shape(parsed)
             output = CandidateExtractionOutput.model_validate(
                 parsed.model_dump(mode="python")
                 if isinstance(parsed, CandidateExtractionOutput)
@@ -323,17 +181,17 @@ class OpenAICandidateExtractor(_OpenAIBase):
             TypeError,
             ValueError,
             ValidationError,
-            _InvalidModelOutput,
+            InvalidModelOutput,
         ):
             raise SemanticProviderError(
                 "Live candidate extraction returned invalid structured output."
             ) from None
         try:
-            returned_model = _model_identifier(
+            returned_model = model_identifier(
                 self.sanitizer,
                 getattr(response, "model", self.model),
             )
-        except _InvalidModelOutput:
+        except InvalidModelOutput:
             raise SemanticProviderError(
                 "Live candidate extraction returned invalid structured output."
             ) from None
@@ -341,13 +199,13 @@ class OpenAICandidateExtractor(_OpenAIBase):
         for item in output.candidates:
             statement = self.sanitizer.sanitize(item.statement).text
             try:
-                durability_rationale = _bounded_model_text(
+                durability_rationale = bounded_model_text(
                     self.sanitizer,
                     item.durability_rationale,
-                    max_characters=_MAX_DURABILITY_RATIONALE_CHARACTERS,
-                    max_bytes=_MAX_DURABILITY_RATIONALE_BYTES,
+                    max_characters=MAX_DURABILITY_RATIONALE_CHARACTERS,
+                    max_bytes=MAX_DURABILITY_RATIONALE_BYTES,
                 )
-            except _InvalidModelOutput:
+            except InvalidModelOutput:
                 raise SemanticProviderError(
                     "Live candidate extraction returned invalid structured output."
                 ) from None
@@ -440,39 +298,39 @@ class OpenAISemanticAdjudicator(_OpenAIBase):
                 }
             )
         try:
-            _validate_semantic_output_shape(parsed)
+            validate_semantic_output_shape(parsed)
             output = SemanticRiskOutput.model_validate(
                 parsed.model_dump(mode="python")
                 if isinstance(parsed, SemanticRiskOutput)
                 else parsed
             )
-            returned_model = _model_identifier(
+            returned_model = model_identifier(
                 self.sanitizer,
                 getattr(response, "model", self.model),
             )
             categories: list[str] = []
             for category in output.categories:
-                safe_category = _bounded_model_text(
+                safe_category = bounded_model_text(
                     self.sanitizer,
                     category,
-                    max_characters=_MAX_SEMANTIC_CATEGORY_CHARACTERS,
-                    max_bytes=_MAX_SEMANTIC_CATEGORY_BYTES,
+                    max_characters=MAX_SEMANTIC_CATEGORY_CHARACTERS,
+                    max_bytes=MAX_SEMANTIC_CATEGORY_BYTES,
                 )
                 if safe_category != category:
-                    raise _InvalidModelOutput
+                    raise InvalidModelOutput
                 categories.append(safe_category)
-            rationale = _bounded_model_text(
+            rationale = bounded_model_text(
                 self.sanitizer,
                 output.rationale,
-                max_characters=_MAX_SEMANTIC_RATIONALE_CHARACTERS,
-                max_bytes=_MAX_SEMANTIC_RATIONALE_BYTES,
+                max_characters=MAX_SEMANTIC_RATIONALE_CHARACTERS,
+                max_bytes=MAX_SEMANTIC_RATIONALE_BYTES,
             )
         except (
             AttributeError,
             TypeError,
             ValueError,
             ValidationError,
-            _InvalidModelOutput,
+            InvalidModelOutput,
         ):
             return failed_assessment(
                 candidate,

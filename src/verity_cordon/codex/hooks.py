@@ -594,6 +594,10 @@ def read_bounded_stdin(stream: Any = None) -> bytes:
 def main(argv: list[str] | None = None) -> int:
     """Run one synchronous command hook and always fail safe for memory reuse."""
 
+    if os.environ.get("VERITY_SEMANTIC_CHILD") == "1":
+        sys.stdout.write('{"continue":true}\n')
+        return 0
+
     arguments = list(sys.argv[1:] if argv is None else argv)
     expected_event = arguments[0] if len(arguments) == 1 else ""
     try:

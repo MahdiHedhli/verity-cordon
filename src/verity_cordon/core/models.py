@@ -128,16 +128,26 @@ class DetectorStatus(StrEnum):
 
 class ProviderState(StrEnum):
     LIVE_OPENAI = "live_openai"
+    LIVE_CODEX_SUBSCRIPTION = "live_codex_subscription"
     RECORDED_FIXTURE = "recorded_fixture"
     FAILED = "failed"
 
 
 class ProviderSummaryState(StrEnum):
     LIVE_OPENAI = "live_openai"
+    LIVE_CODEX_SUBSCRIPTION = "live_codex_subscription"
     RECORDED_FIXTURE = "recorded_fixture"
     DETERMINISTIC_ONLY = "deterministic_only"
     FAILED = "failed"
     NOT_REQUIRED = "not_required"
+
+
+class ProviderIsolation(StrEnum):
+    TOOL_FREE_API = "tool_free_api"
+    AGENTIC_SANDBOXED = "agentic_sandboxed"
+    RECORDED_FIXTURE = "recorded_fixture"
+    LOCAL_DETERMINISTIC = "local_deterministic"
+    FAILED = "failed"
 
 
 class PersistenceIntent(StrEnum):
@@ -231,7 +241,12 @@ class MemoryCandidate(StrictModel):
     authority_signal: Signal
     secrecy_signal: Signal
     contains_redactions: bool
-    extractor_provider: Literal["live_openai", "recorded_fixture", "deterministic"]
+    extractor_provider: Literal[
+        "live_openai",
+        "live_codex_subscription",
+        "recorded_fixture",
+        "deterministic",
+    ]
     extractor_version: str = Field(min_length=1, max_length=128)
     content_digest: Sha256Hex
     created_at: str
@@ -290,6 +305,12 @@ class SemanticFailure(StrictModel):
         "invalid_schema",
         "invalid_response",
         "internal_error",
+        "unsupported_auth",
+        "executable_drift",
+        "tool_activity",
+        "output_limit",
+        "process_exit",
+        "cancelled",
     ] = Field(alias="class")
     retryable: bool
 

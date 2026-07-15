@@ -153,6 +153,7 @@
     "extractor_provider": {
       "enum": [
         "live_openai",
+        "live_codex_subscription",
         "recorded_fixture",
         "deterministic"
       ]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import secrets
 import stat
 from dataclasses import dataclass
@@ -13,6 +14,8 @@ from platformdirs import user_data_path
 from verity_cordon.core.errors import ConfigurationError
 
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+CODEX_MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
+SEMANTIC_PROVIDERS = frozenset({"fixture", "openai", "codex_subscription"})
 
 
 def validate_loopback_host(host: str) -> str:
@@ -33,6 +36,34 @@ def _env_path(name: str, default: Path) -> Path:
     # ``resolve()`` would dereference a configured symlink before the security
     # boundary can inspect it. Make the path absolute without following links.
     return Path(os.path.abspath(selected))
+
+
+def _optional_absolute_env_path(name: str) -> Path | None:
+    raw = os.getenv(name)
+    if raw is None:
+        return None
+    if not raw or "\x00" in raw:
+        raise ConfigurationError(f"{name} must be a non-empty absolute path.")
+    selected = Path(raw).expanduser()
+    if not selected.is_absolute():
+        raise ConfigurationError(f"{name} must be an absolute path.")
+    # Preserve links for the subscription runner's no-follow trust inspection.
+    return Path(os.path.abspath(selected))
+
+
+def _validated_choice(name: str, value: str, choices: frozenset[str]) -> str:
+    if value not in choices:
+        supported = ", ".join(sorted(choices))
+        raise ConfigurationError(f"{name} must be one of: {supported}.")
+    return value
+
+
+def _validated_codex_model(value: str) -> str:
+    if not CODEX_MODEL_PATTERN.fullmatch(value):
+        raise ConfigurationError(
+            "VERITY_CODEX_MODEL must contain 1-128 safe model-identifier characters."
+        )
+    return value
 
 
 def _bounded_env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
@@ -108,6 +139,15 @@ class Settings:
     control_room_origin: str
     detector_plugins: tuple[str, ...] = ()
     control_room_dist: Path | None = None
+    codex_model: str = "gpt-5.6"
+    codex_executable: Path | None = None
+    codex_semantic_timeout_seconds: int = 30
+    codex_auth_timeout_seconds: int = 5
+    codex_max_input_bytes: int = 262_144
+    codex_max_jsonl_bytes: int = 2_097_152
+    codex_max_stderr_bytes: int = 262_144
+    codex_max_final_bytes: int = 65_536
+    codex_termination_grace_seconds: int = 1
     max_request_bytes: int = 1_048_576
     ui_passphrase_min_length: int = 12
     ui_challenge_ttl_seconds: int = 60
@@ -144,11 +184,59 @@ class Settings:
             policy_path=Path(policy_raw).expanduser().resolve() if policy_raw else None,
             host=host,
             port=port,
-            semantic_provider=os.getenv("VERITY_SEMANTIC_PROVIDER", "fixture"),
+            semantic_provider=_validated_choice(
+                "VERITY_SEMANTIC_PROVIDER",
+                os.getenv("VERITY_SEMANTIC_PROVIDER", "fixture"),
+                SEMANTIC_PROVIDERS,
+            ),
             openai_model=os.getenv("VERITY_OPENAI_MODEL", "gpt-5.6"),
             control_room_passphrase=os.getenv("VERITY_CONTROL_ROOM_PASSPHRASE"),
             control_room_origin=loopback_origin(host, port),
             detector_plugins=detector_plugins,
+            codex_model=_validated_codex_model(os.getenv("VERITY_CODEX_MODEL", "gpt-5.6")),
+            codex_executable=_optional_absolute_env_path("VERITY_CODEX_EXECUTABLE"),
+            codex_semantic_timeout_seconds=_bounded_env_int(
+                "VERITY_CODEX_SEMANTIC_TIMEOUT_SECONDS",
+                30,
+                minimum=1,
+                maximum=120,
+            ),
+            codex_auth_timeout_seconds=_bounded_env_int(
+                "VERITY_CODEX_AUTH_TIMEOUT_SECONDS",
+                5,
+                minimum=1,
+                maximum=15,
+            ),
+            codex_max_input_bytes=_bounded_env_int(
+                "VERITY_CODEX_MAX_INPUT_BYTES",
+                262_144,
+                minimum=1,
+                maximum=1_048_576,
+            ),
+            codex_max_jsonl_bytes=_bounded_env_int(
+                "VERITY_CODEX_MAX_JSONL_BYTES",
+                2_097_152,
+                minimum=1,
+                maximum=4_194_304,
+            ),
+            codex_max_stderr_bytes=_bounded_env_int(
+                "VERITY_CODEX_MAX_STDERR_BYTES",
+                262_144,
+                minimum=1,
+                maximum=1_048_576,
+            ),
+            codex_max_final_bytes=_bounded_env_int(
+                "VERITY_CODEX_MAX_FINAL_BYTES",
+                65_536,
+                minimum=1,
+                maximum=262_144,
+            ),
+            codex_termination_grace_seconds=_bounded_env_int(
+                "VERITY_CODEX_TERMINATION_GRACE_SECONDS",
+                1,
+                minimum=1,
+                maximum=3,
+            ),
             control_room_dist=(
                 _env_path("VERITY_CONTROL_ROOM_DIST", data_dir / "unused")
                 if os.getenv("VERITY_CONTROL_ROOM_DIST")

@@ -41,14 +41,20 @@ contracts, and recursion boundary required by every story.
 **Critical gate**: No user-story implementation begins until old signed values
 still parse/replay and the hook recursion marker is proven content-free.
 
-- [ ] T004 [P] Add failing additive-enum, old-event replay, OpenAPI, and JSON Schema compatibility tests in `tests/contract/test_subscription_provider_compatibility.py`
-- [ ] T005 [P] Add failing all-hook-event recursion short-circuit tests with zero daemon I/O in `tests/contract/test_codex_hooks.py`
-- [ ] T006 Refactor strict candidate/risk schemas and bounded model-output helpers into `src/verity_cordon/semantic/structured.py` while preserving direct API behavior in `src/verity_cordon/semantic/openai_provider.py`
-- [ ] T007 Extend provider, extractor, summary, and content-safe failure enums additively in `src/verity_cordon/core/models.py`
-- [ ] T008 Extend validated subscription settings without changing existing constructor behavior in `src/verity_cordon/core/config.py`
-- [ ] T009 Update the canonical contracts additively in `specs/001-codex-memory-firewall/contracts/semantic-assessment.schema.json`, `specs/001-codex-memory-firewall/contracts/memory-candidate.schema.json`, and `specs/001-codex-memory-firewall/contracts/verity-ipc.openapi.yaml`
-- [ ] T010 Implement the exact `VERITY_SEMANTIC_CHILD=1` early no-op response in `src/verity_cordon/codex/hooks.py`
-- [ ] T011 Run the foundational contract and existing direct-API semantic tests from tracked paths and record the commands in `specs/002-codex-desktop-subscription-defense/tasks.md`
+- [x] T004 [P] Add failing additive-enum, old-event replay, OpenAPI, and JSON Schema compatibility tests in `tests/contract/test_subscription_provider_compatibility.py`
+- [x] T005 [P] Add failing all-hook-event recursion short-circuit tests with zero daemon I/O in `tests/contract/test_codex_hooks.py`
+- [x] T006 Refactor strict candidate/risk schemas and bounded model-output helpers into `src/verity_cordon/semantic/structured.py` while preserving direct API behavior in `src/verity_cordon/semantic/openai_provider.py`
+- [x] T007 Extend provider, extractor, summary, and content-safe failure enums additively in `src/verity_cordon/core/models.py`
+- [x] T008 Extend validated subscription settings without changing existing constructor behavior in `src/verity_cordon/core/config.py`
+- [x] T009 Update the canonical contracts additively in `specs/001-codex-memory-firewall/contracts/semantic-assessment.schema.json`, `specs/001-codex-memory-firewall/contracts/memory-candidate.schema.json`, and `specs/001-codex-memory-firewall/contracts/verity-ipc.openapi.yaml`
+- [x] T010 Implement the exact `VERITY_SEMANTIC_CHILD=1` early no-op response in `src/verity_cordon/codex/hooks.py`
+- [x] T011 Run the foundational contract and existing direct-API semantic tests from tracked paths and record the commands in `specs/002-codex-desktop-subscription-defense/tasks.md`
+
+**Phase 2 verification (2026-07-15)**:
+
+- `uv run pytest -q tests/contract/test_subscription_provider_compatibility.py tests/contract/test_codex_hooks.py tests/integration/test_openai_semantic.py tests/unit/test_semantic.py` — 79 passed.
+- `uv run ruff check src/verity_cordon/core/config.py src/verity_cordon/core/models.py src/verity_cordon/semantic src/verity_cordon/codex/hooks.py tests/contract/test_subscription_provider_compatibility.py tests/contract/test_codex_hooks.py` — passed.
+- `uv run mypy src/verity_cordon/core/config.py src/verity_cordon/core/models.py src/verity_cordon/semantic src/verity_cordon/codex/hooks.py` — passed.
 
 **Checkpoint**: Historical fixture/direct-API events verify and replay unchanged;
 new provider values validate; semantic-child hooks cannot capture or inject.

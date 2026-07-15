@@ -42,6 +42,7 @@
     "provider_state": {
       "enum": [
         "live_openai",
+        "live_codex_subscription",
         "recorded_fixture",
         "failed"
       ]
@@ -223,6 +224,28 @@
             "type": "string"
           },
           "returned_model": {
+            "type": "string"
+          },
+          "failure": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "provider_state": {
+            "const": "live_codex_subscription"
+          }
+        },
+        "required": [
+          "provider_state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requested_model": {
             "type": "string"
           },
           "failure": {
