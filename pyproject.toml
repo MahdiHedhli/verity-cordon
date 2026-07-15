@@ -1,0 +1,98 @@
+[build-system]
+requires = ["hatchling>=1.29,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "verity-cordon"
+version = "0.1.0"
+description = "A tamper-evident memory firewall for Codex"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Verity Cordon contributors" }]
+keywords = ["codex", "security", "memory", "prompt-injection", "audit"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Security",
+]
+dependencies = [
+  "aiosqlite>=0.22,<0.23",
+  "cryptography>=49,<50",
+  "fastapi>=0.139,<0.140",
+  "httpx>=0.28,<0.29",
+  "openai>=2.45,<3",
+  "opentelemetry-api>=1.43,<2",
+  "platformdirs>=4.9,<5",
+  "pydantic>=2.13,<3",
+  "pyyaml>=6.0.3,<7",
+  "tomlkit>=0.14,<0.15",
+  "typer>=0.26,<0.27",
+  "uvicorn>=0.51,<0.52",
+]
+
+[project.urls]
+Homepage = "https://github.com/mahdihedhli/verity-cordon"
+Issues = "https://github.com/mahdihedhli/verity-cordon/issues"
+
+[project.scripts]
+verity = "verity_cordon.cli.main:app"
+
+[dependency-groups]
+dev = [
+  "jsonschema>=4.26,<5",
+  "mypy>=2.3,<3",
+  "openapi-spec-validator>=0.7.2,<0.8",
+  "pytest>=9.1,<10",
+  "pytest-asyncio>=1.4,<2",
+  "pytest-cov>=7.1,<8",
+  "pytest-timeout>=2.4,<3",
+  "ruff>=0.15.21,<0.16",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/verity_cordon"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-markers --strict-config"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+timeout = 30
+markers = [
+  "live: requires an explicitly configured live OpenAI API key",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "evals"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S", "ASYNC", "RUF"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S105", "S106", "S108"]
+"evals/**/*.py" = ["S105", "S106"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["verity_cordon"]
+mypy_path = "src"
+plugins = ["pydantic.mypy"]
+
+[tool.coverage.run]
+branch = true
+source = ["verity_cordon"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+]
+

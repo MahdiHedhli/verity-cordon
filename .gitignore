@@ -1,0 +1,33 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Verity runtime state and credentials never belong in Git.
+.verity/
+.verity-demo/
+*.sqlite
+*.sqlite3
+*.db
+*.pem
+*.key
+ledger-head.json
+mutation-capability
+
+# Frontend dependencies and transient reports.
+apps/control-room/node_modules/
+apps/control-room/coverage/
+apps/control-room/.vite/
+
