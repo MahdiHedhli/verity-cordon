@@ -66,6 +66,7 @@ async def test_safe_evidence_becomes_active_signed_memory(tmp_path) -> None:
     )
     active = await view.list_active()
     events = await store.list_events()
+    verification = await store.verify()
 
     assert len(evaluation.outcomes) == 1
     assert evaluation.outcomes[0].decision.actual_action is Action.ALLOW
@@ -73,6 +74,8 @@ async def test_safe_evidence_becomes_active_signed_memory(tmp_path) -> None:
     assert active[0].safe_statement == "The release manifest is generated from release.yaml."
     assert active[0].last_event_sequence == events[-1].sequence_number
     assert events[-1].event_type.value == "MemoryCommitted"
+    assert verification.verified is True
+    assert verification.materialized_view_consistent is True
 
 
 @pytest.mark.asyncio

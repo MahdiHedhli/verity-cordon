@@ -15,7 +15,13 @@ import aiosqlite
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from verity_cordon.core.errors import LedgerError
-from verity_cordon.core.models import EventEnvelope, EventInput, format_utc, new_id
+from verity_cordon.core.models import (
+    EventEnvelope,
+    EventInput,
+    LedgerVerification,
+    format_utc,
+    new_id,
+)
 from verity_cordon.crypto.canonical import (
     canonical_json,
     canonical_json_bytes,
@@ -369,3 +375,8 @@ class SQLiteEventStore:
             ]
         except (ValueError, ValidationError) as exc:
             raise LedgerError("A stored event envelope is invalid.") from exc
+
+    async def verify(self, *, verify_view: bool = True) -> LedgerVerification:
+        from verity_cordon.ledger.verify import LedgerVerifier
+
+        return await LedgerVerifier(self).verify(verify_view=verify_view)
