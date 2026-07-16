@@ -298,9 +298,10 @@ gate, and leave only honest operator-owned submission work.
 
 **T066 partial verification (2026-07-15)**:
 
-- Three independent release-hardening re-reviews found no remaining P1 or P2
-  issue across the subscription runner, normal Codex installer, Desktop demo
-  installer, and integrated provider-provenance contract.
+- Iterative independent release-hardening reviews covered the subscription
+  runner, normal Codex installer, Desktop demo installer, integrated provider
+  provenance, failed-state projection, and direct OpenAI provider path. Final
+  re-reviews found no remaining P1 or P2 issue.
 - The fresh API-key-free hardened subscription probe failed closed under an
   external rate limit as recorded under T063; successful hardened live
   completion remains pending and is not inferred.
@@ -324,11 +325,11 @@ gate, and leave only honest operator-owned submission work.
   OpenAI refusal/incomplete attribution. No P1/P2 remained; focused Desktop,
   semantic projection, and OpenAI provenance suites passed 95, 144, and 110
   tests respectively.
-- Pushed commit `18e04942a637af9eacc3b491fce8c7a9540f21c9` passed no-key bootstrap,
-  the 65-event offline demo, and the same complete gate from a new private
-  trusted clone.
-- T066 remains open for remote review closure and post-merge public-main
-  verification.
+- Pushed commit `7f667e9c40db9f455504c8396d23ae02eb8a8544` passed no-key bootstrap,
+  the 65-event offline demo, and the complete 768-test gate from a new private
+  trusted clone; the clone remained clean.
+- PR #3 is mergeable with all 11 review threads resolved and CodeRabbit green.
+- T066 remains open only for post-merge public-main verification.
 
 ---
 

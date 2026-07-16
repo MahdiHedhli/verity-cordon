@@ -460,6 +460,17 @@ preserved, and no external transmission. The clean clone then passed the same
 complete 706-backend-test, 13-example/plugin-test, 11-frontend-test verification
 gate with 81% coverage and zero configured dependency-audit findings.
 
+Final pushed-head acceptance repeated that path from a second new private clone
+at `7f667e9c40db9f455504c8396d23ae02eb8a8544`. With
+`OPENAI_API_KEY` explicitly absent, bootstrap again created no signing key,
+database, or credential; the no-serve offline demo again completed the full
+65-event shadow, enforcement, delayed-attempt simulation, rescan, revocation,
+rebuild, approved-only injection, and ledger-verification path with no external
+transmission. `./scripts/verify.sh` then passed 768 backend tests in 236.75
+seconds at 81% coverage, 13 isolated example/plugin tests, all 11 Control Room
+tests, the production build, both dependency audits, and the 20-sample fixture
+evaluation. The clone remained clean after the documented path.
+
 The post-hardening API-key-free subscription probe on Codex CLI `0.144.4`
 reached external rate limiting. Verity returned the fixed content-safe
 `failed/process_exit` category in 3,704 ms, retained no final document or raw
