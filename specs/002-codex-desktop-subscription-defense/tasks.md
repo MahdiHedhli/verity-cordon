@@ -246,14 +246,14 @@ gate, and leave only honest operator-owned submission work.
 - Browser smoke verified Overview, a typed `MemoryRevoked` detail event, quarantine Block, selective revocation with unrelated memory preserved, enforce-to-shadow-to-enforce mode changes ending on policy `1.0.2`, and a 69-event ledger with anchored completeness and a consistent view. At 1280x720 it showed no horizontal overflow, 0 console errors or warnings, the expected main/navigation/heading/skip-link structure, 0 unlabeled controls, and 0 duplicate IDs.
 - T056 remains open because the timed, operator-visible Codex Desktop app rehearsal has not been performed. The completed Control Room browser smoke is recorded separately and is not treated as Desktop app evidence.
 - T058 records public branch checkpoint `79a12d0c8058d579664c90740a8bd44ae3359c68`, the complete verification and limitation set, deferred-scope confirmation, unsubmitted status, the exact operator sequence, and the required reminder to run `/feedback` without inventing a Session ID.
-## Phase 10: Release closure tasks
+## Phase 8: Release closure tasks
 
 - [x] T059 Refresh current Desktop terminology, exact-hash hook-trust guidance, the canonical shadow-trigger-enforce-revoke run order, judge testing instructions, and the blank manual evidence record in `README.md`, `docs/hackathon/DEMO_SCRIPT.md`, `docs/hackathon/SUBMISSION_DRAFT.md`, `docs/hackathon/DESKTOP_REHEARSAL_RECORD.md`, and `specs/002-codex-desktop-subscription-defense/{spec.md,research.md,quickstart.md,contracts/desktop-demo-contract.md}`.
 - [x] T060 Exercise the full no-key subscription pipeline, fix the strict candidate-extraction schema rejected by the live runtime, add regression assertions, and record the successful extraction-assessment-ledger evidence without claiming remote-model attestation in `src/verity_cordon/semantic/structured.py`, `tests/integration/test_codex_subscription_semantic.py`, `tests/integration/test_openai_semantic.py`, `README.md`, `docs/hackathon/HACKATHON_WORK.md`, and `docs/hackathon/SUBMISSION_DRAFT.md`.
 - [x] T061 Capture and publish a content-safe real Control Room screenshot from the offline deterministic fixture, label it accurately, and verify zero browser console warnings or errors in `docs/assets/control-room-overview.jpg` and `README.md`.
 - [x] T062 Align the runtime provider-isolation mapping, `/api/v1/status` OpenAPI contract, frontend status type, and semantic failure JSON Schema with executable regression tests in `src/verity_cordon/core/models.py`, `src/verity_cordon/daemon/app.py`, `src/verity_cordon/cli/main.py`, `apps/control-room/src/api/types.ts`, `specs/001-codex-memory-firewall/contracts/{verity-ipc.openapi.yaml,semantic-assessment.schema.json}`, and `tests/contract/test_subscription_provider_compatibility.py`.
 
-## Phase 11: Release review hardening
+## Phase 9: Release review hardening
 
 - [x] T063 Serialize subscription-runner health, bind executable trust across each invocation, enforce constructor resource ceilings, normalize setup failures, and add concurrency/drift/non-disclosure regressions in `src/verity_cordon/semantic/{codex_subscription.py,readiness.py}`, the semantic contracts, and focused tests.
 - [x] T064 Make normal Codex installation and removal fully receipt-journaled and retry-safe, bind every executable staging state, validate complete trusted path chains, and add interruption/partial-command/path-drift regressions in `src/verity_cordon/codex/installer.py`, the hook contract, security documentation, and focused tests.
@@ -365,9 +365,9 @@ gate, and leave only honest operator-owned submission work.
 - **US4 / Phase 6**: Depends on Phase 2 and the two-tool fixture from US1; its
   installer tests can proceed independently of US2.
 - **Phase 7**: Depends on all desired story checkpoints.
-- **Phase 10**: Depends on Phase 7 and completes release-facing evidence and
+- **Phase 8**: Depends on Phase 7 and completes release-facing evidence and
   contract alignment.
-- **Phase 11**: Depends on Phase 10 and closes independent review findings
+- **Phase 9**: Depends on Phase 8 and closes independent review findings
   before public-main verification.
 
 ### User Story Dependencies
