@@ -278,11 +278,30 @@ def _default_runner(
 
 def _ensure_private_directory(path: Path) -> None:
     existed = path.exists() or path.is_symlink()
-    if not existed:
-        path.mkdir(parents=True, exist_ok=False, mode=0o700)
     try:
         if not existed:
-            path.chmod(0o700)
+            missing: list[Path] = []
+            current = path
+            while not current.exists():
+                if current.is_symlink() or current.parent == current:
+                    raise CodexIntegrationError("unsafe_integration_directory")
+                missing.append(current)
+                current = current.parent
+            snapshot_trusted_directory(
+                current,
+                current_user_only=False,
+                directory_label="integration directory parent",
+                ancestor_label="integration directory parent",
+            )
+            for directory in reversed(missing):
+                directory.mkdir(parents=False, exist_ok=False, mode=0o700)
+                directory.chmod(0o700)
+                snapshot_trusted_directory(
+                    directory,
+                    current_user_only=True,
+                    directory_label="integration directory",
+                    ancestor_label="integration directory",
+                )
         snapshot_trusted_directory(
             path,
             current_user_only=True,
@@ -402,7 +421,15 @@ def _atomic_write(
     expected_sha256: str | None = None,
     expected_existed: bool | None = None,
 ) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        snapshot_trusted_directory(
+            path.parent,
+            current_user_only=True,
+            directory_label="integration write directory",
+            ancestor_label="integration write directory",
+        )
+    except (ConfigurationError, OSError) as exc:
+        raise CodexIntegrationError("unsafe_integration_write_target") from exc
     if path.is_symlink():
         raise CodexIntegrationError("unsafe_integration_write_target")
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)

@@ -1149,6 +1149,29 @@ def test_atomic_write_distinguishes_absent_from_existing_empty_targets(tmp_path:
     assert not target.exists()
 
 
+def test_desktop_atomic_write_requires_a_prevalidated_parent(tmp_path: Path) -> None:
+    api = _api()
+    missing_parent = tmp_path / "missing-parent"
+    target = missing_parent / "bound-target"
+
+    with pytest.raises(api.DesktopDemoError, match="unsafe_write_target"):
+        api._atomic_write(
+            target,
+            b"replacement",
+            expected_exists=False,
+            expected_sha256=api.EMPTY_SHA256,
+        )
+    assert not missing_parent.exists()
+
+    previous_umask = os.umask(0)
+    try:
+        api._private_directory(missing_parent / "private-leaf")
+    finally:
+        os.umask(previous_umask)
+    assert missing_parent.stat().st_mode & 0o777 == 0o700
+    assert (missing_parent / "private-leaf").stat().st_mode & 0o777 == 0o700
+
+
 def test_receipt_inode_replacement_between_stage_checks_blocks_config_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

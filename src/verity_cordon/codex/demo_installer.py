@@ -639,7 +639,7 @@ def _atomic_write(
         )
     elif path.exists() and path.is_symlink():
         raise DesktopDemoError("unsafe_write_target")
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    _validated_demo_root(path.parent, label="write_target")
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temporary = Path(temporary_name)
     try:
@@ -676,7 +676,33 @@ def _atomic_write(
 
 
 def _private_directory(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        missing: list[Path] = []
+        current = path
+        while not current.exists():
+            if current.is_symlink() or current.parent == current:
+                raise DesktopDemoError("unsafe_demo_directory")
+            missing.append(current)
+            current = current.parent
+        snapshot_trusted_directory(
+            current,
+            current_user_only=False,
+            directory_label="demo directory parent",
+            ancestor_label="demo directory parent",
+        )
+        for directory in reversed(missing):
+            directory.mkdir(parents=False, exist_ok=False, mode=0o700)
+            directory.chmod(0o700)
+            snapshot_trusted_directory(
+                directory,
+                current_user_only=True,
+                directory_label="demo directory",
+                ancestor_label="demo directory",
+            )
+    except DesktopDemoError:
+        raise
+    except (ConfigurationError, OSError) as exc:
+        raise DesktopDemoError("unsafe_demo_directory") from exc
     try:
         details = path.lstat()
     except OSError as exc:

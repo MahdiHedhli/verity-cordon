@@ -77,6 +77,22 @@ def _capability_file(tmp_path: Path) -> Path:
     return path
 
 
+def test_installer_creates_each_missing_directory_with_private_mode(
+    tmp_path: Path,
+) -> None:
+    missing_parent = tmp_path / "missing-parent"
+    target = missing_parent / "private-leaf"
+
+    previous_umask = os.umask(0)
+    try:
+        installer_module._ensure_private_directory(target)
+    finally:
+        os.umask(previous_umask)
+
+    assert missing_parent.stat().st_mode & 0o777 == 0o700
+    assert target.stat().st_mode & 0o777 == 0o700
+
+
 def _evidence_response(*, duplicate: bool = False) -> HttpResponse:
     body = {
         "schema_version": "1.0.0",
