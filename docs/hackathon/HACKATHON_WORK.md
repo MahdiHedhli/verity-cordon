@@ -53,6 +53,8 @@ renamed codebase.
 | `8540cbb` | Unified CLI and daemon subscription-readiness reporting | Complete |
 | `3a18cf7` | Merged PR #2 contract and readiness alignment into public `main` | Complete |
 | `3d8a91d` | Closed release-review integration, recovery, provenance, and race gaps | Complete |
+| `d09b2b0` | Enforced private per-segment installer directory creation and validation | Complete |
+| `f7b2050` | Closed final receipt, semantic provenance, and signed-event review gaps | Complete |
 
 The feature-001 branch was fast-forwarded into `main` without rewriting history
 or force-pushing. Sprint 002 subsequently merged through PR #1, and its
@@ -435,8 +437,8 @@ expected state. It also added interruption, drift, concurrency, replacement,
 non-disclosure, and recovery regressions. Independent re-reviews found no
 remaining P1 or P2 issue.
 
-The final local `./scripts/verify.sh` release gate passed 708 backend tests in
-183.19 seconds with 81% aggregate coverage, 13 isolated example/plugin tests,
+The final local `./scripts/verify.sh` release gate passed 768 backend tests in
+248.70 seconds with 81% aggregate coverage, 13 isolated example/plugin tests,
 and 6 Control Room files / 11 tests. Ruff formatting and lint, mypy across 60
 source files, OpenAPI and JSON Schema validation, frontend type checking, lint,
 production build, Python and npm dependency audits, and the 20-sample fixture
@@ -474,7 +476,33 @@ path segment explicitly at mode `0700` and validate it before continuing;
 Desktop atomic writes require an existing validated parent, while explicit
 private-directory setup creates and validates every missing segment. The two
 installer contract files passed 152 tests, the new five-test regression focus
-passed, and the complete 708-test gate above passed after this remediation.
+passed, and the intermediate 708-test gate passed after this remediation.
+
+CodeRabbit's PR #3 pass then reported eight additional findings. All were
+triaged and closed: the failure matrix now has an explicit commit, injection,
+and recovery cell; current semantic assessment emission moved to schema 1.0.1
+with mandatory requested-provider provenance while explicitly versioned 1.0.0
+replay remains compatible; successful provider identity is exact; subscription
+assessments cannot assert an unattested returned model; uninstall receipts
+reject impossible command-progress states; and readiness/event tests assert
+fresh version probes plus exact failure classes. Desktop receipt v1.2 now
+persists an installation-bound deterministic artifact-removal plan before the
+anchored quarantine rename, reconciles only the exact original/quarantine state
+on retry, and refuses terminal `removed` while staging is non-empty. An old
+random-name legacy receipt already interrupted in `removing` cannot be
+reconstructed and fails closed for manual recovery.
+
+Independent follow-up review found and closed three additional contract gaps:
+legacy terminal receipts now reject every unknown staging orphan while exact
+v1.1 failed receipts remain recoverable; current semantic failures require
+neutral schema-valid fields and cannot carry an output-authored returned model;
+and direct OpenAI refusal/incomplete results preserve their truthful failure
+class without attaching response-model provenance. Signed failure events use
+the trusted locally requested model, while successful OpenAI events retain the
+attested response model. Final independent re-reviews found no P1 or P2 issue.
+Focused results included 95 Desktop receipt/setup tests, 144 semantic
+schema/projection tests, and 110 OpenAI provenance tests. The complete final gate
+above then passed with 768 backend tests.
 
 ## New Work versus Prior Art
 

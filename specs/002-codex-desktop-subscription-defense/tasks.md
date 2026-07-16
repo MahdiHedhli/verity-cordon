@@ -308,13 +308,22 @@ gate, and leave only honest operator-owned submission work.
   acceptance scenarios to 66 tasks, found no ambiguity, duplication,
   constitution violation, unmapped task, or deferred-scope leakage, and added no
   convergence task.
-- `./scripts/verify.sh` passed 708 backend tests with 81% coverage, 13 isolated
+- `./scripts/verify.sh` passed 768 backend tests with 81% coverage, 13 isolated
   example/plugin tests, 11 Control Room tests, formatting, lint, mypy, contracts,
   frontend build, dependency audits, and the 20-sample fixture evaluation.
 - PR #3's stale stdin/EOF finding was answered by existing drain, close,
   `wait_closed()`, and blocked-stdin tests. Its directory-mode findings were
   remediated with explicit per-segment `0700` creation plus parent validation;
   152 installer contract tests and the complete gate passed afterward.
+- CodeRabbit's remaining review findings were closed with SemanticAssessment
+  1.0.1 provider provenance and subscription-model constraints, exact uninstall
+  progress invariants, Desktop receipt 1.2 deterministic quarantine recovery,
+  an unambiguous failure matrix, and strengthened version/failure assertions.
+  Final independent re-reviews also closed legacy staging/failed-receipt gaps,
+  failed-assessment schema parity, signed model-identity provenance, and direct
+  OpenAI refusal/incomplete attribution. No P1/P2 remained; focused Desktop,
+  semantic projection, and OpenAI provenance suites passed 95, 144, and 110
+  tests respectively.
 - Pushed commit `18e04942a637af9eacc3b491fce8c7a9540f21c9` passed no-key bootstrap,
   the 65-event offline demo, and the same complete gate from a new private
   trusted clone.
