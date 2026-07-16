@@ -497,11 +497,13 @@ resolved absolute regular executables with owner/ancestor mode checks plus
 pinned source, staged artifact, Codex executable, and Python runtime SHA-256
 identities and sizes; atomic writes; a schema-valid `prepared` receipt before
 config mutation; an independently canonicalized managed-entry digest;
-`prepared` and `removing` exact-state reconciliation; repeatable archival of a
-digest-matching `removed` receipt by installation ID; safe bounded fixture
-probe that never calls the sink; and teardown that removes only the exact
-managed entry and digest-matching staged regular files while preserving
-unrelated TOML changes. Confirmed operations use a private Verity operation lock
+`prepared` and `removing` exact-state reconciliation; deterministic
+installation-bound quarantine paths persisted before artifact rename;
+repeatable archival of a digest-matching `removed` receipt by installation ID;
+safe bounded fixture probe that never calls the sink; and teardown that removes
+only the exact managed entry and digest-matching staged regular files while
+preserving unrelated TOML changes. A non-empty staging directory prevents a
+terminal removal receipt. Confirmed operations use a private Verity operation lock
 and expected whole-config SHA-256 head. Teardown may proceed despite an
 unhealthy normal integration when its own receipt, entry, artifacts, runtimes,
 and separately reviewed teardown digest remain exact, so the user-wide fixture

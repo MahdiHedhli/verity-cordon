@@ -1800,6 +1800,103 @@ def test_doctor_fails_closed_when_v2_runtime_digest_is_missing(tmp_path: Path) -
     assert "integration_receipt_invalid" in report.issues
 
 
+@pytest.mark.parametrize(
+    ("state", "plugin_removed", "marketplace_removed", "requires_uninstall_metadata"),
+    [
+        ("prepared", True, False, False),
+        ("installed", True, True, False),
+        ("uninstall_commands", False, True, False),
+        ("uninstall_config", True, False, True),
+        ("uninstall_tree", True, False, True),
+        ("uninstall_receipt", True, False, True),
+    ],
+)
+def test_uninstall_rejects_impossible_tampered_receipt_progress_before_mutation(
+    tmp_path: Path,
+    state: str,
+    plugin_removed: bool,
+    marketplace_removed: bool,
+    requires_uninstall_metadata: bool,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    data_dir = tmp_path / "data"
+    runner = StrictCodexRunner()
+    installed = _confirmed_install(codex_home=codex_home, data_dir=data_dir, runner=runner)
+    config = codex_home / "config.toml"
+    config_before = config.read_bytes()
+    receipt_path = data_dir / "codex-integration-receipt.json"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["state"] = state
+    receipt["command_progress"]["plugin_remove"] = plugin_removed
+    receipt["command_progress"]["marketplace_remove"] = marketplace_removed
+    if requires_uninstall_metadata:
+        config_digest = hashlib.sha256(config_before).hexdigest()
+        receipt["uninstall"] = {
+            "config_existed_before": True,
+            "config_before_sha256": config_digest,
+            "config_after_sha256": config_digest,
+            "backup_path": None,
+            "backup_sha256": None,
+        }
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    receipt_before = receipt_path.read_bytes()
+    commands_before = tuple(runner.commands)
+
+    with pytest.raises(CodexIntegrationError, match="integration_receipt_invalid"):
+        uninstall_codex(
+            codex_home=codex_home,
+            data_dir=data_dir,
+            confirmed=True,
+            runner=runner,
+        )
+
+    assert tuple(runner.commands) == commands_before
+    assert receipt_path.read_bytes() == receipt_before
+    assert config.read_bytes() == config_before
+    assert installed.marketplace_root.is_dir()
+
+
+def test_receipt_transition_rejects_marketplace_removal_before_plugin_removal(
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    data_dir = tmp_path / "data"
+    _confirmed_install(
+        codex_home=codex_home,
+        data_dir=data_dir,
+        run_codex_commands=False,
+    )
+    receipt_path = data_dir / "codex-integration-receipt.json"
+    receipt, _ = installer_module._read_receipt(receipt_path)
+    receipt = installer_module._transition_receipt(
+        receipt_path,
+        receipt,
+        state="uninstall_commands",
+    )
+    before_invalid_transition = receipt_path.read_bytes()
+
+    with pytest.raises(CodexIntegrationError, match="integration_receipt_invalid"):
+        installer_module._transition_receipt(
+            receipt_path,
+            receipt,
+            command_succeeded="marketplace_remove",
+        )
+
+    assert receipt_path.read_bytes() == before_invalid_transition
+    receipt = installer_module._transition_receipt(
+        receipt_path,
+        receipt,
+        command_succeeded="plugin_remove",
+    )
+    receipt = installer_module._transition_receipt(
+        receipt_path,
+        receipt,
+        command_succeeded="marketplace_remove",
+    )
+    assert receipt["command_progress"]["plugin_remove"] is True
+    assert receipt["command_progress"]["marketplace_remove"] is True
+
+
 def test_install_command_journal_skips_already_registered_marketplace_on_retry(
     tmp_path: Path,
 ) -> None:

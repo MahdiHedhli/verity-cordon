@@ -67,7 +67,7 @@ DEMO_DIRECTORY: Final = "desktop-demo"
 STAGING_DIRECTORY: Final = "fixture"
 STAGED_SCRIPT_NAME: Final = "poisoned_docs_server.py"
 FIXTURE_SOURCE: Final = Path("examples/poisoned-docs-mcp/src/poisoned_docs_mcp/server.py")
-RECEIPT_VERSION: Final = "1.1.0"
+RECEIPT_VERSION: Final = "1.2.0"
 LEGACY_RECEIPT_VERSION: Final = "1.0.0"
 CANONICALIZATION: Final = "VC-TOML-MANAGED-1"
 EMPTY_SHA256: Final = hashlib.sha256(b"").hexdigest()
@@ -193,6 +193,12 @@ class _Artifact(StrictModel):
     file_mode: Literal["0600"]
 
 
+class _ArtifactRemoval(StrictModel):
+    relative_path: Literal["poisoned_docs_server.py"]
+    quarantine_relative_path: str = Field(min_length=1, max_length=512)
+    state: Literal["planned", "removed"]
+
+
 class _ManagedOriginal(StrictModel):
     present: Literal[False]
     digest: None
@@ -271,7 +277,7 @@ class _ReadinessResponse(StrictModel):
 
 
 class _DesktopReceipt(StrictModel):
-    receipt_version: Literal["1.0.0", "1.1.0"]
+    receipt_version: Literal["1.0.0", "1.1.0", "1.2.0"]
     installation_id: str = Field(
         pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
     )
@@ -299,6 +305,7 @@ class _DesktopReceipt(StrictModel):
     codex_runtime: _RuntimeIdentity
     python_runtime: _RuntimeIdentity
     artifacts: tuple[_Artifact, ...] = Field(min_length=1, max_length=8)
+    artifact_removals: tuple[_ArtifactRemoval, ...] | None = None
     normal_integration: _NormalIntegration
     teardown: _Teardown
 
@@ -308,29 +315,45 @@ class _DesktopReceipt(StrictModel):
             _validate_time(value)
         if not self.config_existed_before and self.config_before_sha256 != EMPTY_SHA256:
             raise ValueError("new config must use the empty digest")
-        if self.receipt_version == RECEIPT_VERSION:
+        if self.receipt_version in {"1.1.0", RECEIPT_VERSION}:
             if self.config_mode_before is None or self.config_unrelated_sha256 is None:
-                raise ValueError("current receipt requires config bindings")
+                raise ValueError("config-bound receipt version requires config bindings")
             if self.config_mode_before & 0o077 or not self.config_mode_before & 0o400:
                 raise ValueError("config mode must remain owner-readable and private")
+        if self.artifact_removals is not None:
+            if len(self.artifact_removals) != len(self.artifacts):
+                raise ValueError("artifact removal plan does not match artifacts")
+            for artifact, removal in zip(self.artifacts, self.artifact_removals, strict=True):
+                if (
+                    removal.relative_path != artifact.relative_path
+                    or removal.quarantine_relative_path
+                    != _artifact_quarantine_relative_path(
+                        artifact.relative_path,
+                        self.installation_id,
+                    )
+                ):
+                    raise ValueError("artifact removal plan is not receipt-bound")
         if self.state == "prepared":
             valid = (
                 self.config_after_sha256 is None
                 and self.failure_class is None
                 and _empty_teardown(self.teardown)
+                and self.artifact_removals is None
             )
         elif self.state == "failed":
             valid = (
-                self.receipt_version == RECEIPT_VERSION
+                self.receipt_version in {"1.1.0", RECEIPT_VERSION}
                 and _is_sha(self.config_after_sha256)
                 and self.failure_class == "config_projection_mismatch"
                 and _empty_teardown(self.teardown)
+                and self.artifact_removals is None
             )
         elif self.state == "installed":
             valid = (
                 _is_sha(self.config_after_sha256)
                 and self.failure_class is None
                 and _empty_teardown(self.teardown)
+                and self.artifact_removals is None
             )
         elif self.state == "removing":
             valid = (
@@ -339,14 +362,26 @@ class _DesktopReceipt(StrictModel):
                 and self.teardown.requested_at is not None
                 and self.teardown.completed_at is None
                 and self.teardown.config_after_teardown_sha256 is None
+                and self.artifact_removals is not None
+                and all(item.state == "planned" for item in self.artifact_removals)
             )
         else:
+            removal_state_valid = bool(
+                self.artifact_removals is not None
+                and all(item.state == "removed" for item in self.artifact_removals)
+            )
+            if self.receipt_version != RECEIPT_VERSION and self.artifact_removals is None:
+                # Older terminal receipts remain inspectable and archivable. An
+                # older in-flight removal without a persisted plan is rejected
+                # above and cannot be finalized by this implementation.
+                removal_state_valid = True
             valid = (
                 _is_sha(self.config_after_sha256)
                 and self.failure_class is None
                 and self.teardown.requested_at is not None
                 and self.teardown.completed_at is not None
                 and _is_sha(self.teardown.config_after_teardown_sha256)
+                and removal_state_valid
             )
         if not valid:
             raise ValueError("receipt state fields do not match")
@@ -444,6 +479,12 @@ def _validate_time(value: str) -> None:
 
 def _is_sha(value: object) -> bool:
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def _artifact_quarantine_relative_path(relative_path: str, installation_id: str) -> str:
+    artifact_path = Path(relative_path)
+    quarantine_name = f".{artifact_path.name}.verity-remove-{installation_id}"
+    return str(artifact_path.parent / quarantine_name)
 
 
 def _empty_teardown(value: _Teardown) -> bool:
@@ -1411,8 +1452,25 @@ def transition_desktop_demo_receipt(
         updated["config_after_sha256"] = config_sha256
     elif target_state == "removing":
         updated["failure_class"] = None
+        updated["artifact_removals"] = [
+            {
+                "relative_path": artifact["relative_path"],
+                "quarantine_relative_path": _artifact_quarantine_relative_path(
+                    str(artifact["relative_path"]),
+                    str(updated["installation_id"]),
+                ),
+                "state": "planned",
+            }
+            for artifact in cast(list[dict[str, Any]], updated["artifacts"])
+        ]
         teardown["requested_at"] = occurred_at
     else:
+        removals = updated.get("artifact_removals")
+        if not isinstance(removals, list) or not removals:
+            raise DesktopDemoError("receipt_transition_invalid")
+        updated["artifact_removals"] = [
+            {**cast(dict[str, Any], removal), "state": "removed"} for removal in removals
+        ]
         teardown["completed_at"] = occurred_at
         teardown["config_after_teardown_sha256"] = config_sha256
     updated["teardown"] = teardown
@@ -1474,6 +1532,7 @@ def _receipt_payload(
         "codex_runtime": snapshot.codex_runtime,
         "python_runtime": snapshot.python_runtime,
         "artifacts": [_artifact_from_snapshot(snapshot)],
+        "artifact_removals": None,
         "normal_integration": {
             "receipt_version": snapshot.normal_receipt_version,
             "receipt_path": str(normal_path),
@@ -2090,7 +2149,11 @@ def setup_desktop_demo(
         if _managed_from_document(removed_document) is not None:
             raise DesktopDemoError("removed_state_drift")
         artifacts_valid, artifacts_present = _artifact_removal_state(receipt, resolved_data)
-        if not artifacts_valid or artifacts_present:
+        if (
+            not artifacts_valid
+            or artifacts_present
+            or not _staging_directory_empty(staging_root, resolved_data)
+        ):
             raise DesktopDemoError("removed_state_drift")
         prior_removed_receipt = receipt
         prior_removed_receipt_head = active_receipt_head
@@ -2394,6 +2457,41 @@ def _staging_directories_intact(staging: Path, data_dir: Path) -> bool:
     return True
 
 
+def _staging_directory_empty(staging: Path, data_dir: Path) -> bool:
+    if not staging.exists() and not staging.is_symlink():
+        return True
+    if not _staging_directories_intact(staging, data_dir) or os.name == "nt":
+        return False
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = -1
+    try:
+        descriptor = os.open(staging, flags)
+        details = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(details.st_mode)
+            or details.st_uid != os.geteuid()
+            or stat.S_IMODE(details.st_mode) & 0o077
+        ):
+            return False
+        return not os.listdir(descriptor)
+    except OSError:
+        return False
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _artifact_removals_by_path(receipt: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    raw_removals = receipt.get("artifact_removals")
+    if not isinstance(raw_removals, list):
+        return {}
+    return {
+        str(removal["relative_path"]): cast(dict[str, Any], removal) for removal in raw_removals
+    }
+
+
 def _artifact_removal_state(receipt: dict[str, Any], data_dir: Path) -> tuple[bool, bool]:
     staging = Path(str(receipt["staging_root"]))
     demo_root = data_dir / DEMO_DIRECTORY
@@ -2404,14 +2502,49 @@ def _artifact_removal_state(receipt: dict[str, Any], data_dir: Path) -> tuple[bo
     if not _staging_directories_intact(staging, data_dir):
         return False, False
     artifacts = cast(list[dict[str, Any]], receipt["artifacts"])
+    removals = _artifact_removals_by_path(receipt)
+    if receipt["state"] == "removing" and len(removals) != len(artifacts):
+        return False, False
     all_present = True
     for artifact in artifacts:
-        path = staging / str(artifact["relative_path"])
-        if not _is_within(path, staging):
+        relative_path = str(artifact["relative_path"])
+        path = staging / relative_path
+        removal = removals.get(relative_path)
+        quarantine_relative = (
+            str(removal["quarantine_relative_path"])
+            if removal is not None
+            else _artifact_quarantine_relative_path(
+                relative_path,
+                str(receipt["installation_id"]),
+            )
+        )
+        quarantine = staging / quarantine_relative
+        if (
+            not _is_within(path, staging)
+            or not _is_within(quarantine, staging)
+            or quarantine.parent != path.parent
+        ):
             return False, False
-        if not path.exists() and not path.is_symlink():
+        path_present = path.exists() or path.is_symlink()
+        quarantine_present = quarantine.exists() or quarantine.is_symlink()
+        if path_present and quarantine_present:
+            return False, False
+        if quarantine_present:
+            if receipt["state"] != "removing" or removal is None or removal["state"] != "planned":
+                return False, False
+            try:
+                digest, size = _hash_regular(quarantine, MAX_FIXTURE_BYTES, private=True)
+            except DesktopDemoError:
+                return False, False
+            if digest != artifact["sha256"] or size != artifact["size_bytes"]:
+                return False, False
             all_present = False
             continue
+        if not path_present:
+            all_present = False
+            continue
+        if removal is not None and removal["state"] != "planned":
+            return False, False
         try:
             digest, size = _hash_regular(path, MAX_FIXTURE_BYTES, private=True)
         except DesktopDemoError:
@@ -2461,14 +2594,24 @@ def _restore_quarantined_entry(
 def _anchored_remove_artifact(
     path: Path,
     *,
+    quarantine_path: Path,
     expected_digest: str,
     expected_size: int,
 ) -> None:
-    """Rename, reverify, then unlink only the exact receipt-bound inode."""
+    """Reconcile one receipt-planned rename and unlink the exact bound inode."""
 
     if os.name == "nt":  # pragma: no cover - Desktop demo target is exercised on macOS.
         raise DesktopDemoError("staged_artifact_drift")
-    raw, expected_head = _read_file_snapshot(path, MAX_FIXTURE_BYTES, private=True)
+    if quarantine_path.parent != path.parent or quarantine_path.name == path.name:
+        raise DesktopDemoError("staged_artifact_drift")
+    original_present = path.exists() or path.is_symlink()
+    quarantine_present = quarantine_path.exists() or quarantine_path.is_symlink()
+    if original_present and quarantine_present:
+        raise DesktopDemoError("staged_artifact_drift")
+    if not original_present and not quarantine_present:
+        return
+    observed_path = path if original_present else quarantine_path
+    raw, expected_head = _read_file_snapshot(observed_path, MAX_FIXTURE_BYTES, private=True)
     if (
         not expected_head.exists
         or expected_head.sha256 != expected_digest
@@ -2481,26 +2624,36 @@ def _anchored_remove_artifact(
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     directory = -1
-    quarantine = f".{path.name}.verity-remove-{new_id()}"
+    quarantine = quarantine_path.name
     moved = False
     try:
         directory = os.open(path.parent, flags)
-        current = os.stat(path.name, dir_fd=directory, follow_symlinks=False)
-        if not _stat_matches_head(current, expected_head):
-            raise DesktopDemoError("staged_artifact_drift")
         try:
-            os.stat(quarantine, dir_fd=directory, follow_symlinks=False)
+            original_details = os.stat(path.name, dir_fd=directory, follow_symlinks=False)
         except FileNotFoundError:
-            pass
+            original_details = None
+        try:
+            quarantine_details = os.stat(quarantine, dir_fd=directory, follow_symlinks=False)
+        except FileNotFoundError:
+            quarantine_details = None
+        if original_details is not None and quarantine_details is not None:
+            raise DesktopDemoError("staged_artifact_drift")
+        if original_details is not None:
+            if not _stat_matches_head(original_details, expected_head):
+                raise DesktopDemoError("staged_artifact_drift")
+            os.rename(
+                path.name,
+                quarantine,
+                src_dir_fd=directory,
+                dst_dir_fd=directory,
+            )
+            moved = True
+        elif quarantine_details is not None:
+            if not _stat_matches_head(quarantine_details, expected_head):
+                raise DesktopDemoError("staged_artifact_drift")
+            moved = True
         else:
             raise DesktopDemoError("staged_artifact_drift")
-        os.rename(
-            path.name,
-            quarantine,
-            src_dir_fd=directory,
-            dst_dir_fd=directory,
-        )
-        moved = True
         moved_details = os.stat(quarantine, dir_fd=directory, follow_symlinks=False)
         if not _stat_matches_head(moved_details, expected_head):
             _restore_quarantined_entry(
@@ -2510,9 +2663,8 @@ def _anchored_remove_artifact(
             )
             moved = False
             raise DesktopDemoError("staged_artifact_drift")
-        quarantined_path = path.parent / quarantine
         moved_raw, moved_head = _read_file_snapshot(
-            quarantined_path,
+            quarantine_path,
             MAX_FIXTURE_BYTES,
             private=True,
         )
@@ -3333,9 +3485,24 @@ def teardown_desktop_demo(
     ):
         raise DesktopDemoError("teardown_config_verification_failed")
     artifacts = cast(list[dict[str, Any]], current["artifacts"])
+    removals = _artifact_removals_by_path(current)
+    if len(removals) != len(artifacts):
+        raise DesktopDemoError("staged_artifact_drift")
     for artifact in artifacts:
-        target = staging_root / str(artifact["relative_path"])
-        if not target.exists() and not target.is_symlink():
+        relative_path = str(artifact["relative_path"])
+        removal = removals.get(relative_path)
+        if removal is None or removal["state"] != "planned":
+            raise DesktopDemoError("staged_artifact_drift")
+        target = staging_root / relative_path
+        quarantine = staging_root / str(removal["quarantine_relative_path"])
+        if not _is_within(quarantine, staging_root) or quarantine.parent != target.parent:
+            raise DesktopDemoError("staged_artifact_drift")
+        if (
+            not target.exists()
+            and not target.is_symlink()
+            and not quarantine.exists()
+            and not quarantine.is_symlink()
+        ):
             continue
         _assert_file_head(
             receipt_path,
@@ -3346,14 +3513,21 @@ def teardown_desktop_demo(
         )
         _anchored_remove_artifact(
             target,
+            quarantine_path=quarantine,
             expected_digest=str(artifact["sha256"]),
             expected_size=int(artifact["size_bytes"]),
         )
     try:
         staging_root.rmdir()
-    except OSError:
-        # Unknown files are operator-owned and intentionally prevent removal.
+    except FileNotFoundError:
         pass
+    except OSError as exc:
+        # Unknown files are operator-owned and never deleted recursively, but
+        # their presence must also prevent a false terminal `removed` receipt.
+        raise DesktopDemoError("staged_artifact_drift") from exc
+    artifacts_valid, artifacts_present = _artifact_removal_state(current, resolved_data)
+    if not artifacts_valid or artifacts_present:
+        raise DesktopDemoError("staged_artifact_drift")
     final_document, final_raw, final_config_head = _load_config(config_path)
     final_unrelated = _unrelated_config_values(
         final_document,

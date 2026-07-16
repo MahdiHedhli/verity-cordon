@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:verity-cordon:schema:semantic-assessment:1.0.0",
+  "$id": "urn:verity-cordon:schema:semantic-assessment:1.0.1",
   "title": "Verity Cordon Semantic Assessment",
   "description": "A schema-constrained semantic risk recommendation over sanitized candidate content. It is policy input and cannot independently grant durable trust.",
   "type": "object",
@@ -31,7 +31,11 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0.0"
+      "description": "Version 1.0.1 is the current emission contract. Version 1.0.0 is accepted only for explicit legacy replay.",
+      "enum": [
+        "1.0.0",
+        "1.0.1"
+      ]
     },
     "assessment_id": {
       "$ref": "#/$defs/identifier"
@@ -230,6 +234,51 @@
     {
       "if": {
         "properties": {
+          "schema_version": {
+            "const": "1.0.1"
+          }
+        },
+        "required": [
+          "schema_version"
+        ]
+      },
+      "then": {
+        "required": [
+          "requested_provider"
+        ],
+        "properties": {
+          "requested_provider": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": "1.0.1"
+          },
+          "provider_state": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "schema_version",
+          "provider_state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "returned_model": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "provider_state": {
             "const": "live_openai"
           }
@@ -241,7 +290,10 @@
       "then": {
         "properties": {
           "requested_provider": {
-            "const": "openai"
+            "enum": [
+              "openai",
+              null
+            ]
           },
           "requested_model": {
             "type": "string"
@@ -269,7 +321,10 @@
       "then": {
         "properties": {
           "requested_provider": {
-            "const": "codex_subscription"
+            "enum": [
+              "codex_subscription",
+              null
+            ]
           },
           "requested_model": {
             "type": "string"
@@ -297,7 +352,10 @@
       "then": {
         "properties": {
           "requested_provider": {
-            "const": "fixture"
+            "enum": [
+              "fixture",
+              null
+            ]
           }
         }
       }

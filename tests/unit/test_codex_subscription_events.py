@@ -169,8 +169,10 @@ def test_tool_bearing_failure_event_still_maps_to_tool_activity() -> None:
 def test_reordered_and_post_terminal_events_are_rejected(
     events: list[dict[str, Any]],
 ) -> None:
-    with pytest.raises(SemanticProviderError):
+    with pytest.raises(SemanticProviderError) as captured:
         CodexSubscriptionRunner.validate_event_stream(_stream(events))
+
+    assert captured.value.failure_class == "invalid_response"
 
 
 @pytest.mark.parametrize(
@@ -209,8 +211,10 @@ def test_reordered_and_post_terminal_events_are_rejected(
 def test_started_item_pairing_and_id_reuse_are_enforced(
     events: list[dict[str, Any]],
 ) -> None:
-    with pytest.raises(SemanticProviderError):
+    with pytest.raises(SemanticProviderError) as captured:
         CodexSubscriptionRunner.validate_event_stream(_stream(events))
+
+    assert captured.value.failure_class == "invalid_response"
 
 
 @pytest.mark.parametrize(

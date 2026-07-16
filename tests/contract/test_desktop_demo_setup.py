@@ -184,6 +184,44 @@ def _installed_context(tmp_path: Path) -> tuple[ReadyContext, Any]:
     return context, installed
 
 
+def _rewrite_removed_receipt_as_legacy(
+    context: ReadyContext,
+    *,
+    version: str,
+) -> dict[str, Any]:
+    receipt = json.loads(context.receipt_path.read_text(encoding="utf-8"))
+    assert receipt["state"] == "removed"
+    receipt["receipt_version"] = version
+    receipt.pop("artifact_removals")
+    if version == "1.0.0":
+        for field in ("config_mode_before", "config_unrelated_sha256", "failure_class"):
+            receipt.pop(field)
+    context.receipt_path.write_text(
+        json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    context.receipt_path.chmod(0o600)
+    return receipt
+
+
+def _rewrite_installed_receipt_as_v1_1_failed(context: ReadyContext) -> dict[str, Any]:
+    with context.config_path.open("a", encoding="utf-8") as handle:
+        handle.write('\n[legacy_failed_projection]\nmarker = "synthetic-v1.1-failure"\n')
+    receipt = json.loads(context.receipt_path.read_text(encoding="utf-8"))
+    assert receipt["state"] == "installed"
+    receipt["receipt_version"] = "1.1.0"
+    receipt["state"] = "failed"
+    receipt["config_after_sha256"] = hashlib.sha256(context.config_path.read_bytes()).hexdigest()
+    receipt["failure_class"] = "config_projection_mismatch"
+    receipt.pop("artifact_removals")
+    context.receipt_path.write_text(
+        json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    context.receipt_path.chmod(0o600)
+    return receipt
+
+
 def _leave_prepared_before_config(
     context: ReadyContext,
     monkeypatch: pytest.MonkeyPatch,
@@ -891,7 +929,7 @@ def test_interrupted_projection_failure_transition_is_retryable_and_removable(
         )
 
     failed_receipt = json.loads(context.receipt_path.read_text(encoding="utf-8"))
-    assert failed_receipt["receipt_version"] == "1.1.0"
+    assert failed_receipt["receipt_version"] == "1.2.0"
     assert failed_receipt["state"] == "failed"
     assert failed_receipt["failure_class"] == "config_projection_mismatch"
     assert (
@@ -913,6 +951,78 @@ def test_interrupted_projection_failure_transition_is_retryable_and_removable(
     assert changed_value in context.config_path.read_text(encoding="utf-8")
     assert original_value not in context.config_path.read_text(encoding="utf-8")
     assert not staged.exists()
+
+
+def test_v1_1_failed_receipt_teardown_interruption_recovers_exactly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context, installed = _installed_context(tmp_path)
+    historical = _rewrite_installed_receipt_as_v1_1_failed(context)
+    api = _api()
+    parsed = api.parse_desktop_demo_receipt(
+        context.receipt_path,
+        codex_home=context.codex_home,
+        data_dir=context.data_dir,
+    )
+    assert parsed == historical
+    preview = _teardown(context)
+    real_atomic_write = api._atomic_write
+    interrupted = False
+
+    def interrupt_config_removal(
+        path: Path,
+        content: bytes,
+        *,
+        mode: int = 0o600,
+        expected_sha256: str | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        nonlocal interrupted
+        if path == context.config_path and not interrupted:
+            interrupted = True
+            raise OSError("synthetic legacy failed teardown interruption")
+        return real_atomic_write(
+            path,
+            content,
+            mode=mode,
+            expected_sha256=expected_sha256,
+            **kwargs,
+        )
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(api, "_atomic_write", interrupt_config_removal)
+        with pytest.raises(api.DesktopDemoError, match="teardown_interrupted"):
+            _teardown(
+                context,
+                confirmed=True,
+                expected_preview_digest=preview.preview_digest,
+            )
+
+    removing = json.loads(context.receipt_path.read_text(encoding="utf-8"))
+    assert interrupted is True
+    assert removing["receipt_version"] == "1.1.0"
+    assert removing["state"] == "removing"
+    assert removing["failure_class"] is None
+    assert removing["artifact_removals"][0]["state"] == "planned"
+    assert _managed_config(context)["command"] == str(context.python_executable)
+
+    recovery_preview = _teardown(context)
+    recovered = _teardown(
+        context,
+        confirmed=True,
+        expected_preview_digest=recovery_preview.preview_digest,
+    )
+
+    final_receipt = json.loads(context.receipt_path.read_text(encoding="utf-8"))
+    assert recovered.state == "removed"
+    assert final_receipt["receipt_version"] == "1.1.0"
+    assert final_receipt["artifact_removals"][0]["state"] == "removed"
+    assert MANAGED_NAME not in tomllib.loads(context.config_path.read_text(encoding="utf-8")).get(
+        "mcp_servers", {}
+    )
+    assert "synthetic-v1.1-failure" in context.config_path.read_text(encoding="utf-8")
+    assert not installed.staging_root.exists()
 
 
 @pytest.mark.parametrize("drift", ["runtime", "normal_receipt"])
@@ -986,6 +1096,7 @@ def test_interrupted_teardown_recovers_from_every_write_ahead_boundary(
     def interrupt_artifact(
         path: Path,
         *,
+        quarantine_path: Path,
         expected_digest: str,
         expected_size: int,
     ) -> Any:
@@ -1000,6 +1111,7 @@ def test_interrupted_teardown_recovers_from_every_write_ahead_boundary(
             raise api.DesktopDemoError("staged_artifact_drift")
         real_remove(
             path,
+            quarantine_path=quarantine_path,
             expected_digest=expected_digest,
             expected_size=expected_size,
         )
@@ -1029,6 +1141,77 @@ def test_interrupted_teardown_recovers_from_every_write_ahead_boundary(
         "mcp_servers", {}
     )
     assert not (installed.staging_root / "poisoned_docs_server.py").exists()
+
+
+def test_interrupted_teardown_after_quarantine_rename_recovers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context, installed = _installed_context(tmp_path)
+    api = _api()
+    preview = _teardown(context)
+    real_rename = api.os.rename
+    interrupted = False
+
+    def interrupt_after_quarantine_rename(
+        source: str,
+        destination: str,
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        nonlocal interrupted
+        real_rename(
+            source,
+            destination,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
+        if not interrupted and destination.startswith(".poisoned_docs_server.py.verity-remove-"):
+            journaled = json.loads(context.receipt_path.read_text(encoding="utf-8"))
+            assert journaled["state"] == "removing"
+            assert journaled["artifact_removals"] == [
+                {
+                    "relative_path": "poisoned_docs_server.py",
+                    "quarantine_relative_path": destination,
+                    "state": "planned",
+                }
+            ]
+            interrupted = True
+            raise KeyboardInterrupt("synthetic interruption immediately after quarantine rename")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(api.os, "rename", interrupt_after_quarantine_rename)
+        with pytest.raises(KeyboardInterrupt):
+            _teardown(
+                context,
+                confirmed=True,
+                expected_preview_digest=preview.preview_digest,
+            )
+
+    assert interrupted is True
+    removing = json.loads(context.receipt_path.read_text(encoding="utf-8"))
+    assert removing["state"] == "removing"
+    assert removing["artifact_removals"][0]["state"] == "planned"
+    quarantine = (
+        installed.staging_root / removing["artifact_removals"][0]["quarantine_relative_path"]
+    )
+    assert quarantine.is_file() and not quarantine.is_symlink()
+    assert not (installed.staging_root / "poisoned_docs_server.py").exists()
+
+    recovery_preview = _teardown(context)
+    recovered = _teardown(
+        context,
+        confirmed=True,
+        expected_preview_digest=recovery_preview.preview_digest,
+    )
+
+    final_receipt = json.loads(context.receipt_path.read_text(encoding="utf-8"))
+    assert recovered.applied is True
+    assert recovered.state == "removed"
+    assert final_receipt["artifact_removals"][0]["state"] == "removed"
+    assert not quarantine.exists()
+    assert not installed.staging_root.exists()
 
 
 def test_teardown_remains_available_when_normal_integration_is_degraded(tmp_path: Path) -> None:
@@ -1073,6 +1256,73 @@ def test_removed_receipt_is_archived_and_demo_can_be_reinstalled(tmp_path: Path)
     assert second_receipt["installation_id"] != first_receipt["installation_id"]
     assert archived.is_file()
     assert json.loads(archived.read_text(encoding="utf-8"))["state"] == "removed"
+
+
+@pytest.mark.parametrize("legacy_version", ["1.0.0", "1.1.0"])
+def test_legacy_removed_receipt_with_orphan_staging_entry_blocks_reinstall(
+    tmp_path: Path,
+    legacy_version: str,
+) -> None:
+    context, installed = _installed_context(tmp_path)
+    removal_preview = _teardown(context)
+    _teardown(
+        context,
+        confirmed=True,
+        expected_preview_digest=removal_preview.preview_digest,
+    )
+    legacy = _rewrite_removed_receipt_as_legacy(context, version=legacy_version)
+    receipt_before = context.receipt_path.read_bytes()
+    installed.staging_root.mkdir(mode=0o700)
+    orphan = (
+        installed.staging_root
+        / ".poisoned_docs_server.py.verity-remove-018f1f4e-7c2a-7a30-8a11-1234567890ab"
+    )
+    orphan.write_text("synthetic legacy orphan", encoding="utf-8")
+    orphan.chmod(0o600)
+
+    with pytest.raises(_api().DesktopDemoError, match="removed_state_drift"):
+        _setup(context)
+
+    assert context.receipt_path.read_bytes() == receipt_before
+    assert orphan.read_text(encoding="utf-8") == "synthetic legacy orphan"
+    assert not (context.data_dir / "desktop-demo" / "history").exists()
+    assert legacy["state"] == "removed"
+    assert MANAGED_NAME not in tomllib.loads(context.config_path.read_text(encoding="utf-8")).get(
+        "mcp_servers", {}
+    )
+
+
+@pytest.mark.parametrize("legacy_version", ["1.0.0", "1.1.0"])
+def test_clean_legacy_removed_receipt_is_archived_and_reinstall_succeeds(
+    tmp_path: Path,
+    legacy_version: str,
+) -> None:
+    context, _ = _installed_context(tmp_path)
+    removal_preview = _teardown(context)
+    _teardown(
+        context,
+        confirmed=True,
+        expected_preview_digest=removal_preview.preview_digest,
+    )
+    legacy = _rewrite_removed_receipt_as_legacy(context, version=legacy_version)
+
+    preview = _setup(context)
+    reinstalled = _setup(
+        context,
+        confirmed=True,
+        expected_preview_digest=preview.preview_digest,
+    )
+
+    current = json.loads(context.receipt_path.read_text(encoding="utf-8"))
+    archived = (
+        context.data_dir / "desktop-demo" / "history" / f"{legacy['installation_id']}.removed.json"
+    )
+    archived_receipt = json.loads(archived.read_text(encoding="utf-8"))
+    assert reinstalled.state == "installed"
+    assert current["receipt_version"] == "1.2.0"
+    assert current["installation_id"] != legacy["installation_id"]
+    assert archived_receipt["receipt_version"] == legacy_version
+    assert "artifact_removals" not in archived_receipt
 
 
 def test_expected_head_recheck_preserves_last_moment_unrelated_config_write(
@@ -1668,17 +1918,27 @@ def test_teardown_never_recursively_deletes_an_unknown_staged_file(
     staged = installed.staging_root / "poisoned_docs_server.py"
     preview = _teardown(context)
 
-    removed = _teardown(
-        context,
-        confirmed=True,
-        expected_preview_digest=preview.preview_digest,
-    )
+    with pytest.raises(_api().DesktopDemoError, match="staged_artifact_drift"):
+        _teardown(
+            context,
+            confirmed=True,
+            expected_preview_digest=preview.preview_digest,
+        )
 
-    assert removed.applied is True
-    assert removed.state == "removed"
+    assert json.loads(context.receipt_path.read_text(encoding="utf-8"))["state"] == "removing"
     assert not staged.exists()
     assert unknown.read_text(encoding="utf-8") == "synthetic operator-owned sentinel"
     assert installed.staging_root.is_dir()
+
+    unknown.unlink()
+    recovery_preview = _teardown(context)
+    removed = _teardown(
+        context,
+        confirmed=True,
+        expected_preview_digest=recovery_preview.preview_digest,
+    )
+    assert removed.applied is True
+    assert removed.state == "removed"
 
 
 @pytest.mark.parametrize("drift", ["source", "codex_runtime"])

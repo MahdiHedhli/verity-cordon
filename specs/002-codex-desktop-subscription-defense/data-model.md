@@ -45,10 +45,16 @@ Provider selection is explicit and there is no fallback chain.
 
 Every newly constructed success or failure assessment populates
 `requested_provider` from trusted adjudicator metadata. Absence remains
-accepted only for backward-compatible replay of legacy `1.0.0` records. Outer
-timeout, validation, and internal-error wrappers preserve the attempted
-provider, locally requested model, and prompt version when available; they do
-not substitute another provider.
+accepted only when the assessment's `schema_version=1.0.0` explicitly marks a
+legacy replay. New persisted assessments emit schema `1.0.1`, require a
+non-null provider even on failure, and require the exact locally mapped provider
+for every successful state. Outer timeout, validation, and internal-error
+wrappers preserve the attempted provider, locally requested model, and prompt
+version when available; they do not substitute another provider. Current failed
+records require `returned_model=null`, an empty category list, `unknown`
+persistence and authority signals, null risk fields, and no rationale or
+recommended disposition. A legacy result that attempts to assert a returned
+model is rejected before the wrapper emits a new `1.0.1` failure record.
 
 The presentation mapping is fixed:
 
@@ -240,16 +246,21 @@ It is independent from the normal Codex integration receipt.
 | Managed entry | fixed name, canonical entry digest, fixed stdio command/arguments/options | Teardown compares this entry independently so unrelated config changes are preserved. |
 | Original value | `managed_entry_original` object with `present=false`, `digest=null`, and boolean `parent_table_present` | Setup refuses a pre-existing entry with the reserved demo name rather than copying possibly secret configuration into a receipt; the parent-table flag supports exact teardown. |
 | Runtime identity | Codex and Python resolved paths, file digests, bounded versions | Doctor rejects runtime drift before use. |
-| Staged artifacts | relative path, digest, byte size | All paths are below the private staging root; no symlinks. |
+| Staged artifacts | relative path, digest, byte size; deterministic receipt-bound quarantine path and planned/removed teardown state | All paths are below the private staging root; no symlinks. The removal plan is persisted before rename and reconciled before terminal removal. |
 | Product integration | normal integration receipt path/digest | Binds the demo to a verified normal Verity installation without merging the receipts. |
 | Teardown | request/completion times and post-teardown config digest | Null before removal; populated through atomic state transitions. |
 
-New demo receipts use receipt version `1.1.0` and record normal-integration
-receipt version `2.0.0`. Demo receipt version `1.0.0` remains parseable only
-for existing-receipt inspection and safe cleanup; it cannot resume a prepared
-setup because it lacks the mode and unrelated-projection bindings. A legacy
-normal receipt cannot satisfy the current normal-integration readiness gate
-for new setup.
+New demo receipts use receipt version `1.2.0` and record normal-integration
+receipt version `2.0.0`. Demo receipt versions `1.0.0` and `1.1.0` remain
+parseable for existing-receipt inspection and for safe cleanup initiated from
+`installed`; historically valid v1.1 `failed` receipts also retain exact
+confirmed teardown. Version 1.1 requires the original restrictive-mode and
+unrelated-projection bindings, while v1.0 never permits `failed`. Neither legacy
+version may resume a `prepared` setup under the current recovery contract. A
+pre-existing legacy `removing` receipt without a deterministic quarantine plan
+fails closed for manual recovery because an earlier random rename cannot be
+reconstructed honestly. A legacy normal receipt cannot satisfy the current
+normal-integration readiness gate for new setup.
 
 The receipt contains no credential, capability, environment dump, raw evidence,
 signing key, hook input, or child output. It is written with mode `0600` below a
@@ -295,7 +306,7 @@ Rules:
    matches; any other entry requires operator review. Config and managed-entry
    state are classified before a missing artifact is restaged. If the exact
    managed entry and exact present artifact are live but the projection differs,
-   a current v1.1 recovery retries only the interrupted `prepared` to `failed`
+   a current v1.2 recovery retries only the interrupted `prepared` to `failed`
    receipt transition after revalidating the config and receipt heads, runtimes,
    and normal integration. It never finalizes that installation.
 3. Setup refuses a pre-existing `verity_cordon_poisoned_docs` entry. It does not
@@ -313,11 +324,14 @@ Rules:
    entry blocks teardown. Only the pre-mutation digest is retained; the demo
    never copies or restores the full Codex config.
 6. Staged artifacts are removed only when their path containment, digest,
-   byte-size, owner mode, device, and inode checks pass. The selected entry is
-   renamed through an anchored parent descriptor to a unique quarantine name,
-   reverified, and only then unlinked. A replacement or symlink is not deleted.
-   Drift is reported for manual review rather than recursively deleting the
-   staging root.
+   byte-size, owner mode, device, and inode checks pass. Transitioning to
+   `removing` first persists each deterministic installation-bound quarantine
+   path and `planned` state. The selected entry is renamed through an anchored
+   parent descriptor, reverified, and only then unlinked. Recovery reconciles
+   either the original or the exact planned quarantine entry before the plan is
+   marked `removed`; an unknown non-empty staging directory prevents terminal
+   removal. A replacement or symlink is not deleted. Drift is reported for
+   manual review rather than recursively deleting the staging root.
 7. `removed` is a terminal receipt state. The receipt remains as local setup
    history; a later setup receives a new installation identifier.
 8. Setup and teardown never delete or rewrite the Verity event ledger, signing

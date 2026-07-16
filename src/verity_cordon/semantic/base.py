@@ -29,7 +29,7 @@ def failed_assessment(
     failure_class: str,
     retryable: bool,
     latency_ms: int,
-    requested_provider: RequestedProvider | None = None,
+    requested_provider: RequestedProvider,
     requested_model: str | None = None,
     prompt_version: str = "semantic-risk-v1",
 ) -> SemanticAssessment:
@@ -114,7 +114,18 @@ async def _run_semantic_assessment_untraced(
 ) -> SemanticAssessment:
     started = perf_counter()
     requested_provider = _requested_provider_metadata(adjudicator)
+    if requested_provider is None:
+        raise ValueError("semantic adjudicator must declare a supported requested provider")
     requested_model = _requested_model_metadata(adjudicator)
+    if (
+        requested_provider
+        in {
+            RequestedProvider.OPENAI,
+            RequestedProvider.CODEX_SUBSCRIPTION,
+        }
+        and requested_model is None
+    ):
+        raise ValueError("live semantic adjudicator must declare a valid requested model")
     prompt_version = _bounded_metadata(getattr(adjudicator, "prompt_version", None))
     failure_prompt_version = prompt_version or "semantic-risk-v1"
     try:
@@ -127,13 +138,15 @@ async def _run_semantic_assessment_untraced(
             raise ValueError("semantic candidate identity mismatch")
         if result.sanitized_content_digest != candidate.content_digest:
             raise ValueError("semantic candidate digest mismatch")
-        updates: dict[str, Any] = {}
-        if requested_provider is not None:
-            updates["requested_provider"] = requested_provider
-        if result.requested_model is None and requested_model is not None:
-            updates["requested_model"] = requested_model
-        if not updates:
-            return result
+        if result.requested_model != requested_model:
+            raise ValueError("semantic requested model identity mismatch")
+        if result.provider_state is ProviderState.FAILED and result.returned_model is not None:
+            raise ValueError("failed semantic assessment must not assert a returned model")
+        updates: dict[str, Any] = {
+            "schema_version": "1.0.1",
+            "requested_provider": requested_provider,
+            "requested_model": requested_model,
+        }
         normalized = result.model_dump(mode="python")
         normalized.update(updates)
         return SemanticAssessment.model_validate(normalized)

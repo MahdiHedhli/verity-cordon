@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from jsonschema import Draft202012Validator, FormatChecker  # type: ignore[import-untyped]
 from openai import APIConnectionError
 
 from tests.factories import make_candidate
@@ -16,6 +19,7 @@ from verity_cordon.core.models import (
     PersistenceIntent,
     ProviderState,
     RequestedProvider,
+    SemanticAssessment,
     Sensitivity,
     Signal,
     SourceClass,
@@ -23,12 +27,20 @@ from verity_cordon.core.models import (
 )
 from verity_cordon.crypto.canonical import canonical_json, sha256_hex
 from verity_cordon.memory.service import EvidenceSubmission
+from verity_cordon.semantic.base import run_semantic_assessment
 from verity_cordon.semantic.openai_provider import (
     CandidateExtractionOutput,
     ExtractedCandidate,
     OpenAICandidateExtractor,
     OpenAISemanticAdjudicator,
     SemanticRiskOutput,
+)
+
+SEMANTIC_ASSESSMENT_SCHEMA = json.loads(
+    (
+        Path(__file__).parents[2]
+        / "specs/001-codex-memory-firewall/contracts/semantic-assessment.schema.json"
+    ).read_text(encoding="utf-8")
 )
 
 
@@ -92,6 +104,35 @@ def risk_response():
             recommended_disposition=Action.QUARANTINE,
         ),
     )
+
+
+def failed_risk_response(failure_class: str) -> SimpleNamespace:
+    if failure_class == "refusal":
+        return SimpleNamespace(
+            model="gpt-5.6-sol",
+            status="completed",
+            output=[
+                SimpleNamespace(
+                    content=[SimpleNamespace(type="refusal")],
+                )
+            ],
+            output_parsed=None,
+        )
+    return SimpleNamespace(
+        model="gpt-5.6-sol",
+        status="incomplete",
+        output=[],
+        output_parsed=None,
+    )
+
+
+def assert_current_semantic_contract(result: SemanticAssessment) -> None:
+    payload = result.model_dump(mode="json", by_alias=True)
+    assert SemanticAssessment.model_validate(payload) == result
+    Draft202012Validator(
+        SEMANTIC_ASSESSMENT_SCHEMA,
+        format_checker=FormatChecker(),
+    ).validate(payload)
 
 
 @pytest.mark.asyncio
@@ -308,47 +349,51 @@ async def test_sanitized_model_output_is_the_only_form_persisted_in_signed_event
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("response", "failure_class"),
-    [
-        (
-            SimpleNamespace(
-                model="gpt-5.6-sol",
-                status="completed",
-                output=[
-                    SimpleNamespace(
-                        content=[SimpleNamespace(type="refusal")],
-                    )
-                ],
-                output_parsed=None,
-            ),
-            "refusal",
-        ),
-        (
-            SimpleNamespace(
-                model="gpt-5.6-sol",
-                status="incomplete",
-                output=[],
-                output_parsed=None,
-            ),
-            "incomplete",
-        ),
-    ],
-)
-async def test_refusal_and_incomplete_are_explicit_failures(response, failure_class) -> None:
+@pytest.mark.parametrize("failure_class", ["refusal", "incomplete"])
+async def test_refusal_and_incomplete_are_explicit_failures(failure_class: str) -> None:
     provider = OpenAISemanticAdjudicator(
         model="gpt-5.6",
-        client=_FakeClient([response]),
+        client=_FakeClient([failed_risk_response(failure_class)]),
     )
 
     result = await provider.assess(make_candidate())
 
+    assert result.schema_version == "1.0.1"
     assert result.provider_state is ProviderState.FAILED
     assert result.requested_provider is RequestedProvider.OPENAI
     assert result.requested_model == "gpt-5.6"
+    assert result.returned_model is None
     assert result.failure is not None
     assert result.failure.class_name == failure_class
     assert result.risk_score is None
+    assert_current_semantic_contract(result)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_class", ["refusal", "incomplete"])
+async def test_wrapper_preserves_refusal_and_incomplete_failure_class(
+    failure_class: str,
+) -> None:
+    provider = OpenAISemanticAdjudicator(
+        model="gpt-5.6",
+        client=_FakeClient([failed_risk_response(failure_class)]),
+    )
+
+    result = await run_semantic_assessment(
+        provider,
+        make_candidate(),
+        timeout_ms=1_000,
+    )
+
+    assert result.schema_version == "1.0.1"
+    assert result.provider_state is ProviderState.FAILED
+    assert result.requested_provider is RequestedProvider.OPENAI
+    assert result.requested_model == "gpt-5.6"
+    assert result.returned_model is None
+    assert result.failure is not None
+    assert result.failure.class_name == failure_class
+    assert result.risk_score is None
+    assert_current_semantic_contract(result)
 
 
 @pytest.mark.asyncio

@@ -50,9 +50,21 @@ def receipt_sample(root: Path, *, state: str = "prepared") -> dict[str, Any]:
             "completed_at": REMOVED_AT,
             "config_after_teardown_sha256": SHA256,
         }
+    installation_id = "018f1f4e-7c2a-7a30-8a11-1234567890ab"
+    artifact_removals = None
+    if state in {"removing", "removed"}:
+        artifact_removals = [
+            {
+                "relative_path": "poisoned_docs_server.py",
+                "quarantine_relative_path": (
+                    f".poisoned_docs_server.py.verity-remove-{installation_id}"
+                ),
+                "state": "planned" if state == "removing" else "removed",
+            }
+        ]
     return {
-        "receipt_version": "1.1.0",
-        "installation_id": "018f1f4e-7c2a-7a30-8a11-1234567890ab",
+        "receipt_version": "1.2.0",
+        "installation_id": installation_id,
         "state": state,
         "operator_confirmed": True,
         "confirmation_method": "cli_yes",
@@ -115,6 +127,7 @@ def receipt_sample(root: Path, *, state: str = "prepared") -> dict[str, Any]:
                 "file_mode": "0600",
             }
         ],
+        "artifact_removals": artifact_removals,
         "normal_integration": {
             "receipt_version": "1.0.0",
             "receipt_path": str(data_dir / "codex-integration-receipt.json"),
@@ -189,6 +202,17 @@ def test_receipt_schema_excludes_credentials_and_arbitrary_prior_mcp_content(
         "digest": None,
         "parent_table_present": False,
     }
+
+
+def test_receipt_schema_rejects_malformed_quarantine_name_and_state(tmp_path: Path) -> None:
+    schema = Draft202012Validator(_schema(), format_checker=FormatChecker())
+    unbound = receipt_sample(tmp_path, state="removing")
+    unbound["artifact_removals"][0]["quarantine_relative_path"] = "../unsafe-quarantine"
+    wrong_state = receipt_sample(tmp_path, state="removing")
+    wrong_state["artifact_removals"][0]["state"] = "removed"
+
+    assert list(schema.iter_errors(unbound))
+    assert list(schema.iter_errors(wrong_state))
 
 
 def _demo_api() -> Any:
@@ -288,6 +312,16 @@ def test_runtime_receipt_state_machine_allows_only_forward_bound_transitions(
     ]
     assert installed["installation_id"] == prepared["installation_id"]
     assert removing["teardown"]["requested_at"] == REMOVING_AT
+    assert removing["artifact_removals"] == [
+        {
+            "relative_path": "poisoned_docs_server.py",
+            "quarantine_relative_path": (
+                ".poisoned_docs_server.py.verity-remove-018f1f4e-7c2a-7a30-8a11-1234567890ab"
+            ),
+            "state": "planned",
+        }
+    ]
+    assert removed["artifact_removals"][0]["state"] == "removed"
     assert removed["teardown"] == {
         "requested_at": REMOVING_AT,
         "completed_at": REMOVED_AT,
@@ -344,7 +378,12 @@ def test_runtime_parser_retains_legacy_receipt_for_safe_cleanup(tmp_path: Path) 
     receipt_path = data_dir / "desktop-demo-receipt.json"
     legacy = receipt_sample(tmp_path, state="installed")
     legacy["receipt_version"] = "1.0.0"
-    for field in ("config_mode_before", "config_unrelated_sha256", "failure_class"):
+    for field in (
+        "config_mode_before",
+        "config_unrelated_sha256",
+        "failure_class",
+        "artifact_removals",
+    ):
         legacy.pop(field)
     receipt_path.write_text(json.dumps(legacy), encoding="utf-8")
     receipt_path.chmod(0o600)
@@ -356,6 +395,76 @@ def test_runtime_parser_retains_legacy_receipt_for_safe_cleanup(tmp_path: Path) 
     )
 
     assert parsed == legacy
+
+
+def test_runtime_parser_accepts_only_historically_valid_v1_1_failed_receipt(
+    tmp_path: Path,
+) -> None:
+    api = _demo_api()
+    data_dir = (tmp_path / "verity-data").resolve()
+    codex_home = (tmp_path / "codex-home").resolve()
+    data_dir.mkdir(mode=0o700)
+    codex_home.mkdir(mode=0o700)
+    receipt_path = data_dir / "desktop-demo-receipt.json"
+    historical = receipt_sample(tmp_path, state="failed")
+    historical["receipt_version"] = "1.1.0"
+    historical.pop("artifact_removals")
+    receipt_path.write_text(json.dumps(historical), encoding="utf-8")
+    receipt_path.chmod(0o600)
+
+    parsed = api.parse_desktop_demo_receipt(
+        receipt_path,
+        codex_home=codex_home,
+        data_dir=data_dir,
+    )
+
+    assert parsed == historical
+    missing_binding = copy.deepcopy(historical)
+    missing_binding.pop("config_mode_before")
+    receipt_path.write_text(json.dumps(missing_binding), encoding="utf-8")
+    with pytest.raises(api.DesktopDemoError, match="receipt_invalid"):
+        api.parse_desktop_demo_receipt(
+            receipt_path,
+            codex_home=codex_home,
+            data_dir=data_dir,
+        )
+
+    impossible_v1 = copy.deepcopy(historical)
+    impossible_v1["receipt_version"] = "1.0.0"
+    receipt_path.write_text(json.dumps(impossible_v1), encoding="utf-8")
+    with pytest.raises(api.DesktopDemoError, match="receipt_invalid"):
+        api.parse_desktop_demo_receipt(
+            receipt_path,
+            codex_home=codex_home,
+            data_dir=data_dir,
+        )
+
+
+def test_legacy_receipt_gets_a_plan_before_cleanup_and_unplanned_removal_fails_closed(
+    tmp_path: Path,
+) -> None:
+    api = _demo_api()
+    installed = receipt_sample(tmp_path, state="installed")
+    installed["receipt_version"] = "1.1.0"
+    installed.pop("artifact_removals")
+
+    removing = api.transition_desktop_demo_receipt(
+        installed,
+        target_state="removing",
+        occurred_at=REMOVING_AT,
+    )
+
+    assert removing["artifact_removals"][0]["state"] == "planned"
+    unplanned = receipt_sample(tmp_path, state="removing")
+    unplanned["receipt_version"] = "1.1.0"
+    unplanned.pop("artifact_removals")
+    with pytest.raises(api.DesktopDemoError, match="receipt_invalid"):
+        api.transition_desktop_demo_receipt(
+            unplanned,
+            target_state="removed",
+            occurred_at=REMOVED_AT,
+            config_sha256=SHA256,
+        )
 
 
 def test_new_config_receipt_uses_empty_digest_and_no_backup(tmp_path: Path) -> None:
@@ -389,6 +498,28 @@ def test_runtime_receipt_requires_utc_timestamps(tmp_path: Path, invalid_time: s
     receipt_path = data_dir / "desktop-demo-receipt.json"
     payload = receipt_sample(tmp_path, state="installed")
     payload["confirmed_at"] = invalid_time
+    receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+    receipt_path.chmod(0o600)
+
+    with pytest.raises(api.DesktopDemoError, match="receipt_invalid"):
+        api.parse_desktop_demo_receipt(
+            receipt_path,
+            codex_home=codex_home,
+            data_dir=data_dir,
+        )
+
+
+def test_runtime_receipt_rejects_unbound_quarantine_name(tmp_path: Path) -> None:
+    api = _demo_api()
+    data_dir = (tmp_path / "verity-data").resolve()
+    codex_home = (tmp_path / "codex-home").resolve()
+    data_dir.mkdir(mode=0o700)
+    codex_home.mkdir(mode=0o700)
+    receipt_path = data_dir / "desktop-demo-receipt.json"
+    payload = receipt_sample(tmp_path, state="removing")
+    payload["artifact_removals"][0]["quarantine_relative_path"] = (
+        ".poisoned_docs_server.py.verity-remove-018f1f4e-7c2a-7a30-8a11-000000000000"
+    )
     receipt_path.write_text(json.dumps(payload), encoding="utf-8")
     receipt_path.chmod(0o600)
 

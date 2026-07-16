@@ -1095,6 +1095,7 @@ def _read_receipt(path: Path) -> tuple[dict[str, Any], tuple[ConfigChange, ...]]
             and all(isinstance(value, bool) for value in progress.values())
         ):
             raise CodexIntegrationError("integration_receipt_invalid")
+        _validate_command_progress_state(receipt["state"], progress)
         install_strategy = receipt.get("install_strategy")
         if install_strategy not in INSTALL_STRATEGIES:
             raise CodexIntegrationError("integration_receipt_invalid")
@@ -1178,6 +1179,19 @@ def _uninstall_metadata_shape(value: object) -> bool:
         and (backup_path is None) == (backup_sha is None)
         and (backup_sha is None or _is_sha(backup_sha))
     )
+
+
+def _validate_command_progress_state(state: str, progress: dict[str, bool]) -> None:
+    plugin_removed = progress["plugin_remove"]
+    marketplace_removed = progress["marketplace_remove"]
+    if marketplace_removed and not plugin_removed:
+        raise CodexIntegrationError("integration_receipt_invalid")
+    if state in {"prepared", "installed"} and (plugin_removed or marketplace_removed):
+        raise CodexIntegrationError("integration_receipt_invalid")
+    if state in {"uninstall_config", "uninstall_tree", "uninstall_receipt"} and not (
+        plugin_removed and marketplace_removed
+    ):
+        raise CodexIntegrationError("integration_receipt_invalid")
 
 
 def _receipt_state(receipt: dict[str, Any]) -> str:
@@ -1447,6 +1461,10 @@ def _transition_receipt(
         updated["install_strategy"] = install_strategy
     if uninstall is not _UNSET:
         updated["uninstall"] = uninstall
+    _validate_command_progress_state(
+        cast(str, updated["state"]),
+        cast(dict[str, bool], updated["command_progress"]),
+    )
     expected = _sha256(path)
     _write_receipt(
         path,

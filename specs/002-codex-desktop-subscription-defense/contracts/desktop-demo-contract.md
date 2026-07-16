@@ -218,12 +218,15 @@ non-UTC offsets and timezone-free values are invalid.
 - `prepared` plus the exact managed entry, exact present receipt-bound artifact,
   and a different unrelated-value projection: setup MUST NOT finalize. This is
   the recoverable state left when the earlier `prepared` to `failed` receipt
-  write was interrupted after config replacement. A current v1.1 receipt may
+  write was interrupted after config replacement. A current v1.2 receipt may
   retry only that transition after revalidating the config head, receipt head,
   artifact, runtimes, and normal integration. The resulting `failed` receipt
   permits exact confirmed teardown while preserving unrelated config values.
 - `failed`: setup cannot finalize or retry the installation. Exact confirmed
-  teardown remains available to remove the managed fixture safely.
+  teardown remains available to remove the managed fixture safely. Historical
+  v1.1 `failed` receipts are accepted only with their required config mode,
+  unrelated-projection digest, after-config digest, canonical failure class,
+  and empty pre-teardown state; v1.0 cannot represent `failed`.
 - `prepared` plus a different managed entry: report drift and make no artifact
   or configuration change.
 - config mutation with no valid receipt: report unreceipted state and make no
@@ -293,10 +296,13 @@ failure. With a separately confirmed teardown digest it:
 5. re-reads the config before artifact removal and proves the managed entry is
    absent while every unrelated typed TOML value and the restrictive mode are
    unchanged;
-6. removes only a digest-, size-, mode-, device-, and inode-matching staged
-   regular file below the receipt-bound staging root by anchored rename into a
-   private unique quarantine name, re-verification, and unlink. A replacement
-   or symlink is restored or left intact and is never deleted as the fixture;
+6. persists a deterministic installation-bound quarantine path and `planned`
+   state in the `removing` receipt, then removes only a digest-, size-, mode-,
+   device-, and inode-matching staged regular file below the receipt-bound
+   staging root by anchored rename, re-verification, and unlink. Recovery
+   reconciles the original or that exact quarantine entry before finalization;
+   an unknown non-empty staging directory blocks `removed`. A replacement or
+   symlink is restored or left intact and is never deleted as the fixture;
 7. re-reads the config again, records the post-teardown digest, and updates the
    exact `removing` receipt head to
    `removed`; and

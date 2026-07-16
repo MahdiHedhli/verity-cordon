@@ -87,11 +87,24 @@ def test_live_mode_never_silently_substitutes_fixtures(monkeypatch) -> None:
 
 class _SlowAdjudicator:
     provider_label = "synthetic-slow"
+    requested_provider = RequestedProvider.FIXTURE
 
     async def assess(self, candidate):
         del candidate
         await asyncio.sleep(1)
         raise AssertionError("unreachable")
+
+
+class _UndeclaredAdjudicator:
+    provider_label = "synthetic-undeclared"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def assess(self, candidate):
+        del candidate
+        self.calls += 1
+        raise AssertionError("an undeclared provider must not execute")
 
 
 class _SlowSubscriptionAdjudicator:
@@ -107,6 +120,7 @@ class _SlowSubscriptionAdjudicator:
 
 class _MalformedAdjudicator:
     provider_label = "synthetic-malformed"
+    requested_provider = RequestedProvider.FIXTURE
 
     async def assess(self, candidate):
         return {"assessment_id": new_id(), "candidate_id": candidate.candidate_id}
@@ -114,10 +128,21 @@ class _MalformedAdjudicator:
 
 class _WrongDigestAdjudicator:
     provider_label = "synthetic-wrong-digest"
+    requested_provider = RequestedProvider.FIXTURE
 
     async def assess(self, candidate):
         assessment = await FixtureSemanticAdjudicator().assess(candidate)
         return assessment.model_copy(update={"sanitized_content_digest": "0" * 64})
+
+
+class _LegacyFixtureAdjudicator:
+    provider_label = "recorded_fixture"
+
+    async def assess(self, candidate):
+        current = await FixtureSemanticAdjudicator().assess(candidate)
+        payload = current.model_dump(mode="python", exclude={"requested_provider"})
+        payload["schema_version"] = "1.0.0"
+        return SemanticAssessment.model_validate(payload)
 
 
 class _MismatchedSubscriptionAdjudicator:
@@ -145,6 +170,59 @@ class _MismatchedSubscriptionAdjudicator:
         return SemanticAssessment.model_validate(payload)
 
 
+class _MismatchedRequestedModelSubscriptionAdjudicator:
+    provider_label = "live_codex_subscription"
+    requested_provider = RequestedProvider.CODEX_SUBSCRIPTION
+    requested_model = "gpt-5.6-luna"
+    prompt_version = "codex-subscription-semantic-risk-v1"
+
+    async def assess(self, candidate):
+        fixture = await FixtureSemanticAdjudicator().assess(candidate)
+        payload = fixture.model_dump(mode="python")
+        payload.update(
+            {
+                "provider_state": ProviderState.LIVE_CODEX_SUBSCRIPTION,
+                "requested_provider": self.requested_provider,
+                "requested_model": "output-authored-model",
+                "returned_model": None,
+            }
+        )
+        return SemanticAssessment.model_validate(payload)
+
+
+class _LegacyFailedReturnedModelSubscriptionAdjudicator:
+    provider_label = "live_codex_subscription"
+    requested_provider = RequestedProvider.CODEX_SUBSCRIPTION
+    requested_model = "gpt-5.6-luna"
+    prompt_version = "codex-subscription-semantic-risk-v1"
+
+    async def assess(self, candidate):
+        fixture = await FixtureSemanticAdjudicator().assess(candidate)
+        payload = fixture.model_dump(mode="python")
+        payload.update(
+            {
+                "schema_version": "1.0.0",
+                "provider_state": ProviderState.FAILED,
+                "requested_provider": self.requested_provider,
+                "requested_model": self.requested_model,
+                "returned_model": "output-authored-model",
+                "prompt_version": self.prompt_version,
+                "risk_score": None,
+                "categories": [],
+                "persistence_intent": "unknown",
+                "authority_claim": "unknown",
+                "exfiltration_risk": None,
+                "tool_hijack_risk": None,
+                "cross_task_risk": None,
+                "secret_risk": None,
+                "rationale": None,
+                "recommended_disposition": None,
+                "failure": {"class": "invalid_response", "retryable": False},
+            }
+        )
+        return SemanticAssessment.model_validate(payload)
+
+
 @pytest.mark.asyncio
 async def test_semantic_timeout_is_an_explicit_failed_assessment() -> None:
     target = make_candidate(kind=MemoryKind.OPERATIONAL_INSTRUCTION)
@@ -155,6 +233,17 @@ async def test_semantic_timeout_is_an_explicit_failed_assessment() -> None:
     assert result.failure is not None and result.failure.class_name == "timeout"
     assert result.risk_score is None
     assert result.recommended_disposition is None
+
+
+@pytest.mark.asyncio
+async def test_undeclared_provider_is_rejected_before_execution() -> None:
+    target = make_candidate()
+    provider = _UndeclaredAdjudicator()
+
+    with pytest.raises(ValueError, match="must declare a supported requested provider"):
+        await run_semantic_assessment(provider, target, timeout_ms=100)
+
+    assert provider.calls == 0
 
 
 @pytest.mark.asyncio
@@ -173,6 +262,21 @@ async def test_outer_subscription_timeout_preserves_attempted_provider_metadata(
     assert result.returned_model is None
     assert result.prompt_version == "codex-subscription-semantic-risk-v1"
     assert result.failure is not None and result.failure.class_name == "timeout"
+
+
+@pytest.mark.asyncio
+async def test_wrapper_upgrades_explicit_legacy_output_before_new_emission() -> None:
+    target = make_candidate()
+
+    result = await run_semantic_assessment(
+        _LegacyFixtureAdjudicator(),
+        target,
+        timeout_ms=100,
+    )
+
+    assert result.schema_version == "1.0.1"
+    assert result.requested_provider is RequestedProvider.FIXTURE
+    assert result.provider_state is ProviderState.RECORDED_FIXTURE
 
 
 @pytest.mark.asyncio
@@ -195,6 +299,42 @@ async def test_subscription_wrapper_rejects_mismatched_success_provider_identity
     assert result.requested_provider is RequestedProvider.CODEX_SUBSCRIPTION
     assert result.requested_model == "gpt-5.6-luna"
     assert result.returned_model is None
+    assert result.failure is not None and result.failure.class_name == "invalid_schema"
+
+
+@pytest.mark.asyncio
+async def test_subscription_wrapper_rejects_output_authored_requested_model() -> None:
+    target = make_candidate()
+
+    result = await run_semantic_assessment(
+        _MismatchedRequestedModelSubscriptionAdjudicator(),
+        target,
+        timeout_ms=100,
+    )
+
+    assert result.provider_state is ProviderState.FAILED
+    assert result.requested_provider is RequestedProvider.CODEX_SUBSCRIPTION
+    assert result.requested_model == "gpt-5.6-luna"
+    assert result.returned_model is None
+    assert result.failure is not None and result.failure.class_name == "invalid_schema"
+
+
+@pytest.mark.asyncio
+async def test_wrapper_rejects_legacy_failed_output_authored_returned_model() -> None:
+    target = make_candidate()
+
+    result = await run_semantic_assessment(
+        _LegacyFailedReturnedModelSubscriptionAdjudicator(),
+        target,
+        timeout_ms=100,
+    )
+
+    assert result.schema_version == "1.0.1"
+    assert result.provider_state is ProviderState.FAILED
+    assert result.requested_provider is RequestedProvider.CODEX_SUBSCRIPTION
+    assert result.requested_model == "gpt-5.6-luna"
+    assert result.returned_model is None
+    assert result.categories == []
     assert result.failure is not None and result.failure.class_name == "invalid_schema"
 
 

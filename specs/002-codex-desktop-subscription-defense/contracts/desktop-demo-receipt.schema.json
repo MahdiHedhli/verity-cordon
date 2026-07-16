@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:verity-cordon:schema:desktop-demo-receipt:1.1.0",
+  "$id": "urn:verity-cordon:schema:desktop-demo-receipt:1.2.0",
   "title": "Verity Cordon Codex Desktop Demo Receipt",
   "description": "Private write-ahead receipt for the reversible synthetic Codex Desktop MCP fixture. The receipt contains no credentials, raw evidence, or arbitrary existing MCP configuration.",
   "type": "object",
@@ -32,12 +32,13 @@
     "codex_runtime",
     "python_runtime",
     "artifacts",
+    "artifact_removals",
     "normal_integration",
     "teardown"
   ],
   "properties": {
     "receipt_version": {
-      "const": "1.1.0"
+      "const": "1.2.0"
     },
     "installation_id": {
       "type": "string",
@@ -167,6 +168,23 @@
         "$ref": "#/$defs/stagedArtifact"
       }
     },
+    "artifact_removals": {
+      "anyOf": [
+        {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/artifactRemoval"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Write-ahead artifact removal records. Each deterministic quarantine path is bound to the installation receipt before rename and reconciled before terminal removal."
+    },
     "normal_integration": {
       "type": "object",
       "additionalProperties": false,
@@ -291,6 +309,9 @@
           "failure_class": {
             "type": "null"
           },
+          "artifact_removals": {
+            "type": "null"
+          },
           "teardown": {
             "$ref": "#/$defs/emptyTeardown"
           }
@@ -316,6 +337,9 @@
           "failure_class": {
             "const": "config_projection_mismatch"
           },
+          "artifact_removals": {
+            "type": "null"
+          },
           "teardown": {
             "$ref": "#/$defs/emptyTeardown"
           }
@@ -339,6 +363,9 @@
             "$ref": "#/$defs/sha256Hex"
           },
           "failure_class": {
+            "type": "null"
+          },
+          "artifact_removals": {
             "type": "null"
           },
           "teardown": {
@@ -366,6 +393,24 @@
           "failure_class": {
             "type": "null"
           },
+          "artifact_removals": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifactRemoval"
+                },
+                {
+                  "properties": {
+                    "state": {
+                      "const": "planned"
+                    }
+                  }
+                }
+              ]
+            }
+          },
           "teardown": {
             "$ref": "#/$defs/removingTeardown"
           }
@@ -390,6 +435,24 @@
           },
           "failure_class": {
             "type": "null"
+          },
+          "artifact_removals": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifactRemoval"
+                },
+                {
+                  "properties": {
+                    "state": {
+                      "const": "removed"
+                    }
+                  }
+                }
+              ]
+            }
           },
           "teardown": {
             "$ref": "#/$defs/completedTeardown"
@@ -473,6 +536,32 @@
         },
         "file_mode": {
           "const": "0600"
+        }
+      }
+    },
+    "artifactRemoval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relative_path",
+        "quarantine_relative_path",
+        "state"
+      ],
+      "properties": {
+        "relative_path": {
+          "const": "poisoned_docs_server.py"
+        },
+        "quarantine_relative_path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^\\.poisoned_docs_server\\.py\\.verity-remove-[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "state": {
+          "enum": [
+            "planned",
+            "removed"
+          ]
         }
       }
     },

@@ -319,6 +319,12 @@ Codex contract exposes one; otherwise it remains null. Signed event envelopes
 then record the local requested identifier as `semantic_model_identifier`; it
 is explicitly non-attesting remote-model provenance.
 
+Persisted semantic assessments emit contract version `1.0.1`, which requires a
+non-null locally selected `requested_provider` for both successful and failed
+records. Version `1.0.0` is accepted only as an explicit legacy-replay
+discriminator and may omit that additive field. A subscription success always
+requires the exact `codex_subscription` identity and `returned_model=null`.
+
 ## JSONL Event Gate
 
 Stdout is parsed incrementally as strict UTF-8 JSON Lines with a per-line and

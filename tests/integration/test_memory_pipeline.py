@@ -162,6 +162,37 @@ class _SubscriptionFixtureSemantic(FixtureSemanticAdjudicator):
         return type(assessment).model_validate(payload)
 
 
+class _MismatchedModelSubscriptionSemantic(_SubscriptionFixtureSemantic):
+    async def assess(self, candidate):
+        assessment = await super().assess(candidate)
+        return assessment.model_copy(update={"requested_model": "output-authored-model"})
+
+
+class _LegacyFailedReturnedModelSubscriptionSemantic(_SubscriptionFixtureSemantic):
+    async def assess(self, candidate):
+        assessment = await super().assess(candidate)
+        payload = assessment.model_dump(mode="python")
+        payload.update(
+            {
+                "schema_version": "1.0.0",
+                "provider_state": ProviderState.FAILED,
+                "returned_model": "output-authored-model",
+                "risk_score": None,
+                "categories": [],
+                "persistence_intent": "unknown",
+                "authority_claim": "unknown",
+                "exfiltration_risk": None,
+                "tool_hijack_risk": None,
+                "cross_task_risk": None,
+                "secret_risk": None,
+                "rationale": None,
+                "recommended_disposition": None,
+                "failure": {"class": "invalid_response", "retryable": False},
+            }
+        )
+        return type(assessment).model_validate(payload)
+
+
 @pytest.mark.asyncio
 async def test_subscription_events_sign_requested_model_without_remote_attestation(
     tmp_path,
@@ -208,6 +239,97 @@ async def test_subscription_events_sign_requested_model_without_remote_attestati
     detail = await LedgerQueries(store).get_candidate_detail(malicious.candidate.candidate_id)
     assert detail["semantic_assessment"]["requested_provider"] == "codex_subscription"
     assert detail["semantic_assessment"]["provider_state"] == "live_codex_subscription"
+    assert (await store.verify()).verified is True
+
+
+@pytest.mark.asyncio
+async def test_mismatched_subscription_model_fails_closed_with_trusted_provenance(
+    tmp_path: Path,
+) -> None:
+    service, store, view = await build_service(
+        tmp_path,
+        adjudicator=_MismatchedModelSubscriptionSemantic(),
+    )
+
+    evaluation = await service.evaluate_evidence(
+        EvidenceSubmission(
+            session_id=new_id(),
+            source_class=SourceClass.TOOL_OUTPUT,
+            content=POISONED_DOCS,
+        )
+    )
+    malicious = next(
+        outcome
+        for outcome in evaluation.outcomes
+        if "demo_artifact_sink" in outcome.candidate.statement
+    )
+    semantic = malicious.semantic_assessment
+
+    assert semantic is not None
+    assert semantic.provider_state is ProviderState.FAILED
+    assert semantic.requested_provider is RequestedProvider.CODEX_SUBSCRIPTION
+    assert semantic.requested_model == "gpt-5.6-luna"
+    assert semantic.failure is not None and semantic.failure.class_name == "invalid_schema"
+    assert malicious.decision.actual_action is Action.BLOCK
+    assert all("demo_artifact_sink" not in item.safe_statement for item in await view.list_active())
+    semantic_event = next(
+        event
+        for event in await store.list_events()
+        if event.stream_id == malicious.candidate.candidate_id
+        and event.event_type is EventType.SEMANTIC_ASSESSMENT_RECORDED
+    )
+    assert semantic_event.payload["requested_model"] == "gpt-5.6-luna"
+    assert semantic_event.payload["failure"]["class"] == "invalid_schema"
+    assert (await store.verify()).verified is True
+
+
+@pytest.mark.asyncio
+async def test_failed_output_model_cannot_become_signed_event_identity(tmp_path: Path) -> None:
+    service, store, view = await build_service(
+        tmp_path,
+        adjudicator=_LegacyFailedReturnedModelSubscriptionSemantic(),
+    )
+
+    evaluation = await service.evaluate_evidence(
+        EvidenceSubmission(
+            session_id=new_id(),
+            source_class=SourceClass.TOOL_OUTPUT,
+            content=POISONED_DOCS,
+        )
+    )
+    malicious = next(
+        outcome
+        for outcome in evaluation.outcomes
+        if "demo_artifact_sink" in outcome.candidate.statement
+    )
+    semantic = malicious.semantic_assessment
+
+    assert semantic is not None
+    assert semantic.schema_version == "1.0.1"
+    assert semantic.provider_state is ProviderState.FAILED
+    assert semantic.requested_provider is RequestedProvider.CODEX_SUBSCRIPTION
+    assert semantic.requested_model == "gpt-5.6-luna"
+    assert semantic.returned_model is None
+    assert semantic.failure is not None and semantic.failure.class_name == "invalid_schema"
+    assert malicious.decision.actual_action is Action.BLOCK
+    assert all("demo_artifact_sink" not in item.safe_statement for item in await view.list_active())
+    candidate_events = [
+        event
+        for event in await store.list_events()
+        if event.stream_id == malicious.candidate.candidate_id
+    ]
+    assert {event.semantic_model_identifier for event in candidate_events} == {"gpt-5.6-luna"}
+    semantic_event = next(
+        event
+        for event in candidate_events
+        if event.event_type is EventType.SEMANTIC_ASSESSMENT_RECORDED
+    )
+    assert semantic_event.payload["requested_model"] == "gpt-5.6-luna"
+    assert semantic_event.payload["returned_model"] is None
+    assert semantic_event.payload["failure"]["class"] == "invalid_schema"
+    detail = await LedgerQueries(store).get_candidate_detail(malicious.candidate.candidate_id)
+    assert detail["semantic_assessment"]["requested_model"] == "gpt-5.6-luna"
+    assert detail["semantic_assessment"]["returned_model"] is None
     assert (await store.verify()).verified is True
 
 
@@ -262,6 +384,7 @@ async def test_detector_failure_never_silently_allows_memory(tmp_path) -> None:
 
 class _SlowSemantic:
     provider_label = "synthetic-slow"
+    requested_provider = RequestedProvider.FIXTURE
 
     async def assess(self, candidate):
         del candidate

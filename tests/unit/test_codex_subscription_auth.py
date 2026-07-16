@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -83,13 +84,18 @@ async def test_exact_chatgpt_marker_on_stderr_matches_the_supported_cli() -> Non
 
 
 @pytest.mark.asyncio
-async def test_readiness_checks_current_executable_version_and_fresh_auth_each_time() -> None:
+async def test_readiness_checks_current_executable_version_and_fresh_auth_each_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     with _secure_tree() as root:
         runner, monitor = _auth_runner(root)
+        version_probe = AsyncMock(wraps=runner._check_codex_version)
+        monkeypatch.setattr(runner, "_check_codex_version", version_probe)
 
         assert await runner.check_chatgpt_auth() == "ready_chatgpt"
         assert await runner.check_chatgpt_auth() == "ready_chatgpt"
 
+        assert version_probe.await_count == 2
         assert runner.codex_version == "codex-cli 0.144.4"
         assert [record["kind"] for record in _records(monitor)] == ["status", "status"]
 

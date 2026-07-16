@@ -336,13 +336,13 @@ class SemanticFailure(StrictModel):
 
 
 class SemanticAssessment(StrictModel):
-    schema_version: Literal["1.0.0"] = "1.0.0"
+    schema_version: Literal["1.0.0", "1.0.1"] = "1.0.1"
     assessment_id: Identifier
     candidate_id: Identifier
     provider_state: ProviderState
     requested_provider: RequestedProvider | None = None
-    requested_model: str | None = Field(default=None, max_length=128)
-    returned_model: str | None = Field(default=None, max_length=128)
+    requested_model: str | None = Field(default=None, min_length=1, max_length=128)
+    returned_model: str | None = Field(default=None, min_length=1, max_length=128)
     prompt_version: str = Field(min_length=1, max_length=128)
     risk_score: float | None = Field(default=None, ge=0, le=1)
     categories: list[str]
@@ -367,12 +367,27 @@ class SemanticAssessment(StrictModel):
             ProviderState.LIVE_OPENAI: RequestedProvider.OPENAI,
             ProviderState.LIVE_CODEX_SUBSCRIPTION: RequestedProvider.CODEX_SUBSCRIPTION,
         }
+        if self.requested_provider is None and self.schema_version != "1.0.0":
+            raise ValueError("current semantic assessment requires provider provenance")
         if (
             self.requested_provider is not None
             and self.provider_state is not ProviderState.FAILED
             and self.requested_provider is not successful_provider[self.provider_state]
         ):
             raise ValueError("successful semantic provider identity is inconsistent")
+        if self.provider_state is ProviderState.LIVE_OPENAI and (
+            self.requested_model is None or self.returned_model is None
+        ):
+            raise ValueError(
+                "live OpenAI semantic assessment requires requested and returned models"
+            )
+        if self.provider_state is ProviderState.LIVE_CODEX_SUBSCRIPTION:
+            if self.requested_model is None:
+                raise ValueError("subscription semantic assessment requires a requested model")
+            if self.returned_model is not None:
+                raise ValueError(
+                    "subscription semantic assessment must not assert a returned model"
+                )
         score_fields = (
             self.risk_score,
             self.exfiltration_risk,
@@ -383,8 +398,19 @@ class SemanticAssessment(StrictModel):
         if self.provider_state == ProviderState.FAILED:
             if self.failure is None:
                 raise ValueError("failed semantic assessment requires failure metadata")
+            if self.schema_version == "1.0.1" and self.returned_model is not None:
+                raise ValueError(
+                    "current failed semantic assessment must not assert a returned model"
+                )
             if any(value is not None for value in score_fields):
                 raise ValueError("failed semantic assessment must not contain risk scores")
+            if self.categories:
+                raise ValueError("failed semantic assessment must not contain risk categories")
+            if (
+                self.persistence_intent is not PersistenceIntent.UNKNOWN
+                or self.authority_claim is not Signal.UNKNOWN
+            ):
+                raise ValueError("failed semantic assessment requires neutral intent signals")
             if self.recommended_disposition is not None or self.rationale is not None:
                 raise ValueError("failed semantic assessment must not claim a disposition")
         elif self.failure is not None or self.risk_score is None:

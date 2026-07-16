@@ -147,11 +147,12 @@ another.
 
 | Field | Type | Rule |
 |---|---|---|
+| `schema_version` | enum | New records emit `1.0.1`. `1.0.0` is accepted only as an explicit legacy-replay discriminator. |
 | `assessment_id` | UUIDv7 | Primary identifier. |
 | `candidate_id` | UUIDv7 | Required reference. |
 | `provider_state` | enum | `live_openai`, `live_codex_subscription`, `recorded_fixture`, `failed`. Deterministic-only evaluations omit this record and are labeled at the API summary layer. |
-| `requested_provider` | enum/null | Locally selected `fixture`, `openai`, or `codex_subscription`. New assessments always populate it; null or absence is accepted only when replaying legacy `1.0.0` records. A failed state does not erase which provider was attempted. |
-| `requested_model` / `returned_model` | string/null | Direct live API calls record both when the response attests a model. Subscription calls record the local requested identifier and require `returned_model=null`; fixture requests may be null. |
+| `requested_provider` | enum/null | Locally selected `fixture`, `openai`, or `codex_subscription`. New `1.0.1` assessments always populate it, including failures, and successful states require the exact mapped identity. Null or absence is accepted only when `schema_version=1.0.0` explicitly identifies legacy replay. A failed state does not erase which provider was attempted. |
+| `requested_model` / `returned_model` | string/null | Direct live API successes require both identifiers. Subscription successes require the trusted local requested identifier and `returned_model=null`; fixture requests may be null. Current `1.0.1` failures require `returned_model=null`, and the execution wrapper rejects either a requested-model mismatch or any failed result that attempts to assert a returned model before persistence. Explicit `1.0.0` records remain readable under their historical field shape but are never re-emitted unchanged. |
 | `prompt_version` | string | Required. |
 | `risk_score` | decimal/null | 0 through 1 for successful assessments; null on failure. |
 | `categories` | ordered list[enum] | `persistent_instruction`, `privilege_escalation`, `tool_hijack`, `data_exfiltration`, `cross_task_contamination`, `self_reinforcement`, `secret_material`, `protected_namespace`, `concealed_instruction`, `benign_fact`, `benign_preference`, `ambiguous`. |
@@ -170,7 +171,10 @@ another.
 | `assessed_at` | UTC time | Required. |
 
 Failed assessment records contain no fabricated scores and cannot be interpreted
-as a clean finding.
+as a clean finding. Their categories are empty, persistence and authority
+signals are `unknown`, all risk fields are null, and rationale and recommended
+disposition are null. These neutral failure invariants are identical in the
+Pydantic model and public JSON Schema.
 
 ## Policy
 
