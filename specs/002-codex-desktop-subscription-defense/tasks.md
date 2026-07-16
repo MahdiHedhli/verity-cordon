@@ -258,7 +258,7 @@ gate, and leave only honest operator-owned submission work.
 - [x] T063 Serialize subscription-runner health, bind executable trust across each invocation, enforce constructor resource ceilings, normalize setup failures, and add concurrency/drift/non-disclosure regressions in `src/verity_cordon/semantic/{codex_subscription.py,readiness.py}`, the semantic contracts, and focused tests.
 - [x] T064 Make normal Codex installation and removal fully receipt-journaled and retry-safe, bind every executable staging state, validate complete trusted path chains, and add interruption/partial-command/path-drift regressions in `src/verity_cordon/codex/installer.py`, the hook contract, security documentation, and focused tests.
 - [x] T065 Bind Desktop fixture receipt, artifact, archive, configuration, normal-integration, and teardown transitions to expected state; preserve restrictive modes; prevent drift laundering and deletion races; and add recovery/race regressions in `src/verity_cordon/codex/demo_installer.py`, its contracts, and focused tests.
-- [ ] T066 Verify the reviewed release on public `main` after merge and record the exact public-main evidence in `docs/hackathon/HACKATHON_WORK.md`; the independent reviews, sanitized subscription smoke, Spec Kit audits, complete release gate, and remote review closure are recorded below as complete.
+- [x] T066 Verify the reviewed release on public `main` after merge and record the exact public-main evidence in `docs/hackathon/HACKATHON_WORK.md`; the independent reviews, sanitized subscription smoke, Spec Kit audits, complete release gate, and remote review closure are recorded below as complete.
 
 **T063 verification (2026-07-15)**:
 
@@ -296,7 +296,7 @@ gate, and leave only honest operator-owned submission work.
 - `uv run ruff format --check src/verity_cordon/codex/demo_installer.py tests/contract/test_desktop_demo_setup.py tests/contract/test_desktop_demo_receipt.py` — passed.
 - `uv run mypy src/verity_cordon/codex/demo_installer.py` and `git diff --check` — passed.
 
-**T066 partial verification (2026-07-15)**:
+**T066 verification (2026-07-15)**:
 
 - Iterative independent release-hardening reviews covered the subscription
   runner, normal Codex installer, Desktop demo installer, integrated provider
@@ -347,7 +347,14 @@ gate, and leave only honest operator-owned submission work.
 - Pushed head `d999451e537feaac28229932a9abea8721e148b5` is mergeable;
   CodeRabbit reports “Review completed,” and all 13 PR #3 review threads are
   resolved. PRs #1 and #2 also have zero unresolved threads.
-- T066 remains open only for post-merge public-main verification.
+- PR #3 merged at `392555741121c3fe5c47b4ab87bc96198c7e81f2`.
+  Local `main`, `origin/main`, and the public remote ref matched that SHA after
+  pruning the deleted release branch. The repository was public, unarchived,
+  and defaulted to `main`; anonymous repository, README, and tracked Control
+  Room screenshot requests returned HTTP 200. Dependabot and secret-scanning
+  reported zero open alerts. Code scanning returned `no analysis found`, which
+  is recorded as not configured rather than a zero-result scan. PRs #1, #2, and
+  #3 had zero unresolved review threads. T066 is complete.
 
 ---
 

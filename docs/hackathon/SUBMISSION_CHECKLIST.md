@@ -53,9 +53,9 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 - [x] README explains Codex collaboration, operator decisions, and GPT-5.6 use.
 - [x] No private keys, API keys, bearer capabilities, raw secrets, or unsafe logs
   are tracked.
-- [x] Current release branch, prior public-main commit, repository topics, and
-  local verification results are recorded; the release-hardening merge and
-  post-merge public-main verification remain an explicit closure gate.
+- [x] Release commit, public-main merge, repository visibility, anonymous asset
+  access, alert state, remote review closure, and verification results are
+  recorded.
 
 ## Demo Video
 
