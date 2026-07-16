@@ -58,6 +58,7 @@ renamed codebase.
 | `cfa25ef` | Finalized receipt migration and failed-provider provenance contracts | Complete |
 | `bea9e07` | Closed the final Spec Kit artifact findings | Complete |
 | `3925557` | Merged PR #3 release-review hardening into public `main` | Complete |
+| `3925557..1616832` | Closed release evidence, hardened the live demo path, and verified final subscription behavior | Complete |
 
 The feature-001 branch was fast-forwarded into `main` without rewriting history
 or force-pushing. Sprint 002 subsequently merged through PR #1, and its
@@ -106,7 +107,7 @@ entered active scope.
 
 ## Sprint 002 Live Subscription Evidence
 
-- **Date**: 2026-07-15
+- **Final run date**: 2026-07-16
 - **Codex CLI**: `0.144.4`
 - **Authentication boundary**: supported ChatGPT sign-in status; Verity did not
   read credential files or print raw status output
@@ -114,21 +115,24 @@ entered active scope.
   recorded content-safely as `failed/process_exit` with no fallback
 - **Requested subscription model identifier**: `gpt-5.6-luna`; the current
   event stream does not attest the returned remote model
-- **Input**: fixed sanitized synthetic operational instruction only
+- **Input**: sanitized synthetic demonstration evidence only
 - **Provider outcome**: `live_codex_subscription`
 - **Isolation label**: `agentic_sandboxed`
-- **Policy input recommendation**: `quarantine`; deterministic policy remains
-  final authority
-- **Observed provider latency**: 11,026 ms
+- **Candidate outcomes**: 45 total; 31 allowed and 14 quarantined by
+  deterministic policy
+- **Selective recovery**: 8 memories revoked
+- **Ledger**: 562 signed events; chain complete and anchored; materialized view
+  consistent
+- **SessionStart projection**: one final rendered context contained 6 approved
+  memory records; the fixed synthetic attack markers were absent
 - **Raw child output retained or logged**: no
 
-This smoke proves only that the configured local subscription path completed on
-the recorded host and date. It preceded the exact incremental JSONL grammar and
-other release-review hardening. A later hardened probe was externally
-rate-limited and proved fail-closed handling only; a successful hardened live
-completion remains pending. None of this establishes universal model
-entitlement, latency, tool absence inside the Codex binary, remote-model
-attestation, or protection from a compromised host.
+This final run proves only that the configured local subscription path
+completed on the recorded host and date. It exercises the CLI subscription and
+hook contract, not a manually observed Codex Desktop app task. None of this
+establishes universal model entitlement, stable latency, tool absence inside
+the Codex binary, remote-model attestation, complete prompt-injection
+prevention, or protection from a compromised host.
 
 ## Milestones
 
@@ -153,7 +157,8 @@ attestation, or protection from a compromised host.
 - [x] Final Spec Kit analysis and checklist convergence
 - [x] Public repository creation and push
 - [x] Release-hardening remote review closure and public-main verification
-- [ ] Operator video, `/feedback`, and Devpost submission
+- [x] Primary Codex task/session ID verified through Codex task status
+- [ ] Operator video and Devpost submission
 
 ## Verified Checkpoints
 
@@ -403,9 +408,9 @@ grammar. A post-hardening, API-key-free probe on Codex CLI `0.144.4` was
 classified locally into the fixed safe category `rate_limit`, returned
 retryable `failed/process_exit` in 3,704 ms, produced no disposition or final
 document, and left cleanup health clean. Raw child content was neither printed
-nor retained. This proves fail-closed failure handling, not successful hardened
-live completion; that revalidation remains pending while subscription capacity
-is unavailable.
+nor retained. At that checkpoint, this proved fail-closed failure handling but
+not successful hardened live completion. The final 2026-07-16 run recorded in
+the live-evidence section above later closed that revalidation gap.
 
 A real 1280x720 Control Room overview was captured from the offline deterministic
 fixture and added as `docs/assets/control-room-overview.jpg`. It shows only
@@ -479,7 +484,9 @@ reached external rate limiting. Verity returned the fixed content-safe
 `failed/process_exit` category in 3,704 ms, retained no final document or raw
 child output, made no disposition, and reported clean cleanup health. This is
 failure-path evidence, not a successful hardened semantic completion or remote
-model attestation. The successful hardened live path remains pending capacity.
+model attestation. That statement records the checkpoint state; the final
+2026-07-16 run above later completed the hardened subscription path without
+changing the remote-attestation boundary.
 
 PR #3's Gemini review reported three findings. Its critical stdin comment was
 stale against the reviewed implementation: the runner already drains stdin,
@@ -568,6 +575,20 @@ repository, README, and tracked Control Room screenshot requests returned HTTP
 returned `no analysis found`, so no zero-alert code-scanning claim is made. PRs
 1, 2, and 3 had zero unresolved review threads.
 
+Final release closure through public `main` commit `1616832` then passed the
+canonical gate with 785 backend tests plus 13 isolated example/plugin tests at
+81% backend coverage. All 11 Control Room tests, frontend type checking, lint,
+production build, and configured Python and npm dependency audits passed. The
+20-sample synthetic evaluation remained at 0 fixture-scoped false positives
+and 0 fixture-scoped false negatives. The final hardened subscription run
+requested `gpt-5.6-luna`, recorded `live_codex_subscription` with
+`agentic_sandboxed` isolation, processed 45 candidates (31 allowed and 14
+quarantined), revoked 8 memories, and verified 562 signed events with a
+complete anchored chain and consistent materialized view. One rendered
+`SessionStart` context contained 6 approved memory records; the fixed synthetic
+attack markers were absent. The manually observed Desktop-app rehearsal remains
+separate and is not claimed by this evidence.
+
 ## New Work versus Prior Art
 
 Verity Cordon's implemented contribution is an async-first local daemon, a
@@ -603,7 +624,6 @@ acceptance-evidence gate; T066 is complete.
 - Perform and time the operator-visible Codex Desktop app rehearsal; automated
   fixture, subscription, Control Room, and hook-contract evidence does not
   substitute for that app-level observation.
-- Run `/feedback` in the primary project thread and record the real Session ID.
 - Record and upload a public YouTube video with audio under three minutes.
 - Keep the free judge path available through 2026-08-05 17:00 PT.
 - Submit and review the Devpost entry before 2026-07-21 17:00 PT.
@@ -612,8 +632,10 @@ acceptance-evidence gate; T066 is complete.
 
 Not submitted. The public repository is independently verified. No successful
 credentialed direct-API call, operator-observed Desktop rehearsal, public
-video, `/feedback` Session ID, or Devpost submission is represented as complete
-until independently created and verified. The tracked offline-fixture product
+video, or Devpost submission is represented as complete until independently
+created and verified. The primary Codex task/session ID is
+`019f6486-18b4-74b2-b195-3d513f4dc454`, verified through Codex task status and
+not represented as `/feedback` output. The tracked offline-fixture product
 screenshot is complete and is not presented as Desktop-app or live-provider
 evidence.
 
@@ -621,6 +643,8 @@ evidence.
 
 - **Public repository**: `https://github.com/MahdiHedhli/verity-cordon`
 - **Branch**: `main`
+- **Final verified release commit before this documentation update**:
+  `1616832ac9473c5ed448538d702a344779e20e0a`
 - **Public release merge**:
   `392555741121c3fe5c47b4ab87bc96198c7e81f2`
 - **Public `main` before release-review hardening**:
@@ -635,7 +659,7 @@ evidence.
   `8540cbb`
 - **Prior clean-checkout implementation/evidence checkpoint**:
   `79a12d0c8058d579664c90740a8bd44ae3359c68`
-- **Automated verification**: 779 backend tests, 13 isolated example/plugin
+- **Automated verification**: 785 backend tests, 13 isolated example/plugin
   tests, 11 frontend tests, 81% backend coverage, schema/OpenAPI validation,
   dependency audits, type checks, lint, production build, and 20 fixture
   evaluations with 0 fixture-scoped false positives and 0 fixture-scoped false
@@ -654,7 +678,8 @@ evidence.
   control-plane capabilities, enterprise identity, packaged local models, and
   exporter ecosystems remain outside the active feature task graph
 - **Submission status**: not submitted; video, final form entry, logged-out link
-  checks, and the real `/feedback` Session ID remain operator-owned
+  checks, and Devpost submission remain incomplete. The verified primary Codex
+  task/session ID is `019f6486-18b4-74b2-b195-3d513f4dc454`
 - **Release sequence at this checkpoint**: close every ChatGPT Desktop task, exit all
   Codex CLI TUI and IDE sessions, and fully quit the ChatGPT desktop app;
   preview and apply the normal Verity integration; deliberately start CLI,
@@ -665,6 +690,6 @@ evidence.
   documented attack,
   enforcement, clean-task, revocation, and ledger sequence; immediately tear
   down the user-wide fixture; record and upload the under-three-minute public
-  video; run `/feedback` in this primary
-  task; enter the real Session ID; test public links logged out; and submit
+  video; enter the verified primary task/session ID; test public links logged
+  out; and submit
   before 2026-07-21 17:00 PT

@@ -108,28 +108,29 @@ The operator required:
 
 ## Runtime Contribution Recorded in Sprint 002
 
-On 2026-07-15, the primary thread exercised one sanitized synthetic semantic
-assessment through Codex CLI `0.144.4` under supported ChatGPT sign-in, without
-`OPENAI_API_KEY`. The first explicit `gpt-5.6` request failed content-safely as
-unavailable for that identity and did not fall back. The explicitly selected
-`gpt-5.6-luna` request then returned a schema-valid
-`live_codex_subscription` assessment in 11,026 ms with isolation labeled
-`agentic_sandboxed` and a `quarantine` recommendation. Deterministic policy
-remained final authority, and no raw child output or credential material was
-retained.
+On 2026-07-16, the primary thread completed the final hardened no-key
+subscription pipeline under supported ChatGPT sign-in. It requested
+`gpt-5.6-luna`, recorded the provider as `live_codex_subscription` with
+`agentic_sandboxed` isolation, and used deterministic policy as the final
+authority. The run processed 45 synthetic candidates: 31 were allowed and 14
+were quarantined. Selective recovery revoked 8 memories. Ledger verification
+reported 562 signed events, a complete anchored chain, and a consistent
+materialized view. One final rendered `SessionStart` context contained 6
+approved memory records, and the fixed synthetic attack markers were absent
+from that context.
 
-This is evidence for one host, sign-in, model, synthetic input, and date. It is
-not evidence of universal entitlement, stable latency, tool absence inside the
-Codex binary, a completed Desktop UI rehearsal, or protection against a
-compromised host. The successful run preceded the exact incremental JSONL and
-release-review hardening. A post-hardening probe was externally rate-limited
-and returned retryable, content-safe `failed/process_exit` with clean cleanup
-state; that proves fail-closed failure handling, not a successful hardened live
-completion or remote-model attestation.
+This is evidence for one host, sign-in, requested model, synthetic dataset, and
+date. The Codex event stream does not attest the returned remote model, and the
+result is not evidence of universal entitlement, stable latency, tool absence
+inside the Codex binary, a completed Desktop UI rehearsal, or protection
+against a compromised host. Earlier unavailable-model, schema-validation, and
+rate-limit attempts remain preserved as fail-closed failure-path evidence; they
+do not replace this final successful hardened run.
 
-## Primary Session ID
+## Primary Task / Session ID
 
-**`/feedback` Codex Session ID**: `REPLACE_WITH_REAL_SESSION_ID`
+**Codex task/session ID**: `019f6486-18b4-74b2-b195-3d513f4dc454`
 
-This placeholder must be replaced only with the real ID returned by `/feedback`
-in the primary project thread. Do not invent or infer an ID.
+This ID was verified through Codex task status for the primary project task. It
+was not fabricated and is not represented as the output of a `/feedback`
+command.

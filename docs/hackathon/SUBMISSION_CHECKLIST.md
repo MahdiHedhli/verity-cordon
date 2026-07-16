@@ -20,12 +20,15 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
   platform targets are explicitly qualified below and in the README.
 - [x] Developer Tools is the selected category.
 - [x] Offline path exercises real policy, ledger, view, API, and UI code.
-- [x] A bounded, sanitized `gpt-5.6-luna` subscription run completed candidate
-  extraction and semantic assessment through supported ChatGPT sign-in with no
-  API key or provider fallback before the final incremental-parser hardening;
-  the requested model is not remote attestation. The hardened follow-up was
-  rate-limited and proved fail-closed handling only, so successful hardened
-  live completion remains pending.
+- [x] The final hardened no-key subscription run requested `gpt-5.6-luna` and
+  completed extraction and semantic assessment through supported ChatGPT
+  sign-in as `live_codex_subscription` with `agentic_sandboxed` isolation. It
+  processed 45 synthetic candidates (31 allowed, 14 quarantined), revoked 8
+  memories, and verified 562 signed events with a complete anchored chain and
+  consistent view. The requested model is not remote-model attestation.
+- [x] One final rendered `SessionStart` context contained 6 approved memory
+  records, and the fixed synthetic attack markers were absent. This is
+  hook-contract evidence, not a claim of a manually observed Desktop task.
 - [ ] Final video visibly exercises and labels the selected live GPT-5.6
   contribution; pre-recording evidence or fixture output does not substitute
   for what the video shows.
@@ -74,7 +77,9 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 - [ ] Complete project description and testing instructions.
 - [ ] Public repository URL entered.
 - [ ] Public YouTube URL entered.
-- [ ] Real `/feedback` Codex Session ID from the primary project thread entered.
+- [x] Primary Codex task/session ID is recorded as
+  `019f6486-18b4-74b2-b195-3d513f4dc454`, verified through Codex task status
+  and not represented as `/feedback` command output.
 - [ ] Developer Tools selected.
 - [ ] Codex acceleration, operator decisions, GPT-5.6 runtime contribution,
   challenges, accomplishments, learning, and next steps are covered.
@@ -85,11 +90,10 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 
 1. Complete and record the timed manual Codex Desktop rehearsal on the claimed
    macOS setup; keep it separate from automated contract evidence.
-2. Run `/feedback` in the primary Codex project thread and replace the real ID.
-3. Record, edit, and upload the public YouTube video under three minutes.
-4. Review the public repository for personal data and secrets.
-5. Join/confirm hackathon registration and submit the Devpost form.
-6. Preserve judge access through the end of judging.
+2. Record, edit, and upload the public YouTube video under three minutes.
+3. Review the public repository for personal data and secrets.
+4. Join/confirm hackathon registration and submit the Devpost form.
+5. Preserve judge access through the end of judging.
 
-No video, deployment, screenshot, repository state, Session ID, or submission is
-marked complete until verified.
+No video, deployment, screenshot, repository state, or submission is marked
+complete until verified.

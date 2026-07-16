@@ -211,18 +211,18 @@ It requires no `OPENAI_API_KEY`, forwards only an allow-listed environment,
 rejects observed tool events or malformed output, and never silently falls
 back to fixtures or the direct API. The UI labels this path
 `agentic_sandboxed`; it does not inherit the direct Responses API provider's
-no-tools claim. One sanitized `gpt-5.6-luna` assessment completed through this
-path on the recorded development host. A later no-key closure run exercised
-both live candidate extraction and live semantic assessment for four synthetic
-candidates, produced allow and quarantine outcomes, and verified a 50-event
-ledger with a consistent view. `gpt-5.6-luna` is the requested local model
-identifier, not a remote model attestation. Model access and limits remain
-subscription- and workspace-dependent. Those successful runs preceded the
-release-hardening exact incremental JSONL grammar. A post-hardening probe on
-the same CLI version reached an external rate limit and verified fail-closed
-`process_exit` handling with clean cleanup state; successful revalidation of
-the hardened live completion path remains pending and is not implied by the
-earlier runs.
+no-tools claim. On 2026-07-16, the final hardened no-key run requested
+`gpt-5.6-luna`, completed live extraction and semantic assessment through the
+`live_codex_subscription` provider, and processed 45 synthetic candidates: 31
+were allowed and 14 were quarantined under deterministic policy. Selective
+recovery revoked 8 memories, and verification reported 562 signed events with
+a complete anchored chain and a consistent materialized view. One final
+rendered `SessionStart` context contained 6 approved memory records; the fixed
+synthetic attack markers were absent from that rendered context. This evidence
+exercises the subscription CLI and hook contract, not a manually observed
+Codex Desktop app task. `gpt-5.6-luna` is the requested local model identifier,
+not a remote model attestation. Model access and limits remain subscription-
+and workspace-dependent.
 
 ## Codex Integration
 
@@ -437,6 +437,12 @@ tests and a production build, and verifies the saved evaluation report. Browser
 interaction and accessibility are separate manual smoke checks, not hidden
 inside `verify.sh`.
 
+The final 2026-07-16 verification gate passed 785 backend tests plus 13
+isolated example/plugin tests at 81% backend coverage. It also passed all 11
+Control Room tests, frontend type checking, lint, and production build, along
+with the configured dependency audits. These counts describe the tested commit
+only; they are not a substitute for the security-critical scenario coverage.
+
 `verity ledger verify` checks not only the signed chain and replayed memory view
 but also evidence, active-policy, candidate, detector, semantic, and decision
 projections against their signed source events. Projection drift disables new
@@ -490,8 +496,9 @@ UI work, local browser verification, and publication preparation. The operator
 set the identity, product scope, security constitution, claims, and release
 decisions. Bounded subagents handled isolated research/review and the isolated
 Codex integration implementation/verification; the primary thread retained and
-integrated the majority of core work. Details and the required real `/feedback`
-placeholder are in
+integrated the majority of core work. Details and the primary Codex
+task/session ID, verified through Codex task status and not attributed to a
+`/feedback` response, are in
 [`docs/hackathon/CODEX_COLLABORATION.md`](docs/hackathon/CODEX_COLLABORATION.md).
 
 At runtime, Verity's explicit live modes request GPT-5.6-family identifiers for

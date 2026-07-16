@@ -14,7 +14,9 @@ Codex can carry useful knowledge between tasks, but durable memory creates a new
 security boundary: untrusted content from tools, documentation, imported files,
 or model output can be cleaned up into a persistent instruction and regain
 influence in a later session. The primary demonstration makes this time-delayed
-risk visible across two Codex Desktop tasks.
+risk visible by contrasting a shadow-admitted memory with a later rendered
+`SessionStart` context, enforcement, and selective revocation. The recorded
+evidence does not claim two manually observed Codex Desktop tasks.
 
 Verity Cordon makes durable memory explicit, attributable, policy-governed, and
 revocable. Candidate memories are traced to evidence, screened for secrets,
@@ -120,24 +122,22 @@ The direct Responses API provider has no tools, durable memory, conversation,
 or previous response. The separate subscription provider is deliberately
 labeled `agentic_sandboxed`: it runs a bounded Codex child, rejects any observed
 tool activity, and makes no claim that tools are absent inside the Codex binary.
-On 2026-07-15, an initial sanitized synthetic assessment succeeded through
-Codex CLI `0.144.4` and ChatGPT sign-in while requesting `gpt-5.6-luna`, returned
-`live_codex_subscription`, and recommended quarantine in 11,026 ms. A later
-no-key closure run exercised both live candidate extraction and live semantic
-assessment: four candidates produced allow and quarantine outcomes, and the
-50-event ledger verified with a consistent materialized view in 45,806 ms. The
-strict live validator first rejected a nullable TTL field omitted from the
-schema's required list; Verity fixed that contract and added a regression test
-before the successful rerun. An earlier explicit request for base `gpt-5.6`
-was unavailable for that identity and failed without fallback. These runs prove
-bounded execution on one host and date, not universal plan entitlement, stable
-latency, remote-model attestation, or a credentialed direct-API run. In
-particular, `requested_model=gpt-5.6-luna` is local configuration evidence;
-`returned_model` remains null for subscription assessments. The successful
-runs preceded the final exact incremental JSONL hardening. A post-hardening
-probe reached an external rate limit and verified retryable fail-closed
-`process_exit` handling with clean cleanup state, but did not revalidate a
-successful hardened completion; that evidence remains pending.
+On 2026-07-16, the final hardened no-key pipeline completed through supported
+ChatGPT sign-in. It requested `gpt-5.6-luna`, recorded
+`live_codex_subscription` with `agentic_sandboxed` isolation, and exercised
+both live candidate extraction and live semantic assessment. The run processed
+45 synthetic candidates: deterministic policy allowed 31 and quarantined 14.
+Selective recovery revoked 8 memories. Verification reported 562 signed
+events, a complete anchored chain, and a consistent materialized view. One
+final rendered `SessionStart` context contained 6 approved memory records, and
+the fixed synthetic attack markers were absent from that context. Earlier
+unavailable-model, strict-schema, and rate-limit attempts remained fail closed
+and led to regression coverage before the final run. This proves bounded
+execution on one host and date, not universal plan entitlement, stable latency,
+remote-model attestation, a credentialed direct-API run, or a manually observed
+Desktop app task. In particular, `requested_model=gpt-5.6-luna` is local
+configuration evidence; `returned_model` remains null for subscription
+assessments.
 
 ## Challenges
 
@@ -250,6 +250,13 @@ inspect shadow admission, enforcement, selective
 rescan/revocation, simulated SessionStart rendering, rebuild, and ledger
 verification. Run the full critical suite with `./scripts/verify.sh`.
 
+The final recorded gate passed 785 backend tests plus 13 isolated
+example/plugin tests at 81% backend coverage, all 11 Control Room tests,
+frontend type checking, lint, and production build, and both configured
+dependency audits. The 20-sample synthetic evaluation reported 0
+fixture-scoped false positives and 0 fixture-scoped false negatives; these are
+dataset results, not universal accuracy claims.
+
 For stage reliability, the one-command offline path invokes the reviewed fixture
 over bounded stdio under a minimal environment, validates its inert safety flag,
 and supplies the returned synthetic response directly to the same memory
@@ -279,4 +286,5 @@ observations are reported separately as manual smoke evidence.
 
 - **Repository**: https://github.com/MahdiHedhli/verity-cordon
 - **Public YouTube demo**: `REPLACE_WITH_PUBLIC_YOUTUBE_URL`
-- **Codex `/feedback` Session ID**: `REPLACE_WITH_REAL_SESSION_ID`
+- **Codex task/session ID**: `019f6486-18b4-74b2-b195-3d513f4dc454`
+  (verified through Codex task status; not represented as `/feedback` output)

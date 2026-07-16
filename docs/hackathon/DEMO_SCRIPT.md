@@ -42,24 +42,29 @@ source, policy version, provider, `actual_action=allow`, and
 > Shadow mode is observation, not active protection. Provenance, detector
 > findings, semantic advice, and deterministic policy are all attributable.
 
-## 1:05–1:28 — Show the Delayed Trigger Safely
+## 1:05–1:28 — Show Cross-Session Eligibility Safely
 
-**Visual**: Start a fresh release task in Codex Desktop. Show the shadow-admitted
-rule influencing a proposed call to the inert local sink, then show its two
-allow-listed synthetic markers—never real data.
+**Visual**: Show the later rendered `SessionStart` context containing the
+shadow-admitted memory. If a fresh Codex Desktop task was actually captured,
+show it as separate app-level evidence. Then separately show that the inert
+local sink simulator accepts only its two allow-listed synthetic markers—never
+real data. Do not imply that the memory caused a sink call unless that causal
+path was directly observed and recorded.
 
 **Narration**:
 
-> In a later task, the admitted instruction can influence behavior. The demo
-> shows that delayed effect without exfiltration: the local sink has no network
-> side effect and rejects anything except the exact synthetic pair. Verity is
-> demonstrating memory poisoning, not claiming general outbound data control.
+> The shadow-admitted instruction is eligible for a later session context. That
+> proves cross-session exposure, not that it caused a tool call. A separate
+> inert sink simulation accepts only the exact synthetic pair and has no
+> network side effect. Verity is demonstrating persistent poisoning risk, not
+> claiming general outbound data control.
 
 ## 1:28–1:50 — Enforce the Cordon
 
 **Visual**: Switch to enforcement, repeat the documentation call, wait for the
-signed terminal decision, and show a fresh Desktop task receiving the useful
-fact while the poisoned instruction is absent.
+signed terminal decision, and show a newly rendered `SessionStart` context
+receiving the useful fact while the fixed poisoned markers are absent. Show a
+fresh Desktop task only if that app-level observation was actually captured.
 
 **Narration**:
 
