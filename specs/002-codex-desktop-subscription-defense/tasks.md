@@ -309,7 +309,8 @@ gate, and leave only honest operator-owned submission work.
   acceptance scenarios to 66 tasks, found no ambiguity, duplication,
   constitution violation, unmapped task, or deferred-scope leakage, and added no
   convergence task.
-- `./scripts/verify.sh` passed 768 backend tests with 81% coverage, 13 isolated
+- The pre-final-review `./scripts/verify.sh` gate passed 768 backend tests with
+  81% coverage, 13 isolated
   example/plugin tests, 11 Control Room tests, formatting, lint, mypy, contracts,
   frontend build, dependency audits, and the 20-sample fixture evaluation.
 - PR #3's stale stdin/EOF finding was answered by existing drain, close,
@@ -325,10 +326,27 @@ gate, and leave only honest operator-owned submission work.
   OpenAI refusal/incomplete attribution. No P1/P2 remained; focused Desktop,
   semantic projection, and OpenAI provenance suites passed 95, 144, and 110
   tests respectively.
+- CodeRabbit's final two findings were closed by atomically migrating eligible
+  legacy v1.0/v1.1 installed and v1.1 failed receipts to a schema-valid,
+  verified-state-bound v1.2 removal journal before teardown mutation, rejecting
+  undeclared legacy-version/plan hybrids, and requiring the locally trusted
+  requested model on current failed OpenAI and Codex-subscription assessments.
+  Focused Desktop and semantic/provider suites passed 97 and 147 tests,
+  respectively, and independent re-review found no P1/P2 issue.
+- The definitive unchanged-tree `./scripts/verify.sh` gate passed 779 backend
+  tests in 336.95 seconds with 81% coverage, 13 isolated example/plugin tests,
+  all 11 Control Room tests, Ruff, mypy across 60 source files, contracts,
+  frontend build, dependency audits, and the 20-sample fixture evaluation. A
+  prior run failed closed at 778/779 when the real SessionStart readiness
+  subprocess exceeded its fixed deadline under unrelated host CPU load; the
+  affected test then passed in isolation, nine repetitions, and the unchanged
+  full rerun. No deadline or trust binding was weakened.
 - Pushed commit `7f667e9c40db9f455504c8396d23ae02eb8a8544` passed no-key bootstrap,
   the 65-event offline demo, and the complete 768-test gate from a new private
   trusted clone; the clone remained clean.
-- PR #3 is mergeable with all 11 review threads resolved and CodeRabbit green.
+- PR #3 was mergeable with the first 11 review threads resolved and CodeRabbit
+  green before the final two findings; their fixes are awaiting pushed-head
+  review closure.
 - T066 remains open only for post-merge public-main verification.
 
 ---

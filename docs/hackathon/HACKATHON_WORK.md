@@ -55,6 +55,7 @@ renamed codebase.
 | `3d8a91d` | Closed release-review integration, recovery, provenance, and race gaps | Complete |
 | `d09b2b0` | Enforced private per-segment installer directory creation and validation | Complete |
 | `f7b2050` | Closed final receipt, semantic provenance, and signed-event review gaps | Complete |
+| `cfa25ef` | Finalized receipt migration and failed-provider provenance contracts | Complete |
 
 The feature-001 branch was fast-forwarded into `main` without rewriting history
 or force-pushing. Sprint 002 subsequently merged through PR #1, and its
@@ -437,13 +438,13 @@ expected state. It also added interruption, drift, concurrency, replacement,
 non-disclosure, and recovery regressions. Independent re-reviews found no
 remaining P1 or P2 issue.
 
-The final local `./scripts/verify.sh` release gate passed 768 backend tests in
-248.70 seconds with 81% aggregate coverage, 13 isolated example/plugin tests,
-and 6 Control Room files / 11 tests. Ruff formatting and lint, mypy across 60
-source files, OpenAPI and JSON Schema validation, frontend type checking, lint,
-production build, Python and npm dependency audits, and the 20-sample fixture
-evaluation all passed. The evaluation remained fixture-scoped at 0 false
-positives and 0 false negatives. A first verification process became
+The pre-final-review local `./scripts/verify.sh` release gate passed 768 backend
+tests in 248.70 seconds with 81% aggregate coverage, 13 isolated example/plugin
+tests, and 6 Control Room files / 11 tests. Ruff formatting and lint, mypy across
+60 source files, OpenAPI and JSON Schema validation, frontend type checking,
+lint, production build, Python and npm dependency audits, and the 20-sample
+fixture evaluation all passed. The evaluation remained fixture-scoped at 0
+false positives and 0 false negatives. A first verification process became
 unobservable after macOS cloud-conflict copies appeared only inside the
 generated `.venv`; those duplicate generated files were removed without
 changing tracked source, package import was rechecked, and the complete gate was
@@ -512,8 +513,35 @@ class without attaching response-model provenance. Signed failure events use
 the trusted locally requested model, while successful OpenAI events retain the
 attested response model. Final independent re-reviews found no P1 or P2 issue.
 Focused results included 95 Desktop receipt/setup tests, 144 semantic
-schema/projection tests, and 110 OpenAI provenance tests. The complete final gate
-above then passed with 768 backend tests.
+schema/projection tests, and 110 OpenAI provenance tests. That complete gate
+passed with 768 backend tests.
+
+CodeRabbit's final two findings were also accepted and closed in `cfa25ef`.
+Legacy v1.0/v1.1 installed and v1.1 failed Desktop receipts now migrate
+atomically to a schema-valid v1.2 removal journal bound to the verified private
+configuration mode, unrelated-projection digest, current configuration digest,
+and deterministic artifact-removal plan before teardown mutates configuration
+or artifacts. Undeclared legacy-version/removal-plan hybrids and legacy
+`removing` receipts without a reconstructable plan fail closed. Current
+SemanticAssessment 1.0.1 failures from the OpenAI or Codex-subscription
+providers now require the locally trusted requested model in both Pydantic and
+JSON Schema; fixture failures and explicitly versioned 1.0.0 replay preserve
+their documented compatibility. Focused validation passed 97 Desktop
+receipt/setup tests and 147 semantic/provider projection tests, with independent
+reviews finding no remaining P1 or P2 issue.
+
+The definitive unchanged-tree `./scripts/verify.sh` gate then passed 779 backend
+tests in 336.95 seconds with 81% coverage, 13 isolated example/plugin tests, all
+11 Control Room tests, Ruff, mypy across 60 source files, OpenAPI and JSON Schema
+validation, the production frontend build, Python and npm dependency audits,
+and the 20-sample fixture evaluation at zero fixture-scoped false positives and
+false negatives. An earlier run reached 778/779 because the real SessionStart
+readiness subprocess missed its fixed three-second deadline while unrelated
+CPU-intensive suites were running; the fail-closed preview digest rejected the
+changed readiness state. The test passed immediately in isolation and nine
+consecutive repetitions, and the same source tree passed the complete gate once
+the external load ended. No timeout, trust binding, or security behavior was
+relaxed.
 
 ## New Work versus Prior Art
 
