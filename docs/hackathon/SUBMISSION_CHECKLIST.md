@@ -29,9 +29,10 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 - [x] One final rendered `SessionStart` context contained 6 approved memory
   records, and the fixed synthetic attack markers were absent. This is
   hook-contract evidence, not a claim of a manually observed Desktop task.
-- [ ] Final video visibly exercises and labels the selected live GPT-5.6
-  contribution; pre-recording evidence or fixture output does not substitute
-  for what the video shows.
+- [x] The final 2:55 local render visibly exercises and labels the selected
+  live subscription contribution, deterministic policy authority, shadow and
+  enforcement decisions, revocation, and signed-ledger evidence. Its reviewed
+  metadata and checksum are recorded in `VIDEO_EVIDENCE.md`.
 - [x] Synthetic fixture reads no real environment and sends nothing externally.
 - [x] Temporary-home Desktop fixture setup, status, bounded probe, interruption
   recovery, drift refusal, and exact teardown contracts pass.
@@ -90,10 +91,10 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 
 1. Complete and record the timed manual Codex Desktop rehearsal on the claimed
    macOS setup; keep it separate from automated contract evidence.
-2. Record, edit, and upload the public YouTube video under three minutes.
+2. Upload the completed 2:55 video to public YouTube and verify it logged out.
 3. Review the public repository for personal data and secrets.
 4. Join/confirm hackathon registration and submit the Devpost form.
 5. Preserve judge access through the end of judging.
 
-No video, deployment, screenshot, repository state, or submission is marked
+No public video URL, deployment, repository state, or submission is marked
 complete until verified.
