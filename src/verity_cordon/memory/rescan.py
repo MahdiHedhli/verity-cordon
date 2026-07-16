@@ -37,7 +37,7 @@ from verity_cordon.core.models import (
 )
 from verity_cordon.crypto.canonical import canonical_json, sha256_hex
 from verity_cordon.ledger.verify import LedgerVerifier
-from verity_cordon.memory.service import MemoryService
+from verity_cordon.memory.service import MemoryService, semantic_model_identifier_for_event
 from verity_cordon.policies.models import PolicyDocument
 from verity_cordon.semantic.base import run_semantic_assessment
 from verity_cordon.telemetry.instrumentation import span
@@ -333,9 +333,7 @@ class RetroactiveRescanService:
             raise ConflictError("The active evaluation configuration changed during rescan.")
 
         occurred_at = format_utc()
-        semantic_model_identifier = (
-            (semantic.returned_model or semantic.requested_model) if semantic is not None else None
-        )
+        semantic_model_identifier = semantic_model_identifier_for_event(semantic)
         common = self._event_common(
             candidate=candidate,
             target=target,

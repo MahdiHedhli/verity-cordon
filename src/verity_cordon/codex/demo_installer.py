@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import http.client
 import json
+import math
 import os
 import re
 import signal
@@ -23,7 +24,8 @@ from collections import OrderedDict
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from datetime import time as datetime_time
 from pathlib import Path
 from typing import Any, Final, Literal, Protocol, cast
 
@@ -35,6 +37,12 @@ except ImportError:  # pragma: no cover - Windows remains an unverified target.
 import tomlkit
 from pydantic import Field, ValidationError, model_validator
 
+from verity_cordon.codex.installer import (
+    LEGACY_RECEIPT_VERSION as NORMAL_LEGACY_RECEIPT_VERSION,
+)
+from verity_cordon.codex.installer import (
+    RECEIPT_VERSION as NORMAL_RECEIPT_VERSION,
+)
 from verity_cordon.codex.installer import (
     CodexDoctorReport,
     CommandResult,
@@ -59,7 +67,8 @@ DEMO_DIRECTORY: Final = "desktop-demo"
 STAGING_DIRECTORY: Final = "fixture"
 STAGED_SCRIPT_NAME: Final = "poisoned_docs_server.py"
 FIXTURE_SOURCE: Final = Path("examples/poisoned-docs-mcp/src/poisoned_docs_mcp/server.py")
-RECEIPT_VERSION: Final = "1.0.0"
+RECEIPT_VERSION: Final = "1.2.0"
+LEGACY_RECEIPT_VERSION: Final = "1.0.0"
 CANONICALIZATION: Final = "VC-TOML-MANAGED-1"
 EMPTY_SHA256: Final = hashlib.sha256(b"").hexdigest()
 MAX_CONFIG_BYTES: Final = 4_194_304
@@ -184,6 +193,12 @@ class _Artifact(StrictModel):
     file_mode: Literal["0600"]
 
 
+class _ArtifactRemoval(StrictModel):
+    relative_path: Literal["poisoned_docs_server.py"]
+    quarantine_relative_path: str = Field(min_length=1, max_length=512)
+    state: Literal["planned", "removed"]
+
+
 class _ManagedOriginal(StrictModel):
     present: Literal[False]
     digest: None
@@ -219,7 +234,7 @@ class _ManagedEntry(StrictModel):
 
 
 class _NormalIntegration(StrictModel):
-    receipt_version: Literal["1.0.0"]
+    receipt_version: Literal["1.0.0", "2.0.0"]
     receipt_path: str = Field(min_length=1, max_length=4096)
     receipt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     doctor_ready: Literal[True]
@@ -262,11 +277,11 @@ class _ReadinessResponse(StrictModel):
 
 
 class _DesktopReceipt(StrictModel):
-    receipt_version: Literal["1.0.0"]
+    receipt_version: Literal["1.0.0", "1.1.0", "1.2.0"]
     installation_id: str = Field(
         pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
     )
-    state: Literal["prepared", "installed", "removing", "removed"]
+    state: Literal["prepared", "failed", "installed", "removing", "removed"]
     operator_confirmed: Literal[True]
     confirmation_method: Literal["cli_yes", "interactive"]
     preview_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -279,7 +294,10 @@ class _DesktopReceipt(StrictModel):
     staging_root: str = Field(min_length=1, max_length=4096)
     config_existed_before: bool
     config_before_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    config_mode_before: int | None = Field(default=None, ge=0, le=0o777)
+    config_unrelated_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     config_after_sha256: str | None
+    failure_class: Literal["config_projection_mismatch"] | None = None
     backup_path: None
     backup_sha256: None
     managed_entry_original: _ManagedOriginal
@@ -287,6 +305,7 @@ class _DesktopReceipt(StrictModel):
     codex_runtime: _RuntimeIdentity
     python_runtime: _RuntimeIdentity
     artifacts: tuple[_Artifact, ...] = Field(min_length=1, max_length=8)
+    artifact_removals: tuple[_ArtifactRemoval, ...] | None = None
     normal_integration: _NormalIntegration
     teardown: _Teardown
 
@@ -296,23 +315,76 @@ class _DesktopReceipt(StrictModel):
             _validate_time(value)
         if not self.config_existed_before and self.config_before_sha256 != EMPTY_SHA256:
             raise ValueError("new config must use the empty digest")
+        if self.receipt_version in {"1.1.0", RECEIPT_VERSION}:
+            if self.config_mode_before is None or self.config_unrelated_sha256 is None:
+                raise ValueError("config-bound receipt version requires config bindings")
+            if self.config_mode_before & 0o077 or not self.config_mode_before & 0o400:
+                raise ValueError("config mode must remain owner-readable and private")
+        if self.artifact_removals is not None:
+            if len(self.artifact_removals) != len(self.artifacts):
+                raise ValueError("artifact removal plan does not match artifacts")
+            for artifact, removal in zip(self.artifacts, self.artifact_removals, strict=True):
+                if (
+                    removal.relative_path != artifact.relative_path
+                    or removal.quarantine_relative_path
+                    != _artifact_quarantine_relative_path(
+                        artifact.relative_path,
+                        self.installation_id,
+                    )
+                ):
+                    raise ValueError("artifact removal plan is not receipt-bound")
         if self.state == "prepared":
-            valid = self.config_after_sha256 is None and _empty_teardown(self.teardown)
+            valid = (
+                self.config_after_sha256 is None
+                and self.failure_class is None
+                and _empty_teardown(self.teardown)
+                and self.artifact_removals is None
+            )
+        elif self.state == "failed":
+            valid = (
+                self.receipt_version in {"1.1.0", RECEIPT_VERSION}
+                and _is_sha(self.config_after_sha256)
+                and self.failure_class == "config_projection_mismatch"
+                and _empty_teardown(self.teardown)
+                and self.artifact_removals is None
+            )
         elif self.state == "installed":
-            valid = _is_sha(self.config_after_sha256) and _empty_teardown(self.teardown)
-        elif self.state == "removing":
             valid = (
                 _is_sha(self.config_after_sha256)
+                and self.failure_class is None
+                and _empty_teardown(self.teardown)
+                and self.artifact_removals is None
+            )
+        elif self.state == "removing":
+            valid = (
+                self.receipt_version == RECEIPT_VERSION
+                and _is_sha(self.config_after_sha256)
+                and self.failure_class is None
                 and self.teardown.requested_at is not None
                 and self.teardown.completed_at is None
                 and self.teardown.config_after_teardown_sha256 is None
+                and self.artifact_removals is not None
+                and all(item.state == "planned" for item in self.artifact_removals)
             )
         else:
+            if self.receipt_version == RECEIPT_VERSION:
+                removal_state_valid = bool(
+                    self.artifact_removals is not None
+                    and all(item.state == "removed" for item in self.artifact_removals)
+                )
+            else:
+                # Older terminal receipts remain inspectable and archivable. An
+                # older in-flight removal without a persisted plan is rejected
+                # above and undeclared legacy-version/planned-removal hybrids
+                # are rejected rather than silently accepted.
+                removal_state_valid = self.artifact_removals is None
             valid = (
                 _is_sha(self.config_after_sha256)
+                and self.failure_class is None
                 and self.teardown.requested_at is not None
                 and self.teardown.completed_at is not None
                 and _is_sha(self.teardown.config_after_teardown_sha256)
+                and removal_state_valid
             )
         if not valid:
             raise ValueError("receipt state fields do not match")
@@ -327,15 +399,32 @@ class _DesktopReceipt(StrictModel):
 class _PreviewSnapshot:
     digest: str
     config_sha256: str
+    config_head: _FileHead
+    config_mode: int
+    config_unrelated_sha256: str
     fixture_sha256: str
     fixture_size: int
     codex_runtime: dict[str, Any]
     python_runtime: dict[str, Any]
     normal_receipt_sha256: str
+    normal_receipt_version: str
     managed_entry: dict[str, Any]
     config_existed: bool
     managed_parent_present: bool
     prior_removed_receipt_sha256: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class _FileHead:
+    """One no-follow observation used to bind a later local mutation."""
+
+    exists: bool
+    sha256: str
+    size: int
+    device: int | None
+    inode: int | None
+    owner: int | None
+    mode: int | None
 
 
 _preview_cache: OrderedDict[str, _PreviewSnapshot] = OrderedDict()
@@ -393,6 +482,12 @@ def _validate_time(value: str) -> None:
 
 def _is_sha(value: object) -> bool:
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def _artifact_quarantine_relative_path(relative_path: str, installation_id: str) -> str:
+    artifact_path = Path(relative_path)
+    quarantine_name = f".{artifact_path.name}.verity-remove-{installation_id}"
+    return str(artifact_path.parent / quarantine_name)
 
 
 def _empty_teardown(value: _Teardown) -> bool:
@@ -472,16 +567,123 @@ def _hash_regular(path: Path, maximum: int, **kwargs: bool) -> tuple[str, int]:
     return _sha256_bytes(content), details.st_size
 
 
+def _absent_head() -> _FileHead:
+    return _FileHead(False, EMPTY_SHA256, 0, None, None, None, None)
+
+
+def _head_from_read(content: bytes, details: os.stat_result) -> _FileHead:
+    return _FileHead(
+        True,
+        _sha256_bytes(content),
+        details.st_size,
+        details.st_dev,
+        details.st_ino,
+        getattr(details, "st_uid", None),
+        stat.S_IMODE(details.st_mode),
+    )
+
+
+def _read_file_snapshot(
+    path: Path,
+    maximum: int,
+    *,
+    private: bool,
+) -> tuple[bytes, _FileHead]:
+    """Read a regular file and prove the directory entry still names that inode."""
+
+    try:
+        before = path.lstat()
+    except FileNotFoundError:
+        return b"", _absent_head()
+    except OSError as exc:
+        raise DesktopDemoError("unsafe_file") from exc
+    if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+        raise DesktopDemoError("unsafe_file")
+    content, opened = _read_regular(path, maximum, private=private)
+    try:
+        after = path.lstat()
+    except OSError as exc:
+        raise DesktopDemoError("file_state_changed") from exc
+    opened_identity = (
+        opened.st_dev,
+        opened.st_ino,
+        opened.st_size,
+        getattr(opened, "st_uid", None),
+        stat.S_IMODE(opened.st_mode),
+    )
+    if opened_identity != (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        getattr(before, "st_uid", None),
+        stat.S_IMODE(before.st_mode),
+    ) or opened_identity != (
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+        getattr(after, "st_uid", None),
+        stat.S_IMODE(after.st_mode),
+    ):
+        raise DesktopDemoError("file_state_changed")
+    return content, _head_from_read(content, opened)
+
+
+def _assert_file_head(
+    path: Path,
+    expected: _FileHead,
+    *,
+    maximum: int,
+    private: bool,
+    error: str,
+) -> _FileHead:
+    try:
+        _, current = _read_file_snapshot(path, maximum, private=private)
+    except DesktopDemoError as exc:
+        raise DesktopDemoError(error) from exc
+    if current != expected:
+        raise DesktopDemoError(error)
+    return current
+
+
+def _assert_expected_write_target(
+    path: Path,
+    *,
+    expected_exists: bool,
+    expected_sha256: str,
+    maximum: int,
+    error: str,
+) -> None:
+    try:
+        _, current = _read_file_snapshot(path, maximum, private=True)
+    except DesktopDemoError as exc:
+        raise DesktopDemoError(error) from exc
+    if current.exists != expected_exists or current.sha256 != expected_sha256:
+        raise DesktopDemoError(error)
+
+
 def _atomic_write(
     path: Path,
     content: bytes,
     *,
     mode: int = 0o600,
+    expected_exists: bool | None = None,
     expected_sha256: str | None = None,
-) -> None:
-    if path.exists() and path.is_symlink():
+    expected_maximum: int = MAX_CONFIG_BYTES,
+    expected_error: str = "config_changed_after_preview",
+) -> _FileHead:
+    if (expected_exists is None) != (expected_sha256 is None):
+        raise DesktopDemoError("expected_file_state_invalid")
+    if expected_exists is not None and expected_sha256 is not None:
+        _assert_expected_write_target(
+            path,
+            expected_exists=expected_exists,
+            expected_sha256=expected_sha256,
+            maximum=expected_maximum,
+            error=expected_error,
+        )
+    elif path.exists() and path.is_symlink():
         raise DesktopDemoError("unsafe_write_target")
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    _validated_demo_root(path.parent, label="write_target")
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temporary = Path(temporary_name)
     try:
@@ -490,13 +692,14 @@ def _atomic_write(
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
-        if expected_sha256 is not None:
-            if path.exists() or path.is_symlink():
-                current, _ = _read_regular(path, MAX_CONFIG_BYTES, private=True)
-            else:
-                current = b""
-            if _sha256_bytes(current) != expected_sha256:
-                raise DesktopDemoError("config_changed_after_preview")
+        if expected_exists is not None and expected_sha256 is not None:
+            _assert_expected_write_target(
+                path,
+                expected_exists=expected_exists,
+                expected_sha256=expected_sha256,
+                maximum=expected_maximum,
+                error=expected_error,
+            )
         os.replace(temporary, path)
         if os.name != "nt":
             directory = os.open(
@@ -507,13 +710,43 @@ def _atomic_write(
                 os.fsync(directory)
             finally:
                 os.close(directory)
+        written, head = _read_file_snapshot(path, max(len(content), 1), private=True)
+        if written != content or head.mode != mode:
+            raise DesktopDemoError("atomic_write_verification_failed")
+        return head
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
 
 
 def _private_directory(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        missing: list[Path] = []
+        current = path
+        while not current.exists():
+            if current.is_symlink() or current.parent == current:
+                raise DesktopDemoError("unsafe_demo_directory")
+            missing.append(current)
+            current = current.parent
+        snapshot_trusted_directory(
+            current,
+            current_user_only=False,
+            directory_label="demo directory parent",
+            ancestor_label="demo directory parent",
+        )
+        for directory in reversed(missing):
+            directory.mkdir(parents=False, exist_ok=False, mode=0o700)
+            directory.chmod(0o700)
+            snapshot_trusted_directory(
+                directory,
+                current_user_only=True,
+                directory_label="demo directory",
+                ancestor_label="demo directory",
+            )
+    except DesktopDemoError:
+        raise
+    except (ConfigurationError, OSError) as exc:
+        raise DesktopDemoError("unsafe_demo_directory") from exc
     try:
         details = path.lstat()
     except OSError as exc:
@@ -627,14 +860,12 @@ def _runtime_identity(
     }
 
 
-def _load_config(path: Path) -> tuple[Any, bytes]:
-    if not path.exists():
-        if path.is_symlink():
-            raise DesktopDemoError("unsafe_config")
-        return tomlkit.document(), b""
+def _load_config(path: Path) -> tuple[Any, bytes, _FileHead]:
     try:
-        raw, _ = _read_regular(path, MAX_CONFIG_BYTES, private=True)
-        return tomlkit.parse(raw.decode("utf-8", errors="strict")), raw
+        raw, head = _read_file_snapshot(path, MAX_CONFIG_BYTES, private=True)
+        if not head.exists:
+            return tomlkit.document(), b"", head
+        return tomlkit.parse(raw.decode("utf-8", errors="strict")), raw, head
     except DesktopDemoError:
         raise DesktopDemoError("unsafe_config") from None
     except (UnicodeError, tomlkit.exceptions.ParseError) as exc:
@@ -647,6 +878,101 @@ def _plain(value: Any) -> Any:
     if isinstance(value, list):
         return [_plain(item) for item in value]
     return value
+
+
+def _unrelated_config_values(
+    document: Any,
+    *,
+    managed_parent_present_before: bool,
+) -> dict[str, Any]:
+    """Return parsed config values outside the single managed demo entry."""
+
+    plain = _plain(document)
+    if not isinstance(plain, dict):
+        raise DesktopDemoError("config_invalid")
+    unrelated = dict(plain)
+    servers = unrelated.get("mcp_servers")
+    if servers is None:
+        return unrelated
+    if not isinstance(servers, dict):
+        raise DesktopDemoError("config_invalid")
+    remaining = dict(servers)
+    remaining.pop(MANAGED_NAME, None)
+    if remaining or managed_parent_present_before:
+        unrelated["mcp_servers"] = remaining
+    else:
+        unrelated.pop("mcp_servers", None)
+    return unrelated
+
+
+def _parsed_config_values_match(left: Any, right: Any) -> bool:
+    """Compare parsed TOML values without rendering their possibly secret content."""
+
+    if isinstance(left, Mapping) and isinstance(right, Mapping):
+        return set(left) == set(right) and all(
+            _parsed_config_values_match(left[key], right[key]) for key in left
+        )
+    if isinstance(left, list) and isinstance(right, list):
+        return len(left) == len(right) and all(
+            _parsed_config_values_match(left_item, right_item)
+            for left_item, right_item in zip(left, right, strict=True)
+        )
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, float) and math.isnan(left):
+        return math.isnan(right)
+    return bool(left == right)
+
+
+def _typed_toml_value(value: Any) -> Any:
+    """Encode parsed TOML values with explicit type tags for a safe digest."""
+
+    if isinstance(value, Mapping):
+        return {
+            "type": "table",
+            "value": {
+                str(key): _typed_toml_value(value[key])
+                for key in sorted(value, key=lambda item: str(item))
+            },
+        }
+    if isinstance(value, list):
+        return {"type": "array", "value": [_typed_toml_value(item) for item in value]}
+    if isinstance(value, bool):
+        return {"type": "boolean", "value": value}
+    if isinstance(value, int):
+        return {"type": "integer", "value": str(value)}
+    if isinstance(value, float):
+        if math.isnan(value):
+            rendered = "nan"
+        elif math.isinf(value):
+            rendered = "-inf" if value < 0 else "inf"
+        else:
+            rendered = value.hex()
+        return {"type": "float", "value": rendered}
+    if isinstance(value, str):
+        return {"type": "string", "value": str(value)}
+    if isinstance(value, datetime):
+        return {"type": "offset_datetime", "value": value.isoformat()}
+    if isinstance(value, date):
+        return {"type": "local_date", "value": value.isoformat()}
+    if isinstance(value, datetime_time):
+        return {"type": "local_time", "value": value.isoformat()}
+    raise DesktopDemoError("config_invalid")
+
+
+def _unrelated_config_digest(values: dict[str, Any]) -> str:
+    try:
+        return _sha256_bytes(canonical_json_bytes(_typed_toml_value(values)))
+    except (TypeError, ValueError) as exc:
+        raise DesktopDemoError("config_invalid") from exc
+
+
+def _config_write_mode(head: _FileHead) -> int:
+    if not head.exists:
+        return 0o600
+    if head.mode is None or head.mode & 0o077 or not head.mode & 0o400:
+        raise DesktopDemoError("unsafe_config")
+    return head.mode
 
 
 def _managed_from_document(document: Any) -> dict[str, Any] | None:
@@ -767,9 +1093,12 @@ def _normal_receipt(data_dir: Path) -> tuple[Path, str, str]:
         parsed = parse_json_strict(raw)
     except (DesktopDemoError, TypeError, ValueError) as exc:
         raise DesktopDemoError("normal_integration_not_ready") from exc
-    if not isinstance(parsed, dict) or parsed.get("schema_version") != RECEIPT_VERSION:
+    if not isinstance(parsed, dict) or parsed.get("schema_version") not in {
+        NORMAL_LEGACY_RECEIPT_VERSION,
+        NORMAL_RECEIPT_VERSION,
+    }:
         raise DesktopDemoError("normal_integration_not_ready")
-    return path, _sha256_bytes(raw), RECEIPT_VERSION
+    return path, _sha256_bytes(raw), cast(str, parsed["schema_version"])
 
 
 def _normal_receipt_matches(receipt: dict[str, Any], data_dir: Path) -> bool:
@@ -810,11 +1139,17 @@ def _snapshot(
     prior_removed_receipt_sha256: str | None = None,
 ) -> _PreviewSnapshot:
     config_path = codex_home / "config.toml"
-    document, raw_config = _load_config(config_path)
-    config_existed = config_path.exists()
+    document, raw_config, config_head = _load_config(config_path)
+    config_existed = config_head.exists
+    config_mode = _config_write_mode(config_head)
     managed_parent_present = _managed_parent_present(document)
     if _managed_from_document(document) is not None:
         raise DesktopDemoError("reserved_name_exists")
+    unrelated = _unrelated_config_values(
+        document,
+        managed_parent_present_before=managed_parent_present,
+    )
+    unrelated_digest = _unrelated_config_digest(unrelated)
     source = repository_root / FIXTURE_SOURCE
     try:
         fixture_digest, fixture_size = _hash_regular(source, MAX_FIXTURE_BYTES, private=False)
@@ -838,12 +1173,13 @@ def _snapshot(
         codex_home=codex_home,
     )
     try:
-        normal_path, normal_digest, _ = _normal_receipt(data_dir)
+        normal_path, normal_digest, normal_version = _normal_receipt(data_dir)
     except DesktopDemoError:
         if normal_ready:
             raise
         normal_path = data_dir / NORMAL_RECEIPT_FILENAME
         normal_digest = EMPTY_SHA256
+        normal_version = NORMAL_RECEIPT_VERSION
     staging_root = data_dir / DEMO_DIRECTORY / STAGING_DIRECTORY
     managed = _managed_entry(python, staging_root)
     payload = {
@@ -852,6 +1188,8 @@ def _snapshot(
         "config_path": str(config_path),
         "config_sha256": _sha256_bytes(raw_config),
         "config_existed": config_existed,
+        "config_mode": config_mode,
+        "config_unrelated_sha256": unrelated_digest,
         "data_dir": str(data_dir),
         "fixture_sha256": fixture_digest,
         "fixture_size": fixture_size,
@@ -859,6 +1197,7 @@ def _snapshot(
         "python_runtime": python_identity,
         "normal_receipt_path": str(normal_path),
         "normal_receipt_sha256": normal_digest,
+        "normal_receipt_version": normal_version,
         "normal_ready": normal_ready,
         "managed_entry": managed,
         "managed_parent_present": managed_parent_present,
@@ -868,11 +1207,15 @@ def _snapshot(
     snapshot = _PreviewSnapshot(
         digest=digest,
         config_sha256=_sha256_bytes(raw_config),
+        config_head=config_head,
+        config_mode=config_mode,
+        config_unrelated_sha256=unrelated_digest,
         fixture_sha256=fixture_digest,
         fixture_size=fixture_size,
         codex_runtime=codex_identity,
         python_runtime=python_identity,
         normal_receipt_sha256=normal_digest,
+        normal_receipt_version=normal_version,
         managed_entry=managed,
         config_existed=config_existed,
         managed_parent_present=managed_parent_present,
@@ -948,7 +1291,9 @@ def _result(
 
 def _receipt_json(value: dict[str, Any]) -> bytes:
     try:
-        validated = _DesktopReceipt.model_validate(value).model_dump(mode="json")
+        validated = _DesktopReceipt.model_validate(value).model_dump(
+            mode="json", exclude_unset=True
+        )
     except ValidationError as exc:
         raise DesktopDemoError("receipt_invalid") from exc
     return (json.dumps(validated, indent=2, sort_keys=True) + "\n").encode("utf-8")
@@ -1016,16 +1361,18 @@ def _receipt_managed_digest_valid(receipt: dict[str, Any]) -> bool:
     return managed.get("sha256") == expected
 
 
-def parse_desktop_demo_receipt(
+def _parse_desktop_demo_receipt_with_head(
     path: Path,
     *,
     codex_home: Path,
     data_dir: Path,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], _FileHead]:
     """Parse a private receipt with duplicate-key, schema, and scope checks."""
 
     try:
-        raw, _ = _read_regular(path, MAX_RECEIPT_BYTES, private=True)
+        raw, head = _read_file_snapshot(path, MAX_RECEIPT_BYTES, private=True)
+        if not head.exists:
+            raise DesktopDemoError("receipt_invalid")
     except DesktopDemoError as exc:
         message = (
             "receipt_permissions" if path.exists() and not path.is_symlink() else "receipt_invalid"
@@ -1035,7 +1382,10 @@ def parse_desktop_demo_receipt(
         parsed = parse_json_strict(raw)
         if not isinstance(parsed, dict):
             raise ValueError
-        validated = _DesktopReceipt.model_validate(parsed).model_dump(mode="json")
+        validated = _DesktopReceipt.model_validate(parsed).model_dump(
+            mode="json",
+            exclude_unset=True,
+        )
     except (TypeError, ValueError, ValidationError) as exc:
         raise DesktopDemoError("receipt_invalid") from exc
     resolved_home = _validated_demo_root(codex_home, label="codex_home")
@@ -1045,7 +1395,23 @@ def parse_desktop_demo_receipt(
         codex_home=resolved_home,
         data_dir=resolved_data,
     )
-    return validated
+    return validated, head
+
+
+def parse_desktop_demo_receipt(
+    path: Path,
+    *,
+    codex_home: Path,
+    data_dir: Path,
+) -> dict[str, Any]:
+    """Parse a private receipt with duplicate-key, schema, and scope checks."""
+
+    receipt, _ = _parse_desktop_demo_receipt_with_head(
+        path,
+        codex_home=codex_home,
+        data_dir=data_dir,
+    )
+    return receipt
 
 
 def transition_desktop_demo_receipt(
@@ -1054,40 +1420,85 @@ def transition_desktop_demo_receipt(
     target_state: str,
     occurred_at: str,
     config_sha256: str | None = None,
+    verified_config_mode: int | None = None,
+    verified_config_unrelated_sha256: str | None = None,
+    verified_config_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Apply one forward-only write-ahead receipt transition."""
 
     try:
-        current = _DesktopReceipt.model_validate(receipt).model_dump(mode="json")
+        current = _DesktopReceipt.model_validate(receipt).model_dump(
+            mode="json",
+            exclude_unset=True,
+        )
     except ValidationError as exc:
         raise DesktopDemoError("receipt_invalid") from exc
     transitions = {
-        "prepared": "installed",
-        "installed": "removing",
-        "removing": "removed",
+        "prepared": {"failed", "installed"},
+        "failed": {"removing"},
+        "installed": {"removing"},
+        "removing": {"removed"},
     }
-    if transitions.get(str(current["state"])) != target_state:
+    if target_state not in transitions.get(str(current["state"]), set()):
         raise DesktopDemoError("receipt_transition_invalid")
     try:
         _validate_time(occurred_at)
     except ValueError as exc:
         raise DesktopDemoError("receipt_transition_invalid") from exc
-    if target_state in {"installed", "removed"} and not _is_sha(config_sha256):
+    if target_state in {"failed", "installed", "removed"} and not _is_sha(config_sha256):
         raise DesktopDemoError("receipt_transition_invalid")
     updated = dict(current)
     updated["state"] = target_state
     updated["updated_at"] = occurred_at
     teardown = dict(cast(dict[str, Any], updated["teardown"]))
-    if target_state == "installed":
+    if target_state == "failed":
+        updated["config_after_sha256"] = config_sha256
+        updated["failure_class"] = "config_projection_mismatch"
+    elif target_state == "installed":
         updated["config_after_sha256"] = config_sha256
     elif target_state == "removing":
+        if current["receipt_version"] != RECEIPT_VERSION:
+            if (
+                type(verified_config_mode) is not int
+                or not 0 <= verified_config_mode <= 0o777
+                or verified_config_mode & 0o077
+                or not verified_config_mode & 0o400
+                or not _is_sha(verified_config_unrelated_sha256)
+                or not _is_sha(verified_config_sha256)
+            ):
+                raise DesktopDemoError("receipt_transition_invalid")
+            updated["receipt_version"] = RECEIPT_VERSION
+            updated["config_mode_before"] = verified_config_mode
+            updated["config_unrelated_sha256"] = verified_config_unrelated_sha256
+            updated["config_after_sha256"] = verified_config_sha256
+        updated["failure_class"] = None
+        updated["artifact_removals"] = [
+            {
+                "relative_path": artifact["relative_path"],
+                "quarantine_relative_path": _artifact_quarantine_relative_path(
+                    str(artifact["relative_path"]),
+                    str(updated["installation_id"]),
+                ),
+                "state": "planned",
+            }
+            for artifact in cast(list[dict[str, Any]], updated["artifacts"])
+        ]
         teardown["requested_at"] = occurred_at
     else:
+        removals = updated.get("artifact_removals")
+        if not isinstance(removals, list) or not removals:
+            raise DesktopDemoError("receipt_transition_invalid")
+        updated["artifact_removals"] = [
+            {**cast(dict[str, Any], removal), "state": "removed"} for removal in removals
+        ]
         teardown["completed_at"] = occurred_at
         teardown["config_after_teardown_sha256"] = config_sha256
     updated["teardown"] = teardown
     try:
-        return _DesktopReceipt.model_validate(updated).model_dump(mode="json")
+        return _DesktopReceipt.model_validate(updated).model_dump(
+            mode="json",
+            exclude_unset=True,
+        )
     except ValidationError as exc:
         raise DesktopDemoError("receipt_transition_invalid") from exc
 
@@ -1126,7 +1537,10 @@ def _receipt_payload(
         "staging_root": str(staging_root),
         "config_existed_before": snapshot.config_existed,
         "config_before_sha256": snapshot.config_sha256,
+        "config_mode_before": snapshot.config_mode,
+        "config_unrelated_sha256": snapshot.config_unrelated_sha256,
         "config_after_sha256": None,
+        "failure_class": None,
         "backup_path": None,
         "backup_sha256": None,
         "managed_entry_original": {
@@ -1138,8 +1552,9 @@ def _receipt_payload(
         "codex_runtime": snapshot.codex_runtime,
         "python_runtime": snapshot.python_runtime,
         "artifacts": [_artifact_from_snapshot(snapshot)],
+        "artifact_removals": None,
         "normal_integration": {
-            "receipt_version": RECEIPT_VERSION,
+            "receipt_version": snapshot.normal_receipt_version,
             "receipt_path": str(normal_path),
             "receipt_sha256": snapshot.normal_receipt_sha256,
             "doctor_ready": True,
@@ -1176,6 +1591,17 @@ def _compare_preview(current: _PreviewSnapshot, expected_digest: str | None) -> 
 
 
 def _stage_fixture(source: Path, target: Path, *, expected_digest: str, expected_size: int) -> None:
+    # Verify bounded source bytes before creating even the private staging tree.
+    try:
+        source_raw, source_head = _read_file_snapshot(source, MAX_FIXTURE_BYTES, private=False)
+    except DesktopDemoError as exc:
+        raise DesktopDemoError("fixture_source_drift") from exc
+    if (
+        not source_head.exists
+        or len(source_raw) != expected_size
+        or source_head.sha256 != expected_digest
+    ):
+        raise DesktopDemoError("fixture_source_drift")
     if target.parent.exists():
         try:
             details = target.parent.lstat()
@@ -1193,10 +1619,15 @@ def _stage_fixture(source: Path, target: Path, *, expected_digest: str, expected
             raise DesktopDemoError("staged_artifact_drift")
         return
     try:
-        source_raw, _ = _read_regular(source, MAX_FIXTURE_BYTES)
-        if len(source_raw) != expected_size or _sha256_bytes(source_raw) != expected_digest:
-            raise DesktopDemoError("fixture_source_drift")
-        _atomic_write(target, source_raw, mode=0o600)
+        _atomic_write(
+            target,
+            source_raw,
+            mode=0o600,
+            expected_exists=False,
+            expected_sha256=EMPTY_SHA256,
+            expected_maximum=MAX_FIXTURE_BYTES,
+            expected_error="staged_artifact_drift",
+        )
         digest, size = _hash_regular(target, MAX_FIXTURE_BYTES, private=True)
         if digest != expected_digest or size != expected_size:
             raise DesktopDemoError("staged_artifact_drift")
@@ -1206,8 +1637,28 @@ def _stage_fixture(source: Path, target: Path, *, expected_digest: str, expected
         raise DesktopDemoError("setup_interrupted") from exc
 
 
-def _write_receipt(path: Path, receipt: dict[str, Any]) -> None:
-    _atomic_write(path, _receipt_json(receipt), mode=0o600)
+def _write_receipt(
+    path: Path,
+    receipt: dict[str, Any],
+    *,
+    expected_head: _FileHead,
+) -> _FileHead:
+    _assert_file_head(
+        path,
+        expected_head,
+        maximum=MAX_RECEIPT_BYTES,
+        private=True,
+        error="receipt_drift",
+    )
+    return _atomic_write(
+        path,
+        _receipt_json(receipt),
+        mode=0o600,
+        expected_exists=expected_head.exists,
+        expected_sha256=expected_head.sha256,
+        expected_maximum=MAX_RECEIPT_BYTES,
+        expected_error="receipt_drift",
+    )
 
 
 def _archive_removed_receipt(
@@ -1215,22 +1666,49 @@ def _archive_removed_receipt(
     receipt: dict[str, Any],
     *,
     data_dir: Path,
-    expected_sha256: str,
+    expected_head: _FileHead,
 ) -> None:
-    raw, _ = _read_regular(receipt_path, MAX_RECEIPT_BYTES, private=True)
-    if _sha256_bytes(raw) != expected_sha256 or receipt["state"] != "removed":
+    _assert_file_head(
+        receipt_path,
+        expected_head,
+        maximum=MAX_RECEIPT_BYTES,
+        private=True,
+        error="removed_receipt_drift",
+    )
+    raw, current_head = _read_file_snapshot(receipt_path, MAX_RECEIPT_BYTES, private=True)
+    if current_head != expected_head or receipt["state"] != "removed":
         raise DesktopDemoError("removed_receipt_drift")
     history = data_dir / DEMO_DIRECTORY / "history"
+    _assert_file_head(
+        receipt_path,
+        expected_head,
+        maximum=MAX_RECEIPT_BYTES,
+        private=True,
+        error="removed_receipt_drift",
+    )
     _private_directory(history)
     target = history / f"{receipt['installation_id']}.removed.json"
-    if target.exists() or target.is_symlink():
-        if target.is_symlink():
-            raise DesktopDemoError("unsafe_receipt_history")
-        existing, _ = _read_regular(target, MAX_RECEIPT_BYTES, private=True)
+    existing, target_head = _read_file_snapshot(target, MAX_RECEIPT_BYTES, private=True)
+    if target_head.exists:
         if existing != raw:
             raise DesktopDemoError("unsafe_receipt_history")
         return
-    _atomic_write(target, raw, mode=0o600)
+    _assert_file_head(
+        receipt_path,
+        expected_head,
+        maximum=MAX_RECEIPT_BYTES,
+        private=True,
+        error="removed_receipt_drift",
+    )
+    _atomic_write(
+        target,
+        raw,
+        mode=0o600,
+        expected_exists=False,
+        expected_sha256=EMPTY_SHA256,
+        expected_maximum=MAX_RECEIPT_BYTES,
+        expected_error="unsafe_receipt_history",
+    )
 
 
 def _normal_ready(
@@ -1252,21 +1730,130 @@ def _normal_ready(
         return False
 
 
+def _require_normal_binding(
+    *,
+    expected_path: Path,
+    expected_sha256: str,
+    expected_version: str,
+    codex_home: Path,
+    data_dir: Path,
+    runner: CommandRunner,
+    operator_confirmed_hook_trust: bool,
+) -> None:
+    """Rebind the v2 normal receipt and doctor state immediately before mutation."""
+
+    if expected_version != NORMAL_RECEIPT_VERSION:
+        raise DesktopDemoError("normal_integration_not_ready")
+    if not _normal_ready(
+        codex_home=codex_home,
+        data_dir=data_dir,
+        runner=runner,
+        operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+    ):
+        raise DesktopDemoError("normal_integration_not_ready")
+    try:
+        current_path, current_digest, current_version = _normal_receipt(data_dir)
+    except DesktopDemoError as exc:
+        raise DesktopDemoError("normal_integration_drift") from exc
+    if (
+        current_path != expected_path
+        or current_digest != expected_sha256
+        or current_version != expected_version
+    ):
+        raise DesktopDemoError("normal_integration_drift")
+
+
+def _require_receipt_normal_binding(
+    receipt: dict[str, Any],
+    *,
+    codex_home: Path,
+    data_dir: Path,
+    runner: CommandRunner,
+    operator_confirmed_hook_trust: bool,
+) -> None:
+    normal = cast(dict[str, Any], receipt["normal_integration"])
+    _require_normal_binding(
+        expected_path=Path(str(normal["receipt_path"])),
+        expected_sha256=str(normal["receipt_sha256"]),
+        expected_version=str(normal["receipt_version"]),
+        codex_home=codex_home,
+        data_dir=data_dir,
+        runner=runner,
+        operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+    )
+
+
+def _require_snapshot_normal_binding(
+    snapshot: _PreviewSnapshot,
+    *,
+    codex_home: Path,
+    data_dir: Path,
+    runner: CommandRunner,
+    operator_confirmed_hook_trust: bool,
+) -> None:
+    _require_normal_binding(
+        expected_path=data_dir / NORMAL_RECEIPT_FILENAME,
+        expected_sha256=snapshot.normal_receipt_sha256,
+        expected_version=snapshot.normal_receipt_version,
+        codex_home=codex_home,
+        data_dir=data_dir,
+        runner=runner,
+        operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+    )
+
+
+def _persist_projection_failure(
+    receipt_path: Path,
+    receipt: dict[str, Any],
+    receipt_head: _FileHead,
+    *,
+    config_path: Path,
+    config_head: _FileHead,
+    config_sha256: str,
+) -> None:
+    if config_head.sha256 != config_sha256:
+        raise DesktopDemoError("config_changed_before_finalization")
+    _assert_file_head(
+        config_path,
+        config_head,
+        maximum=MAX_CONFIG_BYTES,
+        private=True,
+        error="config_changed_before_finalization",
+    )
+    failed = transition_desktop_demo_receipt(
+        receipt,
+        target_state="failed",
+        occurred_at=format_utc(),
+        config_sha256=config_sha256,
+    )
+    try:
+        _write_receipt(receipt_path, failed, expected_head=receipt_head)
+    except Exception as exc:
+        raise DesktopDemoError("setup_interrupted") from exc
+    raise DesktopDemoError("demo_setup_non_finalizable")
+
+
 def _setup_recovery(
     repository_root: Path,
     *,
     receipt: dict[str, Any],
+    receipt_head: _FileHead,
     expected_preview_digest: str | None,
     codex_home: Path,
     data_dir: Path,
     normal_ready: bool,
+    runner: CommandRunner,
+    operator_confirmed_hook_trust: bool,
 ) -> DesktopDemoResult:
-    del repository_root
     config_path, receipt_path, staging_root = _paths(codex_home, data_dir)
     if not _receipt_managed_digest_valid(receipt):
         raise DesktopDemoError("receipt_invalid")
+    if receipt["state"] == "failed":
+        raise DesktopDemoError("demo_setup_non_finalizable")
     if receipt["state"] != "prepared":
         raise DesktopDemoError("demo_already_installed")
+    if receipt["receipt_version"] != RECEIPT_VERSION:
+        raise DesktopDemoError("receipt_upgrade_required")
     if expected_preview_digest != receipt["preview_digest"]:
         raise DesktopDemoError("preview_digest_mismatch")
     if not normal_ready:
@@ -1275,38 +1862,214 @@ def _setup_recovery(
         raise DesktopDemoError("normal_integration_drift")
     if not _runtimes_intact(receipt):
         raise DesktopDemoError("runtime_drift")
-    if not _artifact_intact(receipt, data_dir):
+    artifacts_valid, artifacts_present = _artifact_removal_state(receipt, data_dir)
+    if not artifacts_valid:
         raise DesktopDemoError("staged_artifact_drift")
-    document, raw_config = _load_config(config_path)
+    artifacts = cast(list[dict[str, Any]], receipt["artifacts"])
+    document, raw_config, config_head = _load_config(config_path)
     managed = cast(dict[str, Any], receipt["managed_entry"])
     actual = _managed_from_document(document)
-    if actual is None:
-        if _sha256_bytes(raw_config) != receipt["config_before_sha256"]:
+    managed_original = cast(dict[str, Any], receipt["managed_entry_original"])
+    managed_parent_present_before = bool(managed_original["parent_table_present"])
+    unrelated_before = _unrelated_config_values(
+        document,
+        managed_parent_present_before=managed_parent_present_before,
+    )
+    projection_matches = (
+        _unrelated_config_digest(unrelated_before) == receipt["config_unrelated_sha256"]
+    )
+    config_mode = int(receipt["config_mode_before"])
+    if config_head.exists and config_head.mode != config_mode:
+        raise DesktopDemoError("config_mode_drift")
+    config_write_required = actual is None
+    if config_write_required:
+        if not projection_matches:
+            raise DesktopDemoError("config_projection_drift")
+        if (
+            config_head.exists != receipt["config_existed_before"]
+            or _sha256_bytes(raw_config) != receipt["config_before_sha256"]
+        ):
             raise DesktopDemoError("config_changed_after_preview")
+    elif not _managed_matches(document, managed):
+        raise DesktopDemoError("managed_entry_drift")
+    elif not projection_matches:
+        if not artifacts_present:
+            raise DesktopDemoError("staged_artifact_drift")
+        _require_receipt_normal_binding(
+            receipt,
+            codex_home=codex_home,
+            data_dir=data_dir,
+            runner=runner,
+            operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+        )
+        _assert_file_head(
+            receipt_path,
+            receipt_head,
+            maximum=MAX_RECEIPT_BYTES,
+            private=True,
+            error="receipt_drift",
+        )
+        _persist_projection_failure(
+            receipt_path,
+            receipt,
+            receipt_head,
+            config_path=config_path,
+            config_head=config_head,
+            config_sha256=_sha256_bytes(raw_config),
+        )
+
+    if not artifacts_present:
+        _require_receipt_normal_binding(
+            receipt,
+            codex_home=codex_home,
+            data_dir=data_dir,
+            runner=runner,
+            operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+        )
+        _assert_file_head(
+            receipt_path,
+            receipt_head,
+            maximum=MAX_RECEIPT_BYTES,
+            private=True,
+            error="receipt_drift",
+        )
+        artifact = artifacts[0]
+        _stage_fixture(
+            repository_root / FIXTURE_SOURCE,
+            staging_root / str(artifact["relative_path"]),
+            expected_digest=str(artifact["sha256"]),
+            expected_size=int(artifact["size_bytes"]),
+        )
+    if not _artifact_intact(receipt, data_dir):
+        raise DesktopDemoError("staged_artifact_drift")
+    if config_write_required:
+        _require_receipt_normal_binding(
+            receipt,
+            codex_home=codex_home,
+            data_dir=data_dir,
+            runner=runner,
+            operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+        )
+        _assert_file_head(
+            receipt_path,
+            receipt_head,
+            maximum=MAX_RECEIPT_BYTES,
+            private=True,
+            error="receipt_drift",
+        )
         _set_managed(document, managed)
         try:
             _atomic_write(
                 config_path,
                 tomlkit.dumps(document).encode("utf-8"),
-                mode=0o600,
+                mode=config_mode,
+                expected_exists=config_head.exists,
                 expected_sha256=_sha256_bytes(raw_config),
             )
         except DesktopDemoError:
             raise
         except Exception as exc:
             raise DesktopDemoError("setup_interrupted") from exc
-    elif not _managed_matches(document, managed):
-        raise DesktopDemoError("managed_entry_drift")
-    artifacts = cast(list[dict[str, Any]], receipt["artifacts"])
-    config_digest = _sha256_bytes(_load_config(config_path)[1])
+        verified_document, verified_raw, verified_head = _load_config(config_path)
+        unrelated_after = _unrelated_config_values(
+            verified_document,
+            managed_parent_present_before=managed_parent_present_before,
+        )
+        if not _managed_matches(verified_document, managed):
+            raise DesktopDemoError("setup_interrupted")
+        if verified_head.mode != config_mode:
+            raise DesktopDemoError("config_mode_drift")
+        if (
+            not _parsed_config_values_match(
+                unrelated_before,
+                unrelated_after,
+            )
+            or _unrelated_config_digest(unrelated_after) != receipt["config_unrelated_sha256"]
+        ):
+            _persist_projection_failure(
+                receipt_path,
+                receipt,
+                receipt_head,
+                config_path=config_path,
+                config_head=verified_head,
+                config_sha256=_sha256_bytes(verified_raw),
+            )
+    else:
+        verified_document, verified_raw, verified_head = _load_config(config_path)
+        if not _managed_matches(verified_document, managed):
+            raise DesktopDemoError("managed_entry_drift")
+        verified_unrelated = _unrelated_config_values(
+            verified_document,
+            managed_parent_present_before=managed_parent_present_before,
+        )
+        if _unrelated_config_digest(verified_unrelated) != receipt["config_unrelated_sha256"]:
+            raise DesktopDemoError("config_projection_drift")
+        if verified_head.mode != config_mode:
+            raise DesktopDemoError("config_mode_drift")
+    _require_receipt_normal_binding(
+        receipt,
+        codex_home=codex_home,
+        data_dir=data_dir,
+        runner=runner,
+        operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+    )
+    _assert_file_head(
+        receipt_path,
+        receipt_head,
+        maximum=MAX_RECEIPT_BYTES,
+        private=True,
+        error="receipt_drift",
+    )
+    if not _artifact_intact(receipt, data_dir):
+        raise DesktopDemoError("staged_artifact_drift")
+    final_document, final_raw, final_head = _load_config(config_path)
+    final_unrelated = _unrelated_config_values(
+        final_document,
+        managed_parent_present_before=managed_parent_present_before,
+    )
+    if (
+        not _managed_matches(final_document, managed)
+        or _unrelated_config_digest(final_unrelated) != receipt["config_unrelated_sha256"]
+        or final_head.mode != config_mode
+    ):
+        raise DesktopDemoError("config_changed_before_finalization")
+    _require_receipt_normal_binding(
+        receipt,
+        codex_home=codex_home,
+        data_dir=data_dir,
+        runner=runner,
+        operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+    )
+    _assert_file_head(
+        receipt_path,
+        receipt_head,
+        maximum=MAX_RECEIPT_BYTES,
+        private=True,
+        error="receipt_drift",
+    )
+    config_digest = _sha256_bytes(final_raw)
     installed = transition_desktop_demo_receipt(
         receipt,
         target_state="installed",
         occurred_at=format_utc(),
         config_sha256=config_digest,
     )
+    _require_receipt_normal_binding(
+        receipt,
+        codex_home=codex_home,
+        data_dir=data_dir,
+        runner=runner,
+        operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+    )
+    _assert_file_head(
+        receipt_path,
+        receipt_head,
+        maximum=MAX_RECEIPT_BYTES,
+        private=True,
+        error="receipt_drift",
+    )
     try:
-        _write_receipt(receipt_path, installed)
+        _write_receipt(receipt_path, installed, expected_head=receipt_head)
     except Exception as exc:
         raise DesktopDemoError("setup_interrupted") from exc
     return _result(
@@ -1364,9 +2127,10 @@ def setup_desktop_demo(
         operator_confirmed_hook_trust=operator_confirmed_hook_trust,
     )
     prior_removed_receipt: dict[str, Any] | None = None
-    prior_removed_receipt_sha256: str | None = None
+    prior_removed_receipt_head: _FileHead | None = None
+    active_receipt_head = _absent_head()
     if receipt_path.exists() or receipt_path.is_symlink():
-        receipt = parse_desktop_demo_receipt(
+        receipt, active_receipt_head = _parse_desktop_demo_receipt_with_head(
             receipt_path,
             codex_home=resolved_home,
             data_dir=resolved_data,
@@ -1376,10 +2140,13 @@ def setup_desktop_demo(
                 return _setup_recovery(
                     resolved_repository,
                     receipt=receipt,
+                    receipt_head=active_receipt_head,
                     expected_preview_digest=expected_preview_digest,
                     codex_home=resolved_home,
                     data_dir=resolved_data,
                     normal_ready=ready,
+                    runner=runner,
+                    operator_confirmed_hook_trust=operator_confirmed_hook_trust,
                 )
             issues = () if ready else ("normal_integration_not_ready",)
             return _result(
@@ -1398,15 +2165,18 @@ def setup_desktop_demo(
             )
         if not _receipt_managed_digest_valid(receipt):
             raise DesktopDemoError("receipt_invalid")
-        removed_document, _ = _load_config(config_path)
+        removed_document, _, _ = _load_config(config_path)
         if _managed_from_document(removed_document) is not None:
             raise DesktopDemoError("removed_state_drift")
         artifacts_valid, artifacts_present = _artifact_removal_state(receipt, resolved_data)
-        if not artifacts_valid or artifacts_present:
+        if (
+            not artifacts_valid
+            or artifacts_present
+            or not _staging_directory_empty(staging_root, resolved_data)
+        ):
             raise DesktopDemoError("removed_state_drift")
-        prior_raw, _ = _read_regular(receipt_path, MAX_RECEIPT_BYTES, private=True)
         prior_removed_receipt = receipt
-        prior_removed_receipt_sha256 = _sha256_bytes(prior_raw)
+        prior_removed_receipt_head = active_receipt_head
 
     snapshot = _snapshot(
         resolved_repository,
@@ -1416,7 +2186,9 @@ def setup_desktop_demo(
         python_executable=python_executable,
         runner=runner,
         normal_ready=ready,
-        prior_removed_receipt_sha256=prior_removed_receipt_sha256,
+        prior_removed_receipt_sha256=(
+            prior_removed_receipt_head.sha256 if prior_removed_receipt_head is not None else None
+        ),
     )
     artifact = _artifact_from_snapshot(snapshot)
     issues = () if ready else ("normal_integration_not_ready",)
@@ -1470,63 +2242,204 @@ def setup_desktop_demo(
     ):
         raise DesktopDemoError("runtime_drift")
 
+    _require_snapshot_normal_binding(
+        snapshot,
+        codex_home=resolved_home,
+        data_dir=resolved_data,
+        runner=runner,
+        operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+    )
+
     demo_root = resolved_data / DEMO_DIRECTORY
     if staging_root.exists() and staging_root.is_symlink():
         raise DesktopDemoError("unsafe_staging")
     _private_directory(resolved_data)
     _private_directory(demo_root)
-    if prior_removed_receipt is not None and prior_removed_receipt_sha256 is not None:
+    if prior_removed_receipt is not None and prior_removed_receipt_head is not None:
+        _require_snapshot_normal_binding(
+            snapshot,
+            codex_home=resolved_home,
+            data_dir=resolved_data,
+            runner=runner,
+            operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+        )
         _archive_removed_receipt(
             receipt_path,
             prior_removed_receipt,
             data_dir=resolved_data,
-            expected_sha256=prior_removed_receipt_sha256,
+            expected_head=prior_removed_receipt_head,
         )
-    _stage_fixture(
-        source,
-        staging_root / STAGED_SCRIPT_NAME,
-        expected_digest=snapshot.fixture_sha256,
-        expected_size=snapshot.fixture_size,
-    )
-    document, raw_config = _load_config(config_path)
-    if _sha256_bytes(raw_config) != snapshot.config_sha256:
+    document, raw_config, config_head = _load_config(config_path)
+    if (
+        config_head.exists != snapshot.config_existed
+        or _sha256_bytes(raw_config) != snapshot.config_sha256
+        or _config_write_mode(config_head) != snapshot.config_mode
+    ):
         raise DesktopDemoError("config_changed_after_preview")
     if _managed_from_document(document) is not None:
         raise DesktopDemoError("reserved_name_exists")
+    unrelated_before = _unrelated_config_values(
+        document,
+        managed_parent_present_before=snapshot.managed_parent_present,
+    )
+    if _unrelated_config_digest(unrelated_before) != snapshot.config_unrelated_sha256:
+        raise DesktopDemoError("config_projection_drift")
     receipt = _receipt_payload(
         snapshot,
         codex_home=resolved_home,
         data_dir=resolved_data,
         confirmed_at=format_utc(),
     )
+    _require_snapshot_normal_binding(
+        snapshot,
+        codex_home=resolved_home,
+        data_dir=resolved_data,
+        runner=runner,
+        operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+    )
     try:
-        _write_receipt(receipt_path, receipt)
+        receipt_head = _write_receipt(
+            receipt_path,
+            receipt,
+            expected_head=active_receipt_head,
+        )
     except Exception as exc:
         raise DesktopDemoError("setup_interrupted") from exc
+    _require_snapshot_normal_binding(
+        snapshot,
+        codex_home=resolved_home,
+        data_dir=resolved_data,
+        runner=runner,
+        operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+    )
+    _assert_file_head(
+        receipt_path,
+        receipt_head,
+        maximum=MAX_RECEIPT_BYTES,
+        private=True,
+        error="receipt_drift",
+    )
+    _stage_fixture(
+        source,
+        staging_root / STAGED_SCRIPT_NAME,
+        expected_digest=snapshot.fixture_sha256,
+        expected_size=snapshot.fixture_size,
+    )
+    _require_snapshot_normal_binding(
+        snapshot,
+        codex_home=resolved_home,
+        data_dir=resolved_data,
+        runner=runner,
+        operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+    )
+    _assert_file_head(
+        receipt_path,
+        receipt_head,
+        maximum=MAX_RECEIPT_BYTES,
+        private=True,
+        error="receipt_drift",
+    )
     _set_managed(document, snapshot.managed_entry)
     rendered = tomlkit.dumps(document).encode("utf-8")
     try:
         _atomic_write(
             config_path,
             rendered,
-            mode=0o600,
+            mode=snapshot.config_mode,
+            expected_exists=config_head.exists,
             expected_sha256=snapshot.config_sha256,
         )
     except DesktopDemoError:
         raise
     except Exception as exc:
         raise DesktopDemoError("setup_interrupted") from exc
-    verified_document, verified_raw = _load_config(config_path)
+    verified_document, verified_raw, verified_head = _load_config(config_path)
+    unrelated_after = _unrelated_config_values(
+        verified_document,
+        managed_parent_present_before=snapshot.managed_parent_present,
+    )
     if not _managed_matches(verified_document, snapshot.managed_entry):
         raise DesktopDemoError("setup_interrupted")
+    if verified_head.mode != snapshot.config_mode:
+        raise DesktopDemoError("config_mode_drift")
+    if (
+        not _parsed_config_values_match(
+            unrelated_before,
+            unrelated_after,
+        )
+        or _unrelated_config_digest(unrelated_after) != snapshot.config_unrelated_sha256
+    ):
+        _persist_projection_failure(
+            receipt_path,
+            receipt,
+            receipt_head,
+            config_path=config_path,
+            config_head=verified_head,
+            config_sha256=_sha256_bytes(verified_raw),
+        )
+    _require_snapshot_normal_binding(
+        snapshot,
+        codex_home=resolved_home,
+        data_dir=resolved_data,
+        runner=runner,
+        operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+    )
+    _assert_file_head(
+        receipt_path,
+        receipt_head,
+        maximum=MAX_RECEIPT_BYTES,
+        private=True,
+        error="receipt_drift",
+    )
+    if not _artifact_intact(receipt, resolved_data):
+        raise DesktopDemoError("staged_artifact_drift")
+    final_document, final_raw, final_head = _load_config(config_path)
+    final_unrelated = _unrelated_config_values(
+        final_document,
+        managed_parent_present_before=snapshot.managed_parent_present,
+    )
+    if (
+        not _managed_matches(final_document, snapshot.managed_entry)
+        or _unrelated_config_digest(final_unrelated) != snapshot.config_unrelated_sha256
+        or final_head.mode != snapshot.config_mode
+    ):
+        raise DesktopDemoError("config_changed_before_finalization")
+    _require_snapshot_normal_binding(
+        snapshot,
+        codex_home=resolved_home,
+        data_dir=resolved_data,
+        runner=runner,
+        operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+    )
+    _assert_file_head(
+        receipt_path,
+        receipt_head,
+        maximum=MAX_RECEIPT_BYTES,
+        private=True,
+        error="receipt_drift",
+    )
     installed = transition_desktop_demo_receipt(
         receipt,
         target_state="installed",
         occurred_at=format_utc(),
-        config_sha256=_sha256_bytes(verified_raw),
+        config_sha256=_sha256_bytes(final_raw),
+    )
+    _require_snapshot_normal_binding(
+        snapshot,
+        codex_home=resolved_home,
+        data_dir=resolved_data,
+        runner=runner,
+        operator_confirmed_hook_trust=operator_confirmed_hook_trust,
+    )
+    _assert_file_head(
+        receipt_path,
+        receipt_head,
+        maximum=MAX_RECEIPT_BYTES,
+        private=True,
+        error="receipt_drift",
     )
     try:
-        _write_receipt(receipt_path, installed)
+        _write_receipt(receipt_path, installed, expected_head=receipt_head)
     except Exception as exc:
         raise DesktopDemoError("setup_interrupted") from exc
     return _result(
@@ -1564,6 +2477,41 @@ def _staging_directories_intact(staging: Path, data_dir: Path) -> bool:
     return True
 
 
+def _staging_directory_empty(staging: Path, data_dir: Path) -> bool:
+    if not staging.exists() and not staging.is_symlink():
+        return True
+    if not _staging_directories_intact(staging, data_dir) or os.name == "nt":
+        return False
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = -1
+    try:
+        descriptor = os.open(staging, flags)
+        details = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(details.st_mode)
+            or details.st_uid != os.geteuid()
+            or stat.S_IMODE(details.st_mode) & 0o077
+        ):
+            return False
+        return not os.listdir(descriptor)
+    except OSError:
+        return False
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _artifact_removals_by_path(receipt: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    raw_removals = receipt.get("artifact_removals")
+    if not isinstance(raw_removals, list):
+        return {}
+    return {
+        str(removal["relative_path"]): cast(dict[str, Any], removal) for removal in raw_removals
+    }
+
+
 def _artifact_removal_state(receipt: dict[str, Any], data_dir: Path) -> tuple[bool, bool]:
     staging = Path(str(receipt["staging_root"]))
     demo_root = data_dir / DEMO_DIRECTORY
@@ -1574,14 +2522,49 @@ def _artifact_removal_state(receipt: dict[str, Any], data_dir: Path) -> tuple[bo
     if not _staging_directories_intact(staging, data_dir):
         return False, False
     artifacts = cast(list[dict[str, Any]], receipt["artifacts"])
+    removals = _artifact_removals_by_path(receipt)
+    if receipt["state"] == "removing" and len(removals) != len(artifacts):
+        return False, False
     all_present = True
     for artifact in artifacts:
-        path = staging / str(artifact["relative_path"])
-        if not _is_within(path, staging):
+        relative_path = str(artifact["relative_path"])
+        path = staging / relative_path
+        removal = removals.get(relative_path)
+        quarantine_relative = (
+            str(removal["quarantine_relative_path"])
+            if removal is not None
+            else _artifact_quarantine_relative_path(
+                relative_path,
+                str(receipt["installation_id"]),
+            )
+        )
+        quarantine = staging / quarantine_relative
+        if (
+            not _is_within(path, staging)
+            or not _is_within(quarantine, staging)
+            or quarantine.parent != path.parent
+        ):
             return False, False
-        if not path.exists() and not path.is_symlink():
+        path_present = path.exists() or path.is_symlink()
+        quarantine_present = quarantine.exists() or quarantine.is_symlink()
+        if path_present and quarantine_present:
+            return False, False
+        if quarantine_present:
+            if receipt["state"] != "removing" or removal is None or removal["state"] != "planned":
+                return False, False
+            try:
+                digest, size = _hash_regular(quarantine, MAX_FIXTURE_BYTES, private=True)
+            except DesktopDemoError:
+                return False, False
+            if digest != artifact["sha256"] or size != artifact["size_bytes"]:
+                return False, False
             all_present = False
             continue
+        if not path_present:
+            all_present = False
+            continue
+        if removal is not None and removal["state"] != "planned":
+            return False, False
         try:
             digest, size = _hash_regular(path, MAX_FIXTURE_BYTES, private=True)
         except DesktopDemoError:
@@ -1594,6 +2577,150 @@ def _artifact_removal_state(receipt: dict[str, Any], data_dir: Path) -> tuple[bo
 def _artifact_intact(receipt: dict[str, Any], data_dir: Path) -> bool:
     valid, all_present = _artifact_removal_state(receipt, data_dir)
     return valid and all_present
+
+
+def _stat_matches_head(details: os.stat_result, expected: _FileHead) -> bool:
+    return bool(
+        expected.exists
+        and details.st_dev == expected.device
+        and details.st_ino == expected.inode
+        and details.st_size == expected.size
+        and getattr(details, "st_uid", None) == expected.owner
+        and stat.S_IMODE(details.st_mode) == expected.mode
+        and stat.S_ISREG(details.st_mode)
+    )
+
+
+def _restore_quarantined_entry(
+    directory: int,
+    *,
+    quarantined: str,
+    original: str,
+) -> None:
+    try:
+        os.stat(original, dir_fd=directory, follow_symlinks=False)
+    except FileNotFoundError:
+        try:
+            os.rename(
+                quarantined,
+                original,
+                src_dir_fd=directory,
+                dst_dir_fd=directory,
+            )
+        except OSError:
+            pass
+
+
+def _anchored_remove_artifact(
+    path: Path,
+    *,
+    quarantine_path: Path,
+    expected_digest: str,
+    expected_size: int,
+) -> None:
+    """Reconcile one receipt-planned rename and unlink the exact bound inode."""
+
+    if os.name == "nt":  # pragma: no cover - Desktop demo target is exercised on macOS.
+        raise DesktopDemoError("staged_artifact_drift")
+    if quarantine_path.parent != path.parent or quarantine_path.name == path.name:
+        raise DesktopDemoError("staged_artifact_drift")
+    original_present = path.exists() or path.is_symlink()
+    quarantine_present = quarantine_path.exists() or quarantine_path.is_symlink()
+    if original_present and quarantine_present:
+        raise DesktopDemoError("staged_artifact_drift")
+    if not original_present and not quarantine_present:
+        return
+    observed_path = path if original_present else quarantine_path
+    raw, expected_head = _read_file_snapshot(observed_path, MAX_FIXTURE_BYTES, private=True)
+    if (
+        not expected_head.exists
+        or expected_head.sha256 != expected_digest
+        or expected_head.size != expected_size
+        or expected_head.mode != 0o600
+        or _sha256_bytes(raw) != expected_digest
+    ):
+        raise DesktopDemoError("staged_artifact_drift")
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    directory = -1
+    quarantine = quarantine_path.name
+    moved = False
+    try:
+        directory = os.open(path.parent, flags)
+        try:
+            original_details = os.stat(path.name, dir_fd=directory, follow_symlinks=False)
+        except FileNotFoundError:
+            original_details = None
+        try:
+            quarantine_details = os.stat(quarantine, dir_fd=directory, follow_symlinks=False)
+        except FileNotFoundError:
+            quarantine_details = None
+        if original_details is not None and quarantine_details is not None:
+            raise DesktopDemoError("staged_artifact_drift")
+        if original_details is not None:
+            if not _stat_matches_head(original_details, expected_head):
+                raise DesktopDemoError("staged_artifact_drift")
+            os.rename(
+                path.name,
+                quarantine,
+                src_dir_fd=directory,
+                dst_dir_fd=directory,
+            )
+            moved = True
+        elif quarantine_details is not None:
+            if not _stat_matches_head(quarantine_details, expected_head):
+                raise DesktopDemoError("staged_artifact_drift")
+            moved = True
+        else:
+            raise DesktopDemoError("staged_artifact_drift")
+        moved_details = os.stat(quarantine, dir_fd=directory, follow_symlinks=False)
+        if not _stat_matches_head(moved_details, expected_head):
+            _restore_quarantined_entry(
+                directory,
+                quarantined=quarantine,
+                original=path.name,
+            )
+            moved = False
+            raise DesktopDemoError("staged_artifact_drift")
+        moved_raw, moved_head = _read_file_snapshot(
+            quarantine_path,
+            MAX_FIXTURE_BYTES,
+            private=True,
+        )
+        if moved_head != expected_head or moved_raw != raw:
+            _restore_quarantined_entry(
+                directory,
+                quarantined=quarantine,
+                original=path.name,
+            )
+            moved = False
+            raise DesktopDemoError("staged_artifact_drift")
+        final_details = os.stat(quarantine, dir_fd=directory, follow_symlinks=False)
+        if not _stat_matches_head(final_details, expected_head):
+            _restore_quarantined_entry(
+                directory,
+                quarantined=quarantine,
+                original=path.name,
+            )
+            moved = False
+            raise DesktopDemoError("staged_artifact_drift")
+        os.unlink(quarantine, dir_fd=directory)
+        moved = False
+        os.fsync(directory)
+    except DesktopDemoError:
+        raise
+    except OSError as exc:
+        if moved and directory >= 0:
+            _restore_quarantined_entry(
+                directory,
+                quarantined=quarantine,
+                original=path.name,
+            )
+        raise DesktopDemoError("staged_artifact_drift") from exc
+    finally:
+        if directory >= 0:
+            os.close(directory)
 
 
 def _runtimes_intact(receipt: dict[str, Any]) -> bool:
@@ -2118,7 +3245,7 @@ def status_desktop_demo(
     if state != "installed":
         issues.append("desktop_demo_not_installed")
     try:
-        document, _ = _load_config(config_path)
+        document, _, _ = _load_config(config_path)
         managed_intact = _managed_matches(
             document,
             cast(dict[str, Any], receipt["managed_entry"]),
@@ -2191,8 +3318,8 @@ def status_desktop_demo(
 
 
 def _teardown_snapshot(
-    receipt_path: Path,
     receipt: dict[str, Any],
+    receipt_head: _FileHead,
     document: Any,
     raw_config: bytes,
     data_dir: Path,
@@ -2202,7 +3329,7 @@ def _teardown_snapshot(
     artifacts_valid, artifacts_present = _artifact_removal_state(receipt, data_dir)
     payload = {
         "operation": "desktop_teardown",
-        "receipt_sha256": _hash_regular(receipt_path, MAX_RECEIPT_BYTES, private=True)[0],
+        "receipt_sha256": receipt_head.sha256,
         "state": receipt["state"],
         "config_sha256": _sha256_bytes(raw_config),
         "managed_entry_intact": _managed_values_match(
@@ -2252,16 +3379,17 @@ def teardown_desktop_demo(
         runner=runner,
         operator_confirmed_hook_trust=operator_confirmed_hook_trust,
     )
-    receipt = parse_desktop_demo_receipt(
+    receipt, receipt_head = _parse_desktop_demo_receipt_with_head(
         receipt_path,
         codex_home=resolved_home,
         data_dir=resolved_data,
     )
     if not _receipt_managed_digest_valid(receipt):
         raise DesktopDemoError("receipt_invalid")
-    if receipt["state"] not in {"installed", "removing"}:
+    if receipt["state"] not in {"failed", "installed", "removing"}:
         raise DesktopDemoError("desktop_demo_not_installed")
-    document, raw_config = _load_config(config_path)
+    document, raw_config, config_head = _load_config(config_path)
+    config_mode = _config_write_mode(config_head)
     managed = cast(dict[str, Any], receipt["managed_entry"])
     actual_managed = _managed_from_document(document)
     managed_intact = _managed_values_match(actual_managed, _config_managed(managed))
@@ -2280,9 +3408,15 @@ def teardown_desktop_demo(
         issues.append("staged_artifact_drift")
     if not runtimes_intact:
         issues.append("runtime_drift")
+    managed_original = cast(dict[str, Any], receipt["managed_entry_original"])
+    parent_present_before = bool(managed_original["parent_table_present"])
+    unrelated_before = _unrelated_config_values(
+        document,
+        managed_parent_present_before=parent_present_before,
+    )
     preview_digest = _teardown_snapshot(
-        receipt_path,
         receipt,
+        receipt_head,
         document,
         raw_config,
         resolved_data,
@@ -2312,17 +3446,39 @@ def teardown_desktop_demo(
     if not runtimes_intact:
         raise DesktopDemoError("runtime_drift")
     current = receipt
-    if receipt["state"] == "installed":
+    current_receipt_head = receipt_head
+    if receipt["state"] in {"failed", "installed"}:
+        _assert_file_head(
+            config_path,
+            config_head,
+            maximum=MAX_CONFIG_BYTES,
+            private=True,
+            error="config_changed_after_preview",
+        )
         current = transition_desktop_demo_receipt(
             receipt,
             target_state="removing",
             occurred_at=format_utc(),
+            verified_config_mode=config_mode,
+            verified_config_unrelated_sha256=_unrelated_config_digest(unrelated_before),
+            verified_config_sha256=_sha256_bytes(raw_config),
         )
         try:
-            _write_receipt(receipt_path, current)
+            current_receipt_head = _write_receipt(
+                receipt_path,
+                current,
+                expected_head=receipt_head,
+            )
         except Exception as exc:
             raise DesktopDemoError("teardown_interrupted") from exc
     if managed_intact:
+        _assert_file_head(
+            receipt_path,
+            current_receipt_head,
+            maximum=MAX_RECEIPT_BYTES,
+            private=True,
+            error="receipt_drift",
+        )
         original = cast(dict[str, Any], current["managed_entry_original"])
         _remove_managed(
             document,
@@ -2332,31 +3488,94 @@ def teardown_desktop_demo(
             _atomic_write(
                 config_path,
                 tomlkit.dumps(document).encode("utf-8"),
-                mode=0o600,
+                mode=config_mode,
+                expected_exists=config_head.exists,
                 expected_sha256=_sha256_bytes(raw_config),
             )
         except DesktopDemoError:
             raise
         except Exception as exc:
             raise DesktopDemoError("teardown_interrupted") from exc
+    _assert_file_head(
+        receipt_path,
+        current_receipt_head,
+        maximum=MAX_RECEIPT_BYTES,
+        private=True,
+        error="receipt_drift",
+    )
+    verified_document, _, verified_config_head = _load_config(config_path)
+    verified_unrelated = _unrelated_config_values(
+        verified_document,
+        managed_parent_present_before=parent_present_before,
+    )
+    if (
+        _managed_from_document(verified_document) is not None
+        or not _parsed_config_values_match(unrelated_before, verified_unrelated)
+        or verified_config_head.mode != config_mode
+    ):
+        raise DesktopDemoError("teardown_config_verification_failed")
     artifacts = cast(list[dict[str, Any]], current["artifacts"])
+    removals = _artifact_removals_by_path(current)
+    if len(removals) != len(artifacts):
+        raise DesktopDemoError("staged_artifact_drift")
     for artifact in artifacts:
-        target = staging_root / str(artifact["relative_path"])
-        if not target.exists() and not target.is_symlink():
-            continue
-        try:
-            digest, size = _hash_regular(target, MAX_FIXTURE_BYTES, private=True)
-        except DesktopDemoError as exc:
-            raise DesktopDemoError("staged_artifact_drift") from exc
-        if digest != artifact["sha256"] or size != artifact["size_bytes"]:
+        relative_path = str(artifact["relative_path"])
+        removal = removals.get(relative_path)
+        if removal is None or removal["state"] != "planned":
             raise DesktopDemoError("staged_artifact_drift")
-        target.unlink()
+        target = staging_root / relative_path
+        quarantine = staging_root / str(removal["quarantine_relative_path"])
+        if not _is_within(quarantine, staging_root) or quarantine.parent != target.parent:
+            raise DesktopDemoError("staged_artifact_drift")
+        if (
+            not target.exists()
+            and not target.is_symlink()
+            and not quarantine.exists()
+            and not quarantine.is_symlink()
+        ):
+            continue
+        _assert_file_head(
+            receipt_path,
+            current_receipt_head,
+            maximum=MAX_RECEIPT_BYTES,
+            private=True,
+            error="receipt_drift",
+        )
+        _anchored_remove_artifact(
+            target,
+            quarantine_path=quarantine,
+            expected_digest=str(artifact["sha256"]),
+            expected_size=int(artifact["size_bytes"]),
+        )
     try:
         staging_root.rmdir()
-    except OSError:
-        # Unknown files are operator-owned and intentionally prevent removal.
+    except FileNotFoundError:
         pass
-    _, final_raw = _load_config(config_path)
+    except OSError as exc:
+        # Unknown files are operator-owned and never deleted recursively, but
+        # their presence must also prevent a false terminal `removed` receipt.
+        raise DesktopDemoError("staged_artifact_drift") from exc
+    artifacts_valid, artifacts_present = _artifact_removal_state(current, resolved_data)
+    if not artifacts_valid or artifacts_present:
+        raise DesktopDemoError("staged_artifact_drift")
+    final_document, final_raw, final_config_head = _load_config(config_path)
+    final_unrelated = _unrelated_config_values(
+        final_document,
+        managed_parent_present_before=parent_present_before,
+    )
+    if (
+        _managed_from_document(final_document) is not None
+        or not _parsed_config_values_match(verified_unrelated, final_unrelated)
+        or final_config_head.mode != config_mode
+    ):
+        raise DesktopDemoError("teardown_config_verification_failed")
+    _assert_file_head(
+        receipt_path,
+        current_receipt_head,
+        maximum=MAX_RECEIPT_BYTES,
+        private=True,
+        error="receipt_drift",
+    )
     removed = transition_desktop_demo_receipt(
         current,
         target_state="removed",
@@ -2364,7 +3583,7 @@ def teardown_desktop_demo(
         config_sha256=_sha256_bytes(final_raw),
     )
     try:
-        _write_receipt(receipt_path, removed)
+        _write_receipt(receipt_path, removed, expected_head=current_receipt_head)
     except Exception as exc:
         raise DesktopDemoError("teardown_interrupted") from exc
     return _result(

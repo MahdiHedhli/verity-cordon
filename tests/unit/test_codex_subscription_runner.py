@@ -7,6 +7,7 @@ test sentinels and process metadata so the security boundary can be asserted.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
@@ -18,10 +19,12 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
 from verity_cordon.core.errors import ConfigurationError, SemanticProviderError
+from verity_cordon.semantic import codex_subscription as subscription_module
 from verity_cordon.semantic.codex_subscription import CodexSubscriptionRunner
 
 _SIMPLE_SCHEMA: dict[str, Any] = {
@@ -31,6 +34,13 @@ _SIMPLE_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 _PLATFORM_INJECTED_ENV = {"__CF_USER_TEXT_ENCODING"} if sys.platform == "darwin" else set()
+_RESOURCE_LIMIT_MAXIMA = {
+    "max_input_bytes": 1_048_576,
+    "max_jsonl_bytes": 4_194_304,
+    "max_jsonl_line_bytes": 1_048_576,
+    "max_stderr_bytes": 1_048_576,
+    "max_final_bytes": 262_144,
+}
 
 
 def _allowed_events() -> list[dict[str, Any]]:
@@ -55,7 +65,12 @@ def _allowed_events() -> list[dict[str, Any]]:
         },
         {
             "type": "turn.completed",
-            "usage": {"input_tokens": 1, "cached_input_tokens": 0, "output_tokens": 1},
+            "usage": {
+                "input_tokens": 1,
+                "cached_input_tokens": 0,
+                "output_tokens": 1,
+                "reasoning_output_tokens": 0,
+            },
         },
     ]
 
@@ -95,6 +110,9 @@ def _secure_tree() -> Iterator[Path]:
 def _fake_codex(
     root: Path,
     *,
+    version: str = "codex-cli 0.144.4\n",
+    version_stderr: str = "",
+    version_exit: int = 0,
     status: str = "Logged in using ChatGPT\n",
     status_stderr: str = "",
     status_exit: int = 0,
@@ -104,6 +122,7 @@ def _fake_codex(
     exec_stderr: str = "",
     exec_exit: int = 0,
     exec_sleep: float = 0.0,
+    post_events_sleep: float = 0.0,
     stdin_read_delay: float = 0.0,
     spawn_descendant: bool = False,
     detach_descendant_stdio: bool = False,
@@ -120,6 +139,9 @@ def _fake_codex(
     config = {
         "monitor": str(monitor),
         "descendant_pid": str(descendant_pid),
+        "version": version,
+        "version_stderr": version_stderr,
+        "version_exit": version_exit,
         "status": status,
         "status_stderr": status_stderr,
         "status_exit": status_exit,
@@ -129,6 +151,7 @@ def _fake_codex(
         "exec_stderr": exec_stderr,
         "exec_exit": exec_exit,
         "exec_sleep": exec_sleep,
+        "post_events_sleep": post_events_sleep,
         "stdin_read_delay": stdin_read_delay,
         "spawn_descendant": spawn_descendant,
         "detach_descendant_stdio": detach_descendant_stdio,
@@ -153,6 +176,11 @@ MONITOR = Path(CONFIG["monitor"])
 def append_record(value):
     with MONITOR.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\\n")
+
+if sys.argv[1:] == ["--version"]:
+    sys.stdout.write(CONFIG["version"])
+    sys.stderr.write(CONFIG["version_stderr"])
+    raise SystemExit(CONFIG["version_exit"])
 
 if sys.argv[1:] == ["login", "status"]:
     append_record({{"kind": "status", "argv": sys.argv[1:], "env": dict(os.environ)}})
@@ -220,6 +248,8 @@ for event in CONFIG["events"]:
         sys.stdout.write(event)
     else:
         sys.stdout.write(json.dumps(event, separators=(",", ":")) + "\\n")
+    sys.stdout.flush()
+time.sleep(CONFIG["post_events_sleep"])
 sys.stderr.write(CONFIG["exec_stderr"])
 raise SystemExit(CONFIG["exec_exit"])
 """
@@ -260,6 +290,338 @@ def _records(path: Path) -> list[dict[str, Any]]:
 
 def _path_exists(path: str | Path) -> bool:
     return Path(path).exists()
+
+
+def _fail_cleanup_after_removal(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    prefix: str,
+) -> None:
+    original_rmtree = subscription_module.shutil.rmtree
+
+    def remove_then_fail(path: str | os.PathLike[str], *args: Any, **kwargs: Any) -> None:
+        original_rmtree(path, *args, **kwargs)
+        if Path(path).name.startswith(prefix):
+            raise OSError("synthetic cleanup failure")
+
+    monkeypatch.setattr(subscription_module.shutil, "rmtree", remove_then_fail)
+
+
+def _bypass_subscription_auth(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: CodexSubscriptionRunner,
+) -> None:
+    ready = AsyncMock(return_value="ready_chatgpt")
+    monkeypatch.setattr(runner, "_check_chatgpt_auth_locked", ready, raising=False)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        (field, boundary)
+        for field, maximum in _RESOURCE_LIMIT_MAXIMA.items()
+        for boundary in (1, maximum)
+    ],
+)
+def test_runner_accepts_documented_resource_limit_boundaries(field: str, value: int) -> None:
+    with _secure_tree() as root:
+        executable, _, _ = _fake_codex(root)
+
+        runner = _runner(root, executable, **{field: value})
+
+        assert getattr(runner, field) == value
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        (field, invalid)
+        for field, maximum in _RESOURCE_LIMIT_MAXIMA.items()
+        for invalid in (-1, 0, maximum + 1)
+    ],
+)
+def test_runner_rejects_resource_limits_outside_documented_bounds(
+    field: str,
+    value: int,
+) -> None:
+    with _secure_tree() as root:
+        executable, _, _ = _fake_codex(root)
+
+        with pytest.raises(ConfigurationError, match="resource bounds"):
+            _runner(root, executable, **{field: value})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [(field, invalid) for field in _RESOURCE_LIMIT_MAXIMA for invalid in (True, 1.5, "1024")],
+)
+def test_runner_rejects_non_integer_resource_limits(field: str, value: Any) -> None:
+    with _secure_tree() as root:
+        executable, _, _ = _fake_codex(root)
+
+        with pytest.raises(ConfigurationError, match="resource bounds must be integers"):
+            _runner(root, executable, **{field: value})
+
+
+@pytest.mark.asyncio
+async def test_temp_root_setup_failure_removes_partially_created_directory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _secure_tree() as root:
+        executable, monitor, _ = _fake_codex(root)
+        runner = _runner(root, executable)
+        original_mkdtemp = subscription_module.tempfile.mkdtemp
+        original_chmod = Path.chmod
+        created: list[Path] = []
+
+        def create_in_test_root(*args: Any, **kwargs: Any) -> str:
+            kwargs["dir"] = root
+            path = Path(original_mkdtemp(*args, **kwargs))
+            created.append(path)
+            return str(path)
+
+        def fail_setup_chmod(path: Path, mode: int, *args: Any, **kwargs: Any) -> None:
+            if path.name.startswith("verity-codex-auth-"):
+                raise OSError("synthetic setup failure")
+            original_chmod(path, mode, *args, **kwargs)
+
+        monkeypatch.setattr(subscription_module.tempfile, "mkdtemp", create_in_test_root)
+        monkeypatch.setattr(Path, "chmod", fail_setup_chmod)
+
+        with pytest.raises(SemanticProviderError) as captured:
+            await runner.check_chatgpt_auth()
+
+        assert captured.value.failure_class == "internal_error"
+        assert runner.last_cleanup_failure is None
+        assert runner.last_auth_state == "status_failed"
+        assert _records(monitor) == []
+        assert len(created) == 1
+        assert not created[0].exists()
+        assert "synthetic setup failure" not in str(captured.value)
+
+
+@pytest.mark.asyncio
+async def test_temp_root_setup_cleanup_failure_is_sticky_and_content_safe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _secure_tree() as root:
+        executable, monitor, _ = _fake_codex(root)
+        runner = _runner(root, executable)
+        original_mkdtemp = subscription_module.tempfile.mkdtemp
+        original_chmod = Path.chmod
+        original_rmtree = subscription_module.shutil.rmtree
+        created: list[Path] = []
+
+        def create_in_test_root(*args: Any, **kwargs: Any) -> str:
+            kwargs["dir"] = root
+            path = Path(original_mkdtemp(*args, **kwargs))
+            created.append(path)
+            return str(path)
+
+        def fail_setup_chmod(path: Path, mode: int, *args: Any, **kwargs: Any) -> None:
+            if path.name.startswith("verity-codex-auth-"):
+                raise OSError("synthetic setup failure")
+            original_chmod(path, mode, *args, **kwargs)
+
+        def fail_setup_cleanup(
+            path: str | os.PathLike[str],
+            *args: Any,
+            **kwargs: Any,
+        ) -> None:
+            if Path(path).name.startswith("verity-codex-auth-"):
+                raise OSError("synthetic setup cleanup failure")
+            original_rmtree(path, *args, **kwargs)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(subscription_module.tempfile, "mkdtemp", create_in_test_root)
+            patch.setattr(Path, "chmod", fail_setup_chmod)
+            patch.setattr(subscription_module.shutil, "rmtree", fail_setup_cleanup)
+
+            with pytest.raises(SemanticProviderError) as captured:
+                await runner.check_chatgpt_auth()
+
+            assert captured.value.failure_class == "cleanup_failure"
+            assert runner.last_cleanup_failure == "temporary_artifacts"
+            assert runner.last_auth_state == "status_failed"
+            assert runner.last_failure_class == "cleanup_failure"
+            assert _records(monitor) == []
+            assert len(created) == 1
+            assert created[0].exists()
+            assert "synthetic setup cleanup failure" not in str(captured.value)
+
+            with pytest.raises(SemanticProviderError) as repeated:
+                await runner.check_chatgpt_auth()
+            assert repeated.value.failure_class == "cleanup_failure"
+            assert len(created) == 1
+
+        original_rmtree(created[0])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure_point",
+    ["work_mkdir", "schema_open", "schema_write", "final_open", "final_identity"],
+)
+async def test_post_root_semantic_setup_failures_are_content_safe_and_cleaned(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_point: str,
+) -> None:
+    with _secure_tree() as root:
+        executable, monitor, _ = _fake_codex(root)
+        runner = _runner(root, executable)
+        _bypass_subscription_auth(monkeypatch, runner)
+        original_private_temp_root = subscription_module._private_temp_root
+        original_mkdir = Path.mkdir
+        original_open = subscription_module.os.open
+        original_write = subscription_module.os.write
+        original_path_identity = subscription_module.path_identity
+        semantic_roots: list[Path] = []
+        leak_marker = f"SYNTHETIC-PRIVATE-PATH:{root}"
+
+        def record_private_root(prefix: str) -> Path:
+            created = original_private_temp_root(prefix)
+            if prefix.startswith("verity-codex-semantic-"):
+                semantic_roots.append(created)
+            return created
+
+        def controlled_mkdir(path: Path, *args: Any, **kwargs: Any) -> None:
+            if failure_point == "work_mkdir" and path.name == "work":
+                raise OSError(leak_marker)
+            original_mkdir(path, *args, **kwargs)
+
+        def controlled_open(
+            path: str | os.PathLike[str],
+            flags: int,
+            mode: int = 0o777,
+            **kwargs: Any,
+        ) -> int:
+            name = Path(path).name
+            if failure_point == "schema_open" and name == "schema.json":
+                raise OSError(leak_marker)
+            if failure_point == "final_open" and name == "final.json":
+                raise OSError(leak_marker)
+            return original_open(path, flags, mode, **kwargs)
+
+        def controlled_write(descriptor: int, data: bytes) -> int:
+            if failure_point == "schema_write":
+                raise OSError(leak_marker)
+            return original_write(descriptor, data)
+
+        def controlled_path_identity(path: Path) -> Any:
+            if failure_point == "final_identity" and path.name == "final.json":
+                raise OSError(leak_marker)
+            return original_path_identity(path)
+
+        monkeypatch.setattr(subscription_module, "_private_temp_root", record_private_root)
+        monkeypatch.setattr(Path, "mkdir", controlled_mkdir)
+        monkeypatch.setattr(subscription_module.os, "open", controlled_open)
+        monkeypatch.setattr(subscription_module.os, "write", controlled_write)
+        monkeypatch.setattr(subscription_module, "path_identity", controlled_path_identity)
+
+        with pytest.raises(SemanticProviderError) as captured:
+            await runner.run_json(prompt="synthetic", output_schema=_SIMPLE_SCHEMA)
+
+        assert captured.value.failure_class == "internal_error"
+        assert runner.last_failure_class == "internal_error"
+        assert runner.last_cleanup_failure is None
+        assert _records(monitor) == []
+        assert len(semantic_roots) == 1
+        assert not semantic_roots[0].exists()
+        assert leak_marker not in str(captured.value)
+        assert str(semantic_roots[0]) not in str(captured.value)
+
+
+@pytest.mark.asyncio
+async def test_post_root_setup_failure_preserves_sticky_cleanup_health(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _secure_tree() as root:
+        executable, monitor, _ = _fake_codex(root)
+        runner = _runner(root, executable)
+        _bypass_subscription_auth(monkeypatch, runner)
+        original_mkdir = Path.mkdir
+
+        def fail_work_mkdir(path: Path, *args: Any, **kwargs: Any) -> None:
+            if path.name == "work":
+                raise OSError(f"SYNTHETIC-PRIVATE-PATH:{path}")
+            original_mkdir(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "mkdir", fail_work_mkdir)
+        _fail_cleanup_after_removal(monkeypatch, prefix="verity-codex-semantic-")
+
+        with pytest.raises(SemanticProviderError) as captured:
+            await runner.run_json(prompt="synthetic", output_schema=_SIMPLE_SCHEMA)
+
+        assert captured.value.failure_class == "internal_error"
+        assert runner.last_failure_class == "internal_error"
+        assert runner.last_cleanup_failure == "temporary_artifacts"
+        assert _records(monitor) == []
+        assert str(root) not in str(captured.value)
+
+        with pytest.raises(SemanticProviderError) as health_failure:
+            await CodexSubscriptionRunner.check_chatgpt_auth(runner)
+        assert health_failure.value.failure_class == "cleanup_failure"
+
+
+@pytest.mark.asyncio
+async def test_post_root_setup_cancellation_is_preserved_after_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _secure_tree() as root:
+        executable, monitor, _ = _fake_codex(root)
+        runner = _runner(root, executable)
+        _bypass_subscription_auth(monkeypatch, runner)
+        original_private_temp_root = subscription_module._private_temp_root
+        semantic_roots: list[Path] = []
+
+        def record_private_root(prefix: str) -> Path:
+            created = original_private_temp_root(prefix)
+            if prefix.startswith("verity-codex-semantic-"):
+                semantic_roots.append(created)
+            return created
+
+        def cancel_during_setup(path: Path, *args: Any, **kwargs: Any) -> None:
+            del path, args, kwargs
+            raise asyncio.CancelledError
+
+        monkeypatch.setattr(subscription_module, "_private_temp_root", record_private_root)
+        monkeypatch.setattr(Path, "mkdir", cancel_during_setup)
+
+        with pytest.raises(asyncio.CancelledError):
+            await runner.run_json(prompt="synthetic", output_schema=_SIMPLE_SCHEMA)
+
+        assert runner.last_cleanup_failure is None
+        assert _records(monitor) == []
+        assert len(semantic_roots) == 1
+        assert not semantic_roots[0].exists()
+
+
+@pytest.mark.asyncio
+async def test_post_root_setup_cancellation_preserves_sticky_cleanup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _secure_tree() as root:
+        executable, monitor, _ = _fake_codex(root)
+        runner = _runner(root, executable)
+        _bypass_subscription_auth(monkeypatch, runner)
+        original_mkdir = Path.mkdir
+
+        def cancel_work_setup(path: Path, *args: Any, **kwargs: Any) -> None:
+            if path.name == "work":
+                raise asyncio.CancelledError
+            original_mkdir(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "mkdir", cancel_work_setup)
+        _fail_cleanup_after_removal(monkeypatch, prefix="verity-codex-semantic-")
+
+        with pytest.raises(asyncio.CancelledError):
+            await runner.run_json(prompt="synthetic", output_schema=_SIMPLE_SCHEMA)
+
+        assert runner.last_cleanup_failure == "temporary_artifacts"
+        assert _records(monitor) == []
+        with pytest.raises(SemanticProviderError) as health_failure:
+            await CodexSubscriptionRunner.check_chatgpt_auth(runner)
+        assert health_failure.value.failure_class == "cleanup_failure"
 
 
 @pytest.mark.asyncio
@@ -347,6 +709,55 @@ async def test_semantic_child_uses_exact_argv_stdin_only_and_private_paths(
         assert Path(final).parent == Path(schema).parent
         assert not _path_exists(exec_record["tmp_root"])
         assert status_record["argv"] == ["login", "status"]
+
+
+@pytest.mark.asyncio
+async def test_semantic_temp_cleanup_failure_prevents_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _secure_tree() as root:
+        executable, monitor, _ = _fake_codex(root)
+        runner = _runner(root, executable)
+        await runner.check_chatgpt_auth()
+        runner._check_chatgpt_auth_locked = AsyncMock(  # type: ignore[method-assign]
+            return_value="ready_chatgpt"
+        )
+        _fail_cleanup_after_removal(monkeypatch, prefix="verity-codex-semantic-")
+
+        with pytest.raises(SemanticProviderError) as captured:
+            await runner.run_json(prompt="synthetic", output_schema=_SIMPLE_SCHEMA)
+
+        assert captured.value.failure_class == "cleanup_failure"
+        assert runner.last_cleanup_failure == "temporary_artifacts"
+        assert not _path_exists(_records(monitor)[1]["tmp_root"])
+        assert "synthetic cleanup failure" not in str(captured.value)
+
+
+@pytest.mark.asyncio
+async def test_semantic_temp_cleanup_failure_does_not_mask_provider_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _secure_tree() as root:
+        events = [
+            {"type": "turn.completed", "usage": {}},
+            {"type": "thread.started", "thread_id": "thread-synthetic-001"},
+            {"type": "turn.started"},
+        ]
+        executable, monitor, _ = _fake_codex(root, events=events)
+        runner = _runner(root, executable)
+        await runner.check_chatgpt_auth()
+        runner._check_chatgpt_auth_locked = AsyncMock(  # type: ignore[method-assign]
+            return_value="ready_chatgpt"
+        )
+        _fail_cleanup_after_removal(monkeypatch, prefix="verity-codex-semantic-")
+
+        with pytest.raises(SemanticProviderError) as captured:
+            await runner.run_json(prompt="synthetic", output_schema=_SIMPLE_SCHEMA)
+
+        assert captured.value.failure_class == "invalid_response"
+        assert runner.last_cleanup_failure == "temporary_artifacts"
+        assert not _path_exists(_records(monitor)[1]["tmp_root"])
+        assert "synthetic cleanup failure" not in str(captured.value)
 
 
 @pytest.mark.asyncio

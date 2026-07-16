@@ -26,6 +26,8 @@ export function CandidateDetailPage(): React.JSX.Element {
   const semantic = detail.semantic_assessment;
   const decision = detail.policy_decision;
   const shadowAdmitted = decision.shadow_mode && decision.actual_action === "allow";
+  const subscriptionAttempt = semantic?.provider_state === "live_codex_subscription"
+    || semantic?.requested_provider === "codex_subscription";
 
   return (
     <div className="page">
@@ -116,9 +118,9 @@ export function CandidateDetailPage(): React.JSX.Element {
               <StatusPill value={semantic.provider_state} tone={semantic.provider_state === "failed" ? "danger" : "info"} />
             </div>
             <div>
-              {semantic.provider_state === "live_codex_subscription" ? (
+              {subscriptionAttempt ? (
                 <p className="shadow-callout">
-                  This assessment used the lower-isolation agentic provider <span className="mono">agentic_sandboxed</span>. Tool activity invalidates the result; deterministic policy retains final authority.
+                  This assessment {semantic.provider_state === "failed" ? "attempted" : "used"} the lower-isolation agentic provider <span className="mono">agentic_sandboxed</span>. Tool activity invalidates the result; deterministic policy retains final authority.
                 </p>
               ) : null}
               <p>{semantic.rationale ?? "The semantic provider failed without producing a risk recommendation."}</p>
@@ -130,7 +132,7 @@ export function CandidateDetailPage(): React.JSX.Element {
                 <div><dt>Cross-task</dt><dd>{semantic.cross_task_risk === null ? "—" : `${Math.round(semantic.cross_task_risk * 100)}%`}</dd></div>
                 <div><dt>Secret risk</dt><dd>{semantic.secret_risk === null ? "—" : `${Math.round(semantic.secret_risk * 100)}%`}</dd></div>
               </dl>
-              <div className="provider-line"><span>Prompt <span className="mono">{semantic.prompt_version}</span></span><span>Model <span className="mono">{semantic.returned_model ?? semantic.requested_model ?? "none"}</span></span><span>{semantic.latency_ms} ms</span></div>
+              <div className="provider-line">{semantic.requested_provider ? <span>Attempted <span className="mono">{formatLabel(semantic.requested_provider)}</span></span> : null}<span>Prompt <span className="mono">{semantic.prompt_version}</span></span><span>Model <span className="mono">{semantic.returned_model ?? semantic.requested_model ?? "none"}</span></span><span>{semantic.latency_ms} ms</span></div>
             </div>
           </div>
         )}

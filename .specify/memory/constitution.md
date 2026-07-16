@@ -168,13 +168,16 @@ The 2026-07-15 Spec Kit analysis selected only
 `002-codex-desktop-subscription-defense` and compared its four user stories,
 requirements, measurable outcomes, plan, data model, contracts, checklists,
 task graph, implementation, tests, and public claims against Constitution
-v1.1.0. All 93 feature checklist items are complete; no deferred `VC-FUT-*`
-capability entered the active task graph; and no unresolved critical or
-high-severity inconsistency remained after convergence. Clean-checkout,
-browser, and repository-handoff evidence are complete. The still-open timed,
-operator-observed Desktop rehearsal is an acceptance-evidence gate, not an
-exception to a constitutional MUST. This report changes no normative principle
-and therefore does not amend the constitution version.
+v1.1.0. The final read-only pass mapped all 46 requirements and all 15
+acceptance scenarios to 66 unique tasks with 100% traceability. All 93 feature
+checklist items are complete; no deferred `VC-FUT-*` capability entered the
+active task graph; and no unresolved ambiguity, duplication, constitution
+violation, unmapped task, or high-severity inconsistency remained after
+convergence. Convergence appended no task. The still-open timed,
+operator-observed Desktop rehearsal (T056) is an acceptance-evidence gate, not
+an exception to a constitutional MUST; remote review and public-main release
+closure remain tracked by T066. This report changes no normative principle and
+therefore does not amend the constitution version.
 
 ## Governance
 

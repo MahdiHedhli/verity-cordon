@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from jsonschema import Draft202012Validator, FormatChecker  # type: ignore[import-untyped]
 from openai import APIConnectionError
 
 from tests.factories import make_candidate
@@ -12,22 +15,34 @@ from tests.integration.test_memory_pipeline import build_service
 from verity_cordon.core.errors import ConfigurationError, SemanticProviderError
 from verity_cordon.core.models import (
     Action,
+    EventType,
     MemoryKind,
     PersistenceIntent,
     ProviderState,
+    RequestedProvider,
+    SemanticAssessment,
     Sensitivity,
     Signal,
     SourceClass,
     new_id,
 )
 from verity_cordon.crypto.canonical import canonical_json, sha256_hex
+from verity_cordon.ledger.queries import LedgerQueries
 from verity_cordon.memory.service import EvidenceSubmission
+from verity_cordon.semantic.base import run_semantic_assessment
 from verity_cordon.semantic.openai_provider import (
     CandidateExtractionOutput,
     ExtractedCandidate,
     OpenAICandidateExtractor,
     OpenAISemanticAdjudicator,
     SemanticRiskOutput,
+)
+
+SEMANTIC_ASSESSMENT_SCHEMA = json.loads(
+    (
+        Path(__file__).parents[2]
+        / "specs/001-codex-memory-firewall/contracts/semantic-assessment.schema.json"
+    ).read_text(encoding="utf-8")
 )
 
 
@@ -93,6 +108,35 @@ def risk_response():
     )
 
 
+def failed_risk_response(failure_class: str) -> SimpleNamespace:
+    if failure_class == "refusal":
+        return SimpleNamespace(
+            model="gpt-5.6-sol",
+            status="completed",
+            output=[
+                SimpleNamespace(
+                    content=[SimpleNamespace(type="refusal")],
+                )
+            ],
+            output_parsed=None,
+        )
+    return SimpleNamespace(
+        model="gpt-5.6-sol",
+        status="incomplete",
+        output=[],
+        output_parsed=None,
+    )
+
+
+def assert_current_semantic_contract(result: SemanticAssessment) -> None:
+    payload = result.model_dump(mode="json", by_alias=True)
+    assert SemanticAssessment.model_validate(payload) == result
+    Draft202012Validator(
+        SEMANTIC_ASSESSMENT_SCHEMA,
+        format_checker=FormatChecker(),
+    ).validate(payload)
+
+
 @pytest.mark.asyncio
 async def test_structured_extraction_uses_sanitized_data_without_tools_or_memory() -> None:
     client = _FakeClient([extraction_response()])
@@ -134,6 +178,7 @@ async def test_structured_assessment_records_requested_and_returned_models() -> 
     result = await provider.assess(target)
 
     assert result.provider_state is ProviderState.LIVE_OPENAI
+    assert result.requested_provider is RequestedProvider.OPENAI
     assert result.requested_model == "gpt-5.6"
     assert result.returned_model == "gpt-5.6-sol-2026-07-01"
     assert result.recommended_disposition is Action.QUARANTINE
@@ -306,45 +351,105 @@ async def test_sanitized_model_output_is_the_only_form_persisted_in_signed_event
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("response", "failure_class"),
-    [
-        (
-            SimpleNamespace(
-                model="gpt-5.6-sol",
-                status="completed",
-                output=[
-                    SimpleNamespace(
-                        content=[SimpleNamespace(type="refusal")],
-                    )
-                ],
-                output_parsed=None,
-            ),
-            "refusal",
-        ),
-        (
-            SimpleNamespace(
-                model="gpt-5.6-sol",
-                status="incomplete",
-                output=[],
-                output_parsed=None,
-            ),
-            "incomplete",
-        ),
-    ],
-)
-async def test_refusal_and_incomplete_are_explicit_failures(response, failure_class) -> None:
+@pytest.mark.parametrize("failure_class", ["refusal", "incomplete"])
+async def test_refusal_and_incomplete_are_explicit_failures(failure_class: str) -> None:
     provider = OpenAISemanticAdjudicator(
         model="gpt-5.6",
-        client=_FakeClient([response]),
+        client=_FakeClient([failed_risk_response(failure_class)]),
     )
 
     result = await provider.assess(make_candidate())
 
+    assert result.schema_version == "1.0.1"
     assert result.provider_state is ProviderState.FAILED
+    assert result.requested_provider is RequestedProvider.OPENAI
+    assert result.requested_model == "gpt-5.6"
+    assert result.returned_model is None
     assert result.failure is not None
     assert result.failure.class_name == failure_class
     assert result.risk_score is None
+    assert_current_semantic_contract(result)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_class", ["refusal", "incomplete"])
+async def test_wrapper_preserves_refusal_and_incomplete_failure_class(
+    failure_class: str,
+) -> None:
+    provider = OpenAISemanticAdjudicator(
+        model="gpt-5.6",
+        client=_FakeClient([failed_risk_response(failure_class)]),
+    )
+
+    result = await run_semantic_assessment(
+        provider,
+        make_candidate(),
+        timeout_ms=1_000,
+    )
+
+    assert result.schema_version == "1.0.1"
+    assert result.provider_state is ProviderState.FAILED
+    assert result.requested_provider is RequestedProvider.OPENAI
+    assert result.requested_model == "gpt-5.6"
+    assert result.returned_model is None
+    assert result.failure is not None
+    assert result.failure.class_name == failure_class
+    assert result.risk_score is None
+    assert_current_semantic_contract(result)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_class", ["refusal", "incomplete"])
+async def test_failed_openai_projection_preserves_trusted_requested_model(
+    tmp_path: Path,
+    failure_class: str,
+) -> None:
+    service, store, _ = await build_service(
+        tmp_path,
+        extractor=OpenAICandidateExtractor(
+            model="gpt-5.6",
+            client=_FakeClient([extraction_response()]),
+        ),
+        adjudicator=OpenAISemanticAdjudicator(
+            model="gpt-5.6",
+            client=_FakeClient([failed_risk_response(failure_class)]),
+        ),
+    )
+
+    evaluation = await service.evaluate_evidence(
+        EvidenceSubmission(
+            session_id=new_id(),
+            source_class=SourceClass.TOOL_OUTPUT,
+            content="The release manifest comes from release.yaml.",
+        )
+    )
+    outcome = evaluation.outcomes[0]
+    semantic = outcome.semantic_assessment
+
+    assert semantic is not None
+    assert semantic.provider_state is ProviderState.FAILED
+    assert semantic.requested_provider is RequestedProvider.OPENAI
+    assert semantic.requested_model == "gpt-5.6"
+    assert semantic.returned_model is None
+    assert semantic.failure is not None and semantic.failure.class_name == failure_class
+    candidate_events = [
+        event
+        for event in await store.list_events()
+        if event.stream_id == outcome.candidate.candidate_id
+    ]
+    assert {event.semantic_model_identifier for event in candidate_events} == {"gpt-5.6"}
+    semantic_event = next(
+        event
+        for event in candidate_events
+        if event.event_type is EventType.SEMANTIC_ASSESSMENT_RECORDED
+    )
+    assert semantic_event.payload["requested_model"] == "gpt-5.6"
+    assert semantic_event.payload["returned_model"] is None
+    assert semantic_event.payload["failure"]["class"] == failure_class
+    detail = await LedgerQueries(store).get_candidate_detail(outcome.candidate.candidate_id)
+    assert detail["semantic_assessment"]["requested_model"] == "gpt-5.6"
+    assert detail["semantic_assessment"]["returned_model"] is None
+    assert (await store.verify()).verified is True
 
 
 @pytest.mark.asyncio
@@ -361,5 +466,7 @@ async def test_unavailable_provider_retries_boundedly_and_never_uses_fixture() -
 
     assert len(client.responses.calls) == 2
     assert result.provider_state is ProviderState.FAILED
+    assert result.requested_provider is RequestedProvider.OPENAI
+    assert result.requested_model == "gpt-5.6"
     assert result.failure is not None and result.failure.class_name == "unavailable"
     assert result.returned_model is None

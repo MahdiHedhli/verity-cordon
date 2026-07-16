@@ -10,6 +10,7 @@ from verity_cordon.core.models import (
     MemoryKind,
     PersistenceIntent,
     ProviderState,
+    RequestedProvider,
     SemanticAssessment,
     Sensitivity,
     Signal,
@@ -181,6 +182,7 @@ class FixtureCandidateExtractor:
 
 class FixtureSemanticAdjudicator:
     provider_label = "recorded_fixture"
+    requested_provider = RequestedProvider.FIXTURE
     prompt_version = "semantic-risk-v1"
 
     async def assess(self, candidate: MemoryCandidate) -> SemanticAssessment:
@@ -227,6 +229,7 @@ class FixtureSemanticAdjudicator:
             assessment_id=new_id(),
             candidate_id=candidate.candidate_id,
             provider_state=ProviderState.RECORDED_FIXTURE,
+            requested_provider=self.requested_provider,
             requested_model=None,
             returned_model="verity-fixture-v1",
             prompt_version=self.prompt_version,

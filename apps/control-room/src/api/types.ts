@@ -172,6 +172,7 @@ export interface SemanticAssessment {
   assessment_id: string;
   candidate_id: string;
   provider_state: "live_openai" | "live_codex_subscription" | "recorded_fixture" | "failed";
+  requested_provider?: "fixture" | "openai" | "codex_subscription" | null;
   requested_model: string | null;
   returned_model: string | null;
   prompt_version: string;

@@ -7,11 +7,24 @@ import asyncio
 import pytest
 from typer.testing import CliRunner
 
-from tests.integration.test_memory_pipeline import POISONED_DOCS, build_service
+from tests.integration.test_memory_pipeline import (
+    POISONED_DOCS,
+    _SubscriptionFixtureSemantic,
+    build_service,
+)
 from verity_cordon.cli.main import app
 from verity_cordon.core.config import Settings
 from verity_cordon.core.errors import ConflictError, NotFoundError
-from verity_cordon.core.models import Action, EventType, Mode, SourceClass, new_id
+from verity_cordon.core.models import (
+    Action,
+    EventType,
+    Mode,
+    ProviderSummaryState,
+    RequestedProvider,
+    SourceClass,
+    new_id,
+    provider_isolation_for,
+)
 from verity_cordon.crypto.keys import FileKeyProvider
 from verity_cordon.daemon.runtime import build_runtime
 from verity_cordon.detectors.builtin import builtin_detectors
@@ -121,6 +134,87 @@ async def test_enforcement_rescan_revokes_only_shadow_admitted_poison(tmp_path) 
     assert original_detail["status"] == "revoked"
     assert result.revocation_event_id in original_detail["event_ids"]
     assert original_summary["status"] == "revoked"
+
+
+class _SlowSubscriptionSemantic:
+    provider_label = "live_codex_subscription"
+    requested_provider = RequestedProvider.CODEX_SUBSCRIPTION
+    requested_model = "gpt-5.6-luna"
+    prompt_version = "codex-subscription-semantic-risk-v1"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def assess(self, candidate):
+        del candidate
+        self.calls += 1
+        await asyncio.sleep(1)
+        raise AssertionError("unreachable")
+
+
+@pytest.mark.asyncio
+async def test_rescan_timeout_preserves_subscription_attempt_and_signed_model_request(
+    tmp_path,
+) -> None:
+    service, store, view = await build_service(
+        tmp_path,
+        mode=Mode.SHADOW,
+        adjudicator=_SubscriptionFixtureSemantic(),
+    )
+    evaluation = await service.evaluate_evidence(
+        EvidenceSubmission(
+            session_id=new_id(),
+            source_class=SourceClass.TOOL_OUTPUT,
+            content=POISONED_DOCS,
+        )
+    )
+    malicious = next(
+        outcome
+        for outcome in evaluation.outcomes
+        if "demo_artifact_sink" in outcome.candidate.statement
+    )
+    assert malicious.memory_id is not None
+    assert any(item.memory_id == malicious.memory_id for item in await view.list_active())
+
+    enforce_policy = load_builtin_policy(Mode.ENFORCE)
+    await SQLitePolicyRepository(store).activate(
+        enforce_policy,
+        actor_id="operator.demo",
+        reason="Exercise subscription timeout during retroactive rescan.",
+    )
+    service.policy_engine = PolicyEngine(enforce_policy)
+    slow_subscription = _SlowSubscriptionSemantic()
+    service.semantic_adjudicator = slow_subscription
+    service.semantic_timeout_ms = 5
+    event_count = len(await store.list_events())
+
+    result = await RetroactiveRescanService(service).rescan(
+        malicious.memory_id,
+        actor_id="operator.demo",
+        reason="Quarantine under the current enforcement policy.",
+        confirmed=True,
+    )
+
+    assert slow_subscription.calls == 1
+    assert result.semantic_provider is ProviderSummaryState.FAILED
+    assert result.actual_action is Action.QUARANTINE
+    assert result.revoked is True
+    assert provider_isolation_for(slow_subscription.provider_label).value == "agentic_sandboxed"
+    new_events = (await store.list_events())[event_count:]
+    semantic_event = next(
+        event for event in new_events if event.event_type is EventType.SEMANTIC_ASSESSMENT_RECORDED
+    )
+    assert semantic_event.stream_id == result.candidate_id
+    assert semantic_event.semantic_model_identifier == "gpt-5.6-luna"
+    assert semantic_event.payload["provider_state"] == "failed"
+    assert semantic_event.payload["requested_provider"] == "codex_subscription"
+    assert semantic_event.payload["requested_model"] == "gpt-5.6-luna"
+    assert semantic_event.payload["returned_model"] is None
+    assert semantic_event.payload["failure"] == {
+        "class": "timeout",
+        "retryable": True,
+    }
+    assert (await store.verify()).verified is True
 
 
 @pytest.mark.asyncio

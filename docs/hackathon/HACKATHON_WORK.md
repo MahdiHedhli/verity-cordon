@@ -8,7 +8,7 @@
 - **Clean baseline commit**: `ef2c80d` (`chore: establish hackathon baseline`)
 - **Integrated default branch**: `main`
 - **Implemented baseline feature**: `specs/001-codex-memory-firewall/`
-- **Current implementation branch**: `codex/002-desktop-subscription-defense`
+- **Current implementation branch**: `codex/002-release-review-hardening`
 - **Only active sprint feature**:
   `specs/002-codex-desktop-subscription-defense/`
 
@@ -51,10 +51,18 @@ renamed codebase.
 | `e458786` | Aligned runtime status and semantic-failure contracts after post-merge review | Complete |
 | `0da11e5` | Bound actual runtime status responses to the public OpenAPI contract | Complete |
 | `8540cbb` | Unified CLI and daemon subscription-readiness reporting | Complete |
+| `3a18cf7` | Merged PR #2 contract and readiness alignment into public `main` | Complete |
+| `3d8a91d` | Closed release-review integration, recovery, provenance, and race gaps | Complete |
+| `d09b2b0` | Enforced private per-segment installer directory creation and validation | Complete |
+| `f7b2050` | Closed final receipt, semantic provenance, and signed-event review gaps | Complete |
+| `cfa25ef` | Finalized receipt migration and failed-provider provenance contracts | Complete |
 
 The feature-001 branch was fast-forwarded into `main` without rewriting history
-or force-pushing. At this pre-PR checkpoint, Sprint 002 remained on its public
-feature branch pending review and merge.
+or force-pushing. Sprint 002 subsequently merged through PR #1, and its
+post-merge contract/readiness alignment merged through PR #2 at
+`3a18cf7dfc14ef59d48198789b567a44157c3b2b`. Release-review hardening remains on
+the current feature branch until its remote review and public-main verification
+are complete.
 
 ## Sprint 002 Baseline
 
@@ -102,7 +110,8 @@ entered active scope.
   read credential files or print raw status output
 - **First requested model**: `gpt-5.6`; unavailable for the signed-in identity,
   recorded content-safely as `failed/process_exit` with no fallback
-- **Exercised model**: `gpt-5.6-luna`
+- **Requested subscription model identifier**: `gpt-5.6-luna`; the current
+  event stream does not attest the returned remote model
 - **Input**: fixed sanitized synthetic operational instruction only
 - **Provider outcome**: `live_codex_subscription`
 - **Isolation label**: `agentic_sandboxed`
@@ -112,9 +121,12 @@ entered active scope.
 - **Raw child output retained or logged**: no
 
 This smoke proves only that the configured local subscription path completed on
-the recorded host and date. It does not establish universal model entitlement,
-latency, tool absence inside the Codex binary, or protection from a compromised
-host.
+the recorded host and date. It preceded the exact incremental JSONL grammar and
+other release-review hardening. A later hardened probe was externally
+rate-limited and proved fail-closed handling only; a successful hardened live
+completion remains pending. None of this establishes universal model
+entitlement, latency, tool absence inside the Codex binary, remote-model
+attestation, or protection from a compromised host.
 
 ## Milestones
 
@@ -138,6 +150,7 @@ host.
 - [x] Final full verification after security hardening
 - [x] Final Spec Kit analysis and checklist convergence
 - [x] Public repository creation and push
+- [ ] Release-hardening remote review closure and public-main verification
 - [ ] Operator video, `/feedback`, and Devpost submission
 
 ## Verified Checkpoints
@@ -383,6 +396,14 @@ semantic assessment, produced allow and quarantine outcomes, and ended in
 45,806 ms with 50 verified signed events and a consistent materialized view.
 The requested model identifier is recorded; `returned_model` remains null by
 contract because the runtime event stream does not attest a remote model.
+These successful runs preceded the release-hardening exact incremental JSONL
+grammar. A post-hardening, API-key-free probe on Codex CLI `0.144.4` was
+classified locally into the fixed safe category `rate_limit`, returned
+retryable `failed/process_exit` in 3,704 ms, produced no disposition or final
+document, and left cleanup health clean. Raw child content was neither printed
+nor retained. This proves fail-closed failure handling, not successful hardened
+live completion; that revalidation remains pending while subscription capacity
+is unavailable.
 
 A real 1280x720 Control Room overview was captured from the offline deterministic
 fixture and added as `docs/assets/control-room-overview.jpg`. It shows only
@@ -400,9 +421,127 @@ provider-isolation mapping, aligned both contracts and the frontend type, and
 added executable equality and response-validation regressions. A follow-up
 review also found that CLI status could report a subscription provider ready
 without a runner; `8540cbb` aligned it with daemon fail-safe behavior and added
-a regression. The complete post-fix gate passed 510 backend tests, 13 isolated example/plugin tests, 10
-frontend tests, 80% backend coverage, dependency audits, production build, and
-the 20-fixture evaluation.
+a regression. The complete post-fix gate passed 510 backend tests, 13 isolated
+example/plugin tests, 10 frontend tests, 80% backend coverage, dependency
+audits, production build, and the 20-fixture evaluation. PR #2 then merged the
+contract/readiness alignment into public `main` at
+`3a18cf7dfc14ef59d48198789b567a44157c3b2b`.
+
+Review of the still-open late PR #1 threads and three independent containment
+reviews drove a final release hardening pass across the subscription runner,
+normal Codex installer, and Desktop demo installer. The pass serialized runner
+health, bound executable trust before and after child execution, enforced hard
+resource ceilings, validated successful provider provenance, made normal
+install/remove operations receipt-journaled and retry-safe, and bound Desktop
+configuration, archive, artifact, receipt, and teardown transitions to exact
+expected state. It also added interruption, drift, concurrency, replacement,
+non-disclosure, and recovery regressions. Independent re-reviews found no
+remaining P1 or P2 issue.
+
+The pre-final-review local `./scripts/verify.sh` release gate passed 768 backend
+tests in 248.70 seconds with 81% aggregate coverage, 13 isolated example/plugin
+tests, and 6 Control Room files / 11 tests. Ruff formatting and lint, mypy across
+60 source files, OpenAPI and JSON Schema validation, frontend type checking,
+lint, production build, Python and npm dependency audits, and the 20-sample
+fixture evaluation all passed. The evaluation remained fixture-scoped at 0
+false positives and 0 false negatives. A first verification process became
+unobservable after macOS cloud-conflict copies appeared only inside the
+generated `.venv`; those duplicate generated files were removed without
+changing tracked source, package import was rechecked, and the complete gate was
+rerun to the recorded exit-zero result.
+
+Fresh-clone acceptance then checked out pushed branch commit
+`18e04942a637af9eacc3b491fce8c7a9540f21c9` beneath a new private trusted cache
+parent with `OPENAI_API_KEY` explicitly absent. Bootstrap completed without
+creating a signing key, database, or credential. The no-serve offline demo used
+the real policy, signed ledger, materialized view, rescan/revocation/rebuild,
+approved-only simulated session context, and bounded stdio fixture; it ended
+with 65 verified events, a consistent view, two unrelated active memories
+preserved, and no external transmission. The clean clone then passed the same
+complete 706-backend-test, 13-example/plugin-test, 11-frontend-test verification
+gate with 81% coverage and zero configured dependency-audit findings.
+
+Final pushed-head acceptance repeated that path from a second new private clone
+at `7f667e9c40db9f455504c8396d23ae02eb8a8544`. With
+`OPENAI_API_KEY` explicitly absent, bootstrap again created no signing key,
+database, or credential; the no-serve offline demo again completed the full
+65-event shadow, enforcement, delayed-attempt simulation, rescan, revocation,
+rebuild, approved-only injection, and ledger-verification path with no external
+transmission. `./scripts/verify.sh` then passed 768 backend tests in 236.75
+seconds at 81% coverage, 13 isolated example/plugin tests, all 11 Control Room
+tests, the production build, both dependency audits, and the 20-sample fixture
+evaluation. The clone remained clean after the documented path.
+
+The post-hardening API-key-free subscription probe on Codex CLI `0.144.4`
+reached external rate limiting. Verity returned the fixed content-safe
+`failed/process_exit` category in 3,704 ms, retained no final document or raw
+child output, made no disposition, and reported clean cleanup health. This is
+failure-path evidence, not a successful hardened semantic completion or remote
+model attestation. The successful hardened live path remains pending capacity.
+
+PR #3's Gemini review reported three findings. Its critical stdin comment was
+stale against the reviewed implementation: the runner already drains stdin,
+closes it to send EOF, awaits `wait_closed()`, and exercises the blocked-stdin
+deadline in an adversarial regression. Its two directory-mode comments were
+accepted as defense-in-depth. Normal installer roots now create each missing
+path segment explicitly at mode `0700` and validate it before continuing;
+Desktop atomic writes require an existing validated parent, while explicit
+private-directory setup creates and validates every missing segment. The two
+installer contract files passed 152 tests, the new five-test regression focus
+passed, and the intermediate 708-test gate passed after this remediation.
+
+CodeRabbit's PR #3 pass then reported eight additional findings. All were
+triaged and closed: the failure matrix now has an explicit commit, injection,
+and recovery cell; current semantic assessment emission moved to schema 1.0.1
+with mandatory requested-provider provenance while explicitly versioned 1.0.0
+replay remains compatible; successful provider identity is exact; subscription
+assessments cannot assert an unattested returned model; uninstall receipts
+reject impossible command-progress states; and readiness/event tests assert
+fresh version probes plus exact failure classes. Desktop receipt v1.2 now
+persists an installation-bound deterministic artifact-removal plan before the
+anchored quarantine rename, reconciles only the exact original/quarantine state
+on retry, and refuses terminal `removed` while staging is non-empty. An old
+random-name legacy receipt already interrupted in `removing` cannot be
+reconstructed and fails closed for manual recovery.
+
+Independent follow-up review found and closed three additional contract gaps:
+legacy terminal receipts now reject every unknown staging orphan while exact
+v1.1 failed receipts remain recoverable; current semantic failures require
+neutral schema-valid fields and cannot carry an output-authored returned model;
+and direct OpenAI refusal/incomplete results preserve their truthful failure
+class without attaching response-model provenance. Signed failure events use
+the trusted locally requested model, while successful OpenAI events retain the
+attested response model. Final independent re-reviews found no P1 or P2 issue.
+Focused results included 95 Desktop receipt/setup tests, 144 semantic
+schema/projection tests, and 110 OpenAI provenance tests. That complete gate
+passed with 768 backend tests.
+
+CodeRabbit's final two findings were also accepted and closed in `cfa25ef`.
+Legacy v1.0/v1.1 installed and v1.1 failed Desktop receipts now migrate
+atomically to a schema-valid v1.2 removal journal bound to the verified private
+configuration mode, unrelated-projection digest, current configuration digest,
+and deterministic artifact-removal plan before teardown mutates configuration
+or artifacts. Undeclared legacy-version/removal-plan hybrids and legacy
+`removing` receipts without a reconstructable plan fail closed. Current
+SemanticAssessment 1.0.1 failures from the OpenAI or Codex-subscription
+providers now require the locally trusted requested model in both Pydantic and
+JSON Schema; fixture failures and explicitly versioned 1.0.0 replay preserve
+their documented compatibility. Focused validation passed 97 Desktop
+receipt/setup tests and 147 semantic/provider projection tests, with independent
+reviews finding no remaining P1 or P2 issue.
+
+The definitive unchanged-tree `./scripts/verify.sh` gate then passed 779 backend
+tests in 336.95 seconds with 81% coverage, 13 isolated example/plugin tests, all
+11 Control Room tests, Ruff, mypy across 60 source files, OpenAPI and JSON Schema
+validation, the production frontend build, Python and npm dependency audits,
+and the 20-sample fixture evaluation at zero fixture-scoped false positives and
+false negatives. An earlier run reached 778/779 because the real SessionStart
+readiness subprocess missed its fixed three-second deadline while unrelated
+CPU-intensive suites were running; the fail-closed preview digest rejected the
+changed readiness state. The test passed immediately in isolation and nine
+consecutive repetitions, and the same source tree passed the complete gate once
+the external load ended. No timeout, trust binding, or security behavior was
+relaxed.
 
 ## New Work versus Prior Art
 
@@ -418,19 +557,17 @@ See `BASELINE_COMPARISON.md` for source-backed donor details.
 
 ## Spec Kit Analysis
 
-The pre-implementation consistency analysis ran on 2026-07-15 after two
-independent read-only review passes. All 39 functional, security, and public
-claim requirements and all 12 success criteria mapped to the 77-task graph. No
-deferred `VC-FUT-*` capability entered active scope. Contract metaschema and
-OpenAPI validation passed at that checkpoint. A final post-implementation
-analysis then added four explicit convergence tasks: privacy-safe span coverage,
-performance evidence, the still-unexercised credentialed live-model gate, and
-the clarification record. The telemetry, measurement, and clarification gaps
-are closed; the live-model task remains openly pending because no API key is
-present. After the clean-clone and security-audit evidence was recorded, the
-final read-only analysis found no critical or high consistency gap, no active
-deferred capability, and no unresolved material ambiguity. T080 and the live
-submission-checklist item remain intentionally unchecked.
+The feature-001 analysis history is preserved in its own specification and
+earlier commits. The final 2026-07-15 read-only analysis selected only active
+feature `002-codex-desktop-subscription-defense`: 26 functional requirements,
+10 security/failure requirements, 10 measurable outcomes, 15 acceptance
+scenarios across four user stories, and 66 unique sequential tasks. All 46
+requirements and all 15 scenarios map to implementation or verification tasks,
+for 100% traceability. All 93 checklist items are complete. The analysis found
+zero unresolved ambiguity, duplication, constitution violation, unmapped task,
+or deferred-scope leakage. Convergence would append no task and therefore left
+`tasks.md` unchanged. T056 remains the explicit operator-observed Desktop
+acceptance-evidence gate; T066 remains the remote release-closure gate.
 
 ## Open Issues and Operator Actions
 
@@ -456,9 +593,11 @@ evidence.
 ## Sprint 002 Handoff Snapshot
 
 - **Public repository**: `https://github.com/MahdiHedhli/verity-cordon`
-- **Branch**: `codex/002-contract-alignment`
-- **Pre-closure public branch head**:
-  `d54532e12a478226939a30ce3b4e8da9beb181eb`
+- **Branch**: `codex/002-release-review-hardening`
+- **Public `main` before release-review hardening**:
+  `3a18cf7dfc14ef59d48198789b567a44157c3b2b`
+- **Locally verified release-review implementation commit**:
+  `3d8a91d3142e6f56477963652ebe093fb4dc37eb`
 - **Locally verified release implementation commit**:
   `a831e3e20bbdc656b3d8199ad75ab76eeb3a7c3d`
 - **Locally verified contract-alignment commit**:
@@ -467,8 +606,8 @@ evidence.
   `8540cbb`
 - **Prior clean-checkout implementation/evidence checkpoint**:
   `79a12d0c8058d579664c90740a8bd44ae3359c68`
-- **Automated verification**: 510 backend tests, 13 isolated example/plugin
-  tests, 10 frontend tests, 80% backend coverage, schema/OpenAPI validation,
+- **Automated verification**: 706 backend tests, 13 isolated example/plugin
+  tests, 11 frontend tests, 81% backend coverage, schema/OpenAPI validation,
   dependency audits, type checks, lint, production build, and 20 fixture
   evaluations with 0 fixture-scoped false positives and 0 fixture-scoped false
   negatives

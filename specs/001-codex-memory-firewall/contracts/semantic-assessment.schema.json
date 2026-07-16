@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:verity-cordon:schema:semantic-assessment:1.0.0",
+  "$id": "urn:verity-cordon:schema:semantic-assessment:1.0.1",
   "title": "Verity Cordon Semantic Assessment",
   "description": "A schema-constrained semantic risk recommendation over sanitized candidate content. It is policy input and cannot independently grant durable trust.",
   "type": "object",
@@ -31,7 +31,11 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0.0"
+      "description": "Version 1.0.1 is the current emission contract. Version 1.0.0 is accepted only for explicit legacy replay.",
+      "enum": [
+        "1.0.0",
+        "1.0.1"
+      ]
     },
     "assessment_id": {
       "$ref": "#/$defs/identifier"
@@ -45,6 +49,19 @@
         "live_codex_subscription",
         "recorded_fixture",
         "failed"
+      ]
+    },
+    "requested_provider": {
+      "description": "Locally selected provider. New records populate this field; null or absence is accepted only for backward-compatible replay of legacy 1.0.0 records.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "fixture",
+        "openai",
+        "codex_subscription",
+        null
       ]
     },
     "requested_model": {
@@ -194,6 +211,7 @@
                 "tool_activity",
                 "output_limit",
                 "process_exit",
+                "cleanup_failure",
                 "cancelled"
               ]
             },
@@ -216,6 +234,81 @@
     {
       "if": {
         "properties": {
+          "schema_version": {
+            "const": "1.0.1"
+          }
+        },
+        "required": [
+          "schema_version"
+        ]
+      },
+      "then": {
+        "required": [
+          "requested_provider"
+        ],
+        "properties": {
+          "requested_provider": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": "1.0.1"
+          },
+          "provider_state": {
+            "const": "failed"
+          },
+          "requested_provider": {
+            "enum": [
+              "openai",
+              "codex_subscription"
+            ]
+          }
+        },
+        "required": [
+          "schema_version",
+          "provider_state",
+          "requested_provider"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requested_model": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": "1.0.1"
+          },
+          "provider_state": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "schema_version",
+          "provider_state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "returned_model": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "provider_state": {
             "const": "live_openai"
           }
@@ -226,6 +319,12 @@
       },
       "then": {
         "properties": {
+          "requested_provider": {
+            "enum": [
+              "openai",
+              null
+            ]
+          },
           "requested_model": {
             "type": "string"
           },
@@ -251,11 +350,42 @@
       },
       "then": {
         "properties": {
+          "requested_provider": {
+            "enum": [
+              "codex_subscription",
+              null
+            ]
+          },
           "requested_model": {
             "type": "string"
           },
+          "returned_model": {
+            "type": "null"
+          },
           "failure": {
             "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "provider_state": {
+            "const": "recorded_fixture"
+          }
+        },
+        "required": [
+          "provider_state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requested_provider": {
+            "enum": [
+              "fixture",
+              null
+            ]
           }
         }
       }

@@ -167,6 +167,7 @@
       "maxLength": 128
     },
     "semantic_model_identifier": {
+      "description": "Trustworthy returned_model when present, otherwise the locally configured requested_model. A subscription value records the local Codex model request and does not attest which remote model executed. Initial evaluation and rescan use the same derivation.",
       "type": [
         "string",
         "null"

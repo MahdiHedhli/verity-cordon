@@ -22,7 +22,7 @@ from verity_cordon.core.errors import (
     ResourceLimitError,
     VerityError,
 )
-from verity_cordon.core.models import SourceClass, provider_isolation_for
+from verity_cordon.core.models import SourceClass
 from verity_cordon.crypto.canonical import canonical_json
 from verity_cordon.daemon.contracts import (
     CandidateReviewRequest,
@@ -48,6 +48,7 @@ from verity_cordon.daemon.security import (
 from verity_cordon.daemon.static import default_control_room_dist, install_control_room
 from verity_cordon.memory.service import EvidenceSubmission
 from verity_cordon.policies.models import PolicyDocument
+from verity_cordon.semantic.readiness import semantic_provider_readiness
 from verity_cordon.streaming.session import StreamMetadata
 
 IdempotencyKey = Annotated[
@@ -232,16 +233,10 @@ def create_app(runtime: Runtime) -> FastAPI:
         statistics["counts"].update(await runtime.memory_service.evidence_queue_counts())
         verification = await runtime.event_store.verify()
         operational = runtime.event_store.healthy and verification.verified
-        provider_label = runtime.memory_service.semantic_adjudicator.provider_label
-        provider_ready = provider_label != "live_codex_subscription"
-        provider_failure_class: str | None = None
-        if runtime.subscription_runner is not None:
-            try:
-                await runtime.subscription_runner.check_chatgpt_auth()
-                provider_ready = True
-            except Exception as error:
-                provider_ready = False
-                provider_failure_class = str(getattr(error, "failure_class", "unavailable"))[:64]
+        provider = await semantic_provider_readiness(
+            runtime.memory_service.semantic_adjudicator.provider_label,
+            runtime.subscription_runner,
+        )
         return {
             "schema_version": "1.0.0",
             "daemon": "healthy" if operational else "read_only",
@@ -252,10 +247,10 @@ def create_app(runtime: Runtime) -> FastAPI:
             ),
             "ledger": "verified" if operational else "invalid",
             "memory_view": ("consistent" if verification.materialized_view_consistent else "stale"),
-            "semantic_provider": provider_label,
-            "semantic_provider_isolation": provider_isolation_for(provider_label).value,
-            "semantic_provider_ready": provider_ready,
-            "semantic_provider_failure_class": provider_failure_class,
+            "semantic_provider": provider.provider.value,
+            "semantic_provider_isolation": provider.isolation.value,
+            "semantic_provider_ready": provider.ready,
+            "semantic_provider_failure_class": provider.failure_class,
             "counts": statistics["counts"],
         }
 

@@ -14,7 +14,7 @@ credentials into this file.
 
 - Observed at (UTC): `REPLACE`
 - Observed at (local time and zone): `REPLACE`
-- Branch: `codex/002-desktop-subscription-defense`
+- Branch: `REPLACE_WITH_EXACT_BRANCH`
 - Commit: `REPLACE_WITH_EXACT_COMMIT`
 - Host platform: `macOS REPLACE / arm64` (do not record hostname)
 - ChatGPT desktop app version/build: `REPLACE`

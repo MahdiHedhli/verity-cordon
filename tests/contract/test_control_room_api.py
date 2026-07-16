@@ -278,6 +278,66 @@ async def test_subscription_status_failure_is_content_safe(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_status_normalizes_unknown_provider_and_fails_closed(tmp_path) -> None:
+    class UnknownAdjudicator:
+        provider_label = "mistyped_provider"
+
+    class StrayRunner:
+        def __init__(self) -> None:
+            self.auth_calls = 0
+
+        async def check_chatgpt_auth(self) -> str:
+            self.auth_calls += 1
+            raise RuntimeError("must not be probed")
+
+    client, runtime = await app_client(tmp_path)
+    runner = StrayRunner()
+    runtime.memory_service.semantic_adjudicator = cast(Any, UnknownAdjudicator())
+    runtime.subscription_runner = runner
+    async with client:
+        response = await client.get("/api/v1/status")
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["semantic_provider"] == "failed"
+    assert payload["semantic_provider_isolation"] == "failed"
+    assert payload["semantic_provider_ready"] is False
+    assert payload["semantic_provider_failure_class"] == "unsupported_provider"
+    assert runner.auth_calls == 0
+    assert_status_matches_openapi(payload)
+
+
+@pytest.mark.asyncio
+async def test_status_does_not_probe_stray_runner_for_direct_provider(tmp_path) -> None:
+    class DirectAdjudicator:
+        provider_label = "live_openai"
+
+    class StrayRunner:
+        def __init__(self) -> None:
+            self.auth_calls = 0
+
+        async def check_chatgpt_auth(self) -> str:
+            self.auth_calls += 1
+            raise RuntimeError("must not be probed")
+
+    client, runtime = await app_client(tmp_path)
+    runner = StrayRunner()
+    runtime.memory_service.semantic_adjudicator = cast(Any, DirectAdjudicator())
+    runtime.subscription_runner = runner
+    async with client:
+        response = await client.get("/api/v1/status")
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["semantic_provider"] == "live_openai"
+    assert payload["semantic_provider_isolation"] == "tool_free_api"
+    assert payload["semantic_provider_ready"] is True
+    assert payload["semantic_provider_failure_class"] is None
+    assert runner.auth_calls == 0
+    assert_status_matches_openapi(payload)
+
+
+@pytest.mark.asyncio
 async def test_corrupt_ledger_restarts_in_read_only_control_room_mode(tmp_path) -> None:
     client, runtime = await app_client(tmp_path)
     await client.aclose()

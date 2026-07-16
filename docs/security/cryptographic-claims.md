@@ -20,29 +20,43 @@ host or stolen signing key.
 ## Provider and Desktop Demo Claim Boundary
 
 The Codex subscription provider and Desktop demo installer use SHA-256 for
-request, executable, artifact, preview, and managed-entry identity checks. Those
-checks must not be conflated with the signed event-ledger construction.
+subscription content, executable, artifact, preview, and managed-entry identity
+checks. Those checks must not be conflated with the signed event-ledger
+construction.
 
 ### Codex subscription result binding
 
 Before accepting subscription output, Verity requires a strict local schema and
-an exact match for operation, opaque request identity, provider echo, and the
-SHA-256 digest of the canonical sanitized input. The Codex executable identity
-is pinned locally and rechecked before launch. These checks support the narrow
-claim that the accepted object matches the locally initiated invocation and
-sanitized input under the tested provider contract.
+an exact match for the operation, provider echo, subject identity
+(`evidence_id` for extraction or `candidate_id` for assessment), and SHA-256
+digest of the sanitized content text. Extraction hashes the sanitized evidence
+text; assessment hashes the sanitized `candidate.statement`. The subject
+identity is not a fresh per-invocation nonce, and the digest does not cover the
+other provenance or candidate fields sent to the child. The Codex executable
+identity is pinned locally and rechecked before launch. These checks support the
+narrow claim that the accepted object echoes the locally supplied subject and
+sanitized content text under the tested provider contract. They do not attest
+invocation freshness or bind fields outside that digest scope.
 
 The subscription output is not signed by Codex or OpenAI. Its `provider` field
 is an untrusted echo, and a model-authored model name or execution claim is not
-accepted as evidence. The request digest does not prove that the model reasoned
-correctly, that no tool existed or was attempted, that outbound information
-flow was prevented, or that a particular remote model produced the text. The
-provider is therefore labeled `live_codex_subscription` and lower-isolation
-`agentic_sandboxed`; deterministic policy remains final authority.
-`requested_model` records the locally configured `gpt-5.6-luna` identifier used
-by the exercised subscription path. `returned_model` remains null unless
-trustworthy Codex runtime metadata supplies it; the requested value is not a
-remote model attestation.
+accepted as evidence. The content-text digest does not prove that the model
+reasoned correctly, that no tool existed or was attempted, that outbound
+information flow was prevented, or that a particular remote model produced the
+text. The provider is therefore labeled `live_codex_subscription` and
+lower-isolation `agentic_sandboxed`; deterministic policy remains final
+authority.
+`requested_model` records the locally configured `gpt-5.6-luna` identifier
+passed as a fixed argument by the exercised subscription path. `returned_model`
+is null for the current
+subscription contract because the runtime event stream does not supply trusted
+remote-model metadata; the requested value is not a remote model attestation.
+Signed evaluation events use a single derivation in both initial processing and
+rescan: trustworthy `returned_model` when present, otherwise the locally
+configured `requested_model`. Consequently a subscription event's
+`semantic_model_identifier=gpt-5.6-luna` proves only which bounded identifier
+Verity requested and signed into its local history. It does not prove which
+remote model, deployment, or model revision produced the response.
 
 ### Desktop demo receipt and artifact binding
 
@@ -433,7 +447,7 @@ identities. They do not extend the event-ledger signature claim.
 
 | Test mutation | Required result |
 |---|---|
-| Change a subscription output request ID or sanitized digest | Provider rejects the complete advisory result before policy input |
+| Change a subscription output subject ID (`evidence_id` or `candidate_id`) or sanitized content-text digest | Provider rejects the complete advisory result before policy input |
 | Replace the verified Codex executable after provider construction | Provider reports executable drift and does not accept an assessment |
 | Emit a subscription-child tool or unknown event | Provider rejects even a schema-valid final object and records no successful assessment |
 | Change the Desktop managed MCP entry, staged artifact, or bound runtime | Demo readiness fails; teardown refuses drifted managed state |
@@ -460,9 +474,11 @@ When the corresponding verification tests pass, Verity Cordon may say:
 
 When the corresponding contract tests pass, Verity Cordon may say:
 
-- A subscription result accepted by the provider is schema-, request-identity-,
-  and sanitized-content-digest-bound to the local invocation. This is a local
-  acceptance claim, not a remote signature or model-attestation claim.
+- A subscription result accepted by the provider is schema-, subject-identity-,
+  and sanitized-content-text-digest-bound to the locally supplied fields for
+  that operation. This local acceptance claim does not attest a fresh
+  invocation, bind the other unhashed input fields, or provide a remote
+  signature or model attestation.
 - Desktop demo doctor checks the private receipt, exact managed entry, staged
   fixture, and runtime digests before reporting ready. These are local drift
   checks separate from event-ledger verification.

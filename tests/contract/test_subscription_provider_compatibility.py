@@ -6,15 +6,18 @@ import json
 from pathlib import Path
 from typing import Any, get_args
 
+import pytest
 import yaml
 from jsonschema import Draft202012Validator, FormatChecker  # type: ignore[import-untyped]
 from openapi_spec_validator import validate as validate_openapi
+from pydantic import ValidationError
 
 from verity_cordon.core.models import (
     MemoryCandidate,
     MemoryRecord,
     ProviderState,
     ProviderSummaryState,
+    RequestedProvider,
     SemanticAssessment,
     SemanticFailure,
     provider_isolation_for,
@@ -57,10 +60,14 @@ def _candidate_payload(*, extractor_provider: str) -> dict[str, Any]:
     }
 
 
-def _assessment_payload(*, provider_state: str) -> dict[str, Any]:
+def _assessment_payload(
+    *,
+    provider_state: str,
+    schema_version: str = "1.0.0",
+) -> dict[str, Any]:
     live = provider_state in {"live_openai", "live_codex_subscription"}
     return {
-        "schema_version": "1.0.0",
+        "schema_version": schema_version,
         "assessment_id": "assessment-history-001",
         "candidate_id": "candidate-history-001",
         "provider_state": provider_state,
@@ -83,6 +90,45 @@ def _assessment_payload(*, provider_state: str) -> dict[str, Any]:
         "failure": None,
         "assessed_at": CREATED_AT,
     }
+
+
+def _current_assessment_payload(*, provider_state: str) -> dict[str, Any]:
+    payload = _assessment_payload(provider_state=provider_state, schema_version="1.0.1")
+    payload["requested_provider"] = {
+        "live_openai": "openai",
+        "live_codex_subscription": "codex_subscription",
+        "recorded_fixture": "fixture",
+    }[provider_state]
+    return payload
+
+
+def _failed_assessment_payload(
+    *,
+    schema_version: str = "1.0.1",
+    requested_provider: str | None = "codex_subscription",
+) -> dict[str, Any]:
+    payload = _assessment_payload(
+        provider_state="live_codex_subscription",
+        schema_version=schema_version,
+    )
+    payload.update(
+        {
+            "provider_state": "failed",
+            "requested_provider": requested_provider,
+            "risk_score": None,
+            "categories": [],
+            "persistence_intent": "unknown",
+            "authority_claim": "unknown",
+            "exfiltration_risk": None,
+            "tool_hijack_risk": None,
+            "cross_task_risk": None,
+            "secret_risk": None,
+            "rationale": None,
+            "recommended_disposition": None,
+            "failure": {"class": "timeout", "retryable": True},
+        }
+    )
+    return payload
 
 
 def _memory_payload(*, semantic_provider: str) -> dict[str, Any]:
@@ -170,6 +216,288 @@ def test_feature_001_json_schemas_accept_subscription_provider_payloads() -> Non
     ).validate(_assessment_payload(provider_state="live_codex_subscription"))
 
 
+def test_current_subscription_assessments_bind_requested_provider_on_success_and_failure() -> None:
+    assessment_schema = _load_json_schema("semantic-assessment.schema.json")
+    validator = Draft202012Validator(
+        assessment_schema,
+        format_checker=FormatChecker(),
+    )
+    successful = _current_assessment_payload(provider_state="live_codex_subscription")
+    successful["requested_model"] = "gpt-5.6-luna"
+    validator.validate(successful)
+    parsed_success = SemanticAssessment.model_validate(successful)
+    assert parsed_success.requested_provider is RequestedProvider.CODEX_SUBSCRIPTION
+
+    failed = _failed_assessment_payload()
+    failed["requested_model"] = "gpt-5.6-luna"
+    validator.validate(failed)
+    parsed_failure = SemanticAssessment.model_validate(failed)
+    assert parsed_failure.provider_state is ProviderState.FAILED
+    assert parsed_failure.requested_provider is RequestedProvider.CODEX_SUBSCRIPTION
+    assert parsed_failure.requested_model == "gpt-5.6-luna"
+
+
+@pytest.mark.parametrize(
+    "provider_state",
+    ["recorded_fixture", "live_openai", "live_codex_subscription", "failed"],
+)
+@pytest.mark.parametrize("provenance_form", ["absent", "null"])
+def test_current_assessments_reject_missing_provider_provenance(
+    provider_state: str,
+    provenance_form: str,
+) -> None:
+    payload = (
+        _failed_assessment_payload()
+        if provider_state == "failed"
+        else _current_assessment_payload(provider_state=provider_state)
+    )
+    if provenance_form == "absent":
+        payload.pop("requested_provider")
+    else:
+        payload["requested_provider"] = None
+    validator = Draft202012Validator(
+        _load_json_schema("semantic-assessment.schema.json"),
+        format_checker=FormatChecker(),
+    )
+
+    assert list(validator.iter_errors(payload))
+    with pytest.raises(ValidationError, match="requires provider provenance"):
+        SemanticAssessment.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "provider_state",
+    ["recorded_fixture", "live_openai", "live_codex_subscription", "failed"],
+)
+@pytest.mark.parametrize("provenance_form", ["absent", "null"])
+def test_explicit_legacy_assessments_allow_missing_provider_provenance(
+    provider_state: str,
+    provenance_form: str,
+) -> None:
+    payload = (
+        _failed_assessment_payload(schema_version="1.0.0")
+        if provider_state == "failed"
+        else _assessment_payload(provider_state=provider_state)
+    )
+    if provenance_form == "absent":
+        payload.pop("requested_provider", None)
+    else:
+        payload["requested_provider"] = None
+    validator = Draft202012Validator(
+        _load_json_schema("semantic-assessment.schema.json"),
+        format_checker=FormatChecker(),
+    )
+
+    validator.validate(payload)
+    parsed = SemanticAssessment.model_validate(payload)
+
+    assert parsed.schema_version == "1.0.0"
+    assert parsed.requested_provider is None
+
+
+@pytest.mark.parametrize(
+    ("provider_state", "requested_provider"),
+    [
+        ("recorded_fixture", "openai"),
+        ("live_openai", "codex_subscription"),
+        ("live_codex_subscription", "fixture"),
+    ],
+)
+def test_successful_provider_identity_mismatches_fail_schema_and_pydantic_equally(
+    provider_state: str,
+    requested_provider: str,
+) -> None:
+    payload = _current_assessment_payload(provider_state=provider_state)
+    payload["requested_provider"] = requested_provider
+    validator = Draft202012Validator(
+        _load_json_schema("semantic-assessment.schema.json"),
+        format_checker=FormatChecker(),
+    )
+
+    schema_errors = list(validator.iter_errors(payload))
+
+    assert any(list(error.path) == ["requested_provider"] for error in schema_errors)
+    with pytest.raises(ValidationError, match="provider identity is inconsistent"):
+        SemanticAssessment.model_validate(payload)
+
+
+@pytest.mark.parametrize("requested_provider", list(RequestedProvider))
+def test_failed_assessment_may_preserve_any_attempted_provider(
+    requested_provider: RequestedProvider,
+) -> None:
+    payload = _failed_assessment_payload(requested_provider=requested_provider.value)
+    validator = Draft202012Validator(
+        _load_json_schema("semantic-assessment.schema.json"),
+        format_checker=FormatChecker(),
+    )
+
+    validator.validate(payload)
+    parsed = SemanticAssessment.model_validate(payload)
+
+    assert parsed.provider_state is ProviderState.FAILED
+    assert parsed.requested_provider is requested_provider
+
+
+@pytest.mark.parametrize("requested_provider", ["openai", "codex_subscription"])
+@pytest.mark.parametrize("model_form", ["absent", "null"])
+def test_current_failed_live_provider_requires_requested_model_in_schema_and_pydantic(
+    requested_provider: str,
+    model_form: str,
+) -> None:
+    payload = _failed_assessment_payload(requested_provider=requested_provider)
+    if model_form == "absent":
+        payload.pop("requested_model")
+    else:
+        payload["requested_model"] = None
+    validator = Draft202012Validator(
+        _load_json_schema("semantic-assessment.schema.json"),
+        format_checker=FormatChecker(),
+    )
+
+    assert list(validator.iter_errors(payload))
+    with pytest.raises(ValidationError, match="requires requested model"):
+        SemanticAssessment.model_validate(payload)
+
+
+def test_current_failed_fixture_provider_may_have_null_requested_model() -> None:
+    payload = _failed_assessment_payload(requested_provider="fixture")
+    payload["requested_model"] = None
+    validator = Draft202012Validator(
+        _load_json_schema("semantic-assessment.schema.json"),
+        format_checker=FormatChecker(),
+    )
+
+    validator.validate(payload)
+    parsed = SemanticAssessment.model_validate(payload)
+
+    assert parsed.requested_provider is RequestedProvider.FIXTURE
+    assert parsed.requested_model is None
+
+
+@pytest.mark.parametrize("requested_provider", ["openai", "codex_subscription"])
+def test_explicit_legacy_failed_live_provider_may_have_null_requested_model(
+    requested_provider: str,
+) -> None:
+    payload = _failed_assessment_payload(
+        schema_version="1.0.0",
+        requested_provider=requested_provider,
+    )
+    payload["requested_model"] = None
+    validator = Draft202012Validator(
+        _load_json_schema("semantic-assessment.schema.json"),
+        format_checker=FormatChecker(),
+    )
+
+    validator.validate(payload)
+    parsed = SemanticAssessment.model_validate(payload)
+
+    assert parsed.schema_version == "1.0.0"
+    assert parsed.requested_model is None
+
+
+def test_current_failed_assessment_rejects_returned_model_in_schema_and_pydantic() -> None:
+    payload = _failed_assessment_payload()
+    payload["returned_model"] = "output-authored-model"
+    validator = Draft202012Validator(
+        _load_json_schema("semantic-assessment.schema.json"),
+        format_checker=FormatChecker(),
+    )
+
+    assert any(list(error.path) == ["returned_model"] for error in validator.iter_errors(payload))
+    with pytest.raises(ValidationError, match="must not assert a returned model"):
+        SemanticAssessment.model_validate(payload)
+
+
+def test_explicit_legacy_failed_assessment_preserves_historical_returned_model_shape() -> None:
+    payload = _failed_assessment_payload(schema_version="1.0.0")
+    payload["returned_model"] = "legacy-response-model"
+    validator = Draft202012Validator(
+        _load_json_schema("semantic-assessment.schema.json"),
+        format_checker=FormatChecker(),
+    )
+
+    validator.validate(payload)
+    parsed = SemanticAssessment.model_validate(payload)
+
+    assert parsed.schema_version == "1.0.0"
+    assert parsed.returned_model == "legacy-response-model"
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    [
+        ("failure", None),
+        ("risk_score", 0.1),
+        ("categories", ["persistent_instruction"]),
+        ("persistence_intent", "explicit"),
+        ("authority_claim", "explicit"),
+        ("exfiltration_risk", 0.1),
+        ("tool_hijack_risk", 0.1),
+        ("cross_task_risk", 0.1),
+        ("secret_risk", 0.1),
+        ("rationale", "Output-authored rationale."),
+        ("recommended_disposition", "allow"),
+    ],
+)
+def test_failed_assessment_neutral_fields_match_schema_and_pydantic(
+    field: str,
+    invalid_value: Any,
+) -> None:
+    payload = _failed_assessment_payload()
+    payload[field] = invalid_value
+    validator = Draft202012Validator(
+        _load_json_schema("semantic-assessment.schema.json"),
+        format_checker=FormatChecker(),
+    )
+
+    assert any(list(error.path) == [field] for error in validator.iter_errors(payload))
+    with pytest.raises(ValidationError):
+        SemanticAssessment.model_validate(payload)
+
+
+def test_subscription_assessment_schema_rejects_remote_model_assertion() -> None:
+    assessment_schema = _load_json_schema("semantic-assessment.schema.json")
+    validator = Draft202012Validator(
+        assessment_schema,
+        format_checker=FormatChecker(),
+    )
+    subscription = _current_assessment_payload(provider_state="live_codex_subscription")
+    subscription["returned_model"] = "unattested-remote-model"
+
+    errors = list(validator.iter_errors(subscription))
+
+    assert any(list(error.path) == ["returned_model"] for error in errors)
+    with pytest.raises(ValidationError, match="must not assert a returned model"):
+        SemanticAssessment.model_validate(subscription)
+    validator.validate(_current_assessment_payload(provider_state="live_openai"))
+
+
+@pytest.mark.parametrize(
+    ("provider_state", "field"),
+    [
+        ("live_openai", "requested_model"),
+        ("live_openai", "returned_model"),
+        ("live_codex_subscription", "requested_model"),
+    ],
+)
+@pytest.mark.parametrize("invalid_value", [None, ""])
+def test_live_assessment_model_provenance_matches_schema_and_pydantic(
+    provider_state: str,
+    field: str,
+    invalid_value: str | None,
+) -> None:
+    payload = _current_assessment_payload(provider_state=provider_state)
+    payload[field] = invalid_value
+    validator = Draft202012Validator(
+        _load_json_schema("semantic-assessment.schema.json"),
+        format_checker=FormatChecker(),
+    )
+
+    assert list(validator.iter_errors(payload))
+    with pytest.raises(ValidationError):
+        SemanticAssessment.model_validate(payload)
+
+
 def test_semantic_failure_schema_matches_every_runtime_failure_class() -> None:
     assessment_schema = _load_json_schema("semantic-assessment.schema.json")
     failure_schema = assessment_schema["properties"]["failure"]["anyOf"][0]
@@ -233,10 +561,10 @@ def test_historical_live_provider_payloads_round_trip_without_mutation() -> None
     assert MemoryCandidate.model_validate(candidate_payload).model_dump(mode="json") == (
         candidate_payload
     )
-    assert (
-        SemanticAssessment.model_validate(assessment_payload).model_dump(mode="json")
-        == assessment_payload
-    )
+    assessment = SemanticAssessment.model_validate(assessment_payload)
+    assert assessment.requested_provider is None
+    assert "requested_provider" not in assessment.model_fields_set
+    assert assessment.model_dump(mode="json", exclude={"requested_provider"}) == assessment_payload
     assert MemoryRecord.model_validate(memory_payload).model_dump(mode="json") == memory_payload
 
 
@@ -248,8 +576,8 @@ def test_historical_fixture_payloads_round_trip_without_mutation() -> None:
     assert MemoryCandidate.model_validate(candidate_payload).model_dump(mode="json") == (
         candidate_payload
     )
-    assert (
-        SemanticAssessment.model_validate(assessment_payload).model_dump(mode="json")
-        == assessment_payload
-    )
+    assessment = SemanticAssessment.model_validate(assessment_payload)
+    assert assessment.requested_provider is None
+    assert "requested_provider" not in assessment.model_fields_set
+    assert assessment.model_dump(mode="json", exclude={"requested_provider"}) == assessment_payload
     assert MemoryRecord.model_validate(memory_payload).model_dump(mode="json") == memory_payload

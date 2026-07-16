@@ -75,10 +75,14 @@ Preview intentionally makes no changes and exits with status 2:
 uv run verity install-codex --source-root .
 ```
 
-Review the hook definition and exact configuration delta, then apply:
+Review the exact rendered hook manifest, per-artifact SHA-256 and size, verified
+hook-runtime path/SHA-256/version, configuration delta, and
+`preview.preview_digest`. Copy that digest, then apply only the matching plan:
 
 ```bash
-uv run verity install-codex --source-root . --yes
+export VERITY_CODEX_INSTALL_DIGEST="<copy preview.preview_digest>"
+uv run verity install-codex --source-root . \
+  --expected-preview-digest "$VERITY_CODEX_INSTALL_DIGEST" --yes
 ```
 
 The normal installer configures only Verity's controlled memory plane. It does
@@ -86,7 +90,8 @@ not install the synthetic poisoned-documentation tool.
 `VERITY_CONFIRM_HOOK_TRUST=1` is your explicit assertion that you reviewed the
 normal hook definition; the helper refuses to infer or silently grant trust.
 
-After the normal installer finishes, deliberately start Codex CLI once and
+The preview digest is checked before any install mutation; it does not grant
+Codex hook trust. After the normal installer finishes, deliberately start Codex CLI once and
 enter `/hooks`. Review the source and exact definition of every Verity command
 hook, trust its current hash, then exit the CLI completely. A new or changed
 definition must return to review-required state. Record the post-review

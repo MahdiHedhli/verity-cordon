@@ -29,13 +29,13 @@ from verity_cordon.codex import (
 )
 from verity_cordon.core.config import Settings, loopback_origin, validate_loopback_host
 from verity_cordon.core.errors import ConfigurationError, VerityError
-from verity_cordon.core.models import provider_isolation_for
 from verity_cordon.crypto.keys import FileKeyProvider
 from verity_cordon.daemon.app import create_app
 from verity_cordon.daemon.runtime import build_runtime
 from verity_cordon.daemon.static import default_control_room_dist
 from verity_cordon.demo import run_live_demo, run_offline_demo
 from verity_cordon.policies.load import load_policy
+from verity_cordon.semantic.readiness import semantic_provider_readiness
 
 app = typer.Typer(
     name="verity",
@@ -105,7 +105,11 @@ def doctor(
             verification = _run(runtime.event_store.verify())
             checks.extend(
                 [
-                    ("Policy", f"{runtime.memory_service.policy_engine.policy.policy_id} valid"),
+                    (
+                        "Policy",
+                        f"{runtime.memory_service.policy_engine.policy.policy_id} "
+                        f"{runtime.policy_validation_state}",
+                    ),
                     ("Ledger", "verified" if verification.verified else "invalid"),
                     (
                         "Memory view",
@@ -113,22 +117,22 @@ def doctor(
                     ),
                 ]
             )
-            provider_label = runtime.memory_service.semantic_adjudicator.provider_label
-            if runtime.subscription_runner is not None:
-                try:
-                    _run(runtime.subscription_runner.check_chatgpt_auth())
-                    provider_status = "ready (agentic_sandboxed)"
-                    provider_ready = True
-                except Exception as error:
-                    failure_class = str(getattr(error, "failure_class", "unavailable"))[:64]
-                    provider_status = f"not ready ({failure_class})"
-                    provider_ready = False
-            else:
-                provider_status = f"ready ({provider_label})"
-                provider_ready = True
+            provider = _run(
+                semantic_provider_readiness(
+                    runtime.memory_service.semantic_adjudicator.provider_label,
+                    runtime.subscription_runner,
+                )
+            )
+            provider_status = (
+                f"ready ({provider.isolation.value})"
+                if provider.ready
+                else f"not ready ({provider.failure_class})"
+            )
             checks.append(("Semantic provider", provider_status))
             ok = ok and verification.verified
-            ok = ok and provider_ready
+            ok = ok and verification.materialized_view_consistent
+            ok = ok and runtime.policy_validation_state == "valid"
+            ok = ok and provider.ready
         except Exception as error:
             _safe_error(error)
             checks.append(("Runtime", "unavailable"))
@@ -199,6 +203,10 @@ def _integration_json(result: IntegrationResult) -> dict[str, Any]:
         "commands": [list(command) for command in result.commands],
         "marketplace_registered": result.marketplace_registered,
         "plugin_installed": result.plugin_installed,
+        "preview_digest": result.preview_digest,
+        "artifacts": list(result.artifacts),
+        "hook_manifest": result.hook_manifest,
+        "hook_runtime": result.hook_runtime,
         "issues": list(result.issues),
         "operator_actions": list(result.operator_actions),
     }
@@ -234,6 +242,13 @@ def install_codex_command(
         bool,
         typer.Option("--yes", help="Apply the previewed Codex configuration changes."),
     ] = False,
+    expected_preview_digest: Annotated[
+        str | None,
+        typer.Option(
+            "--expected-preview-digest",
+            help="Exact digest copied from a separate immutable install preview.",
+        ),
+    ] = None,
 ) -> None:
     """Preview or install the supported local Codex plugin and memory controls."""
 
@@ -241,9 +256,22 @@ def install_codex_command(
         preview = install_codex(source_root.resolve(), confirmed=False)
         console.print_json(data={"preview": _integration_json(preview)})
         if not yes:
-            console.print("[yellow]Review the preview, then rerun with --yes.[/yellow]")
+            console.print(
+                "[yellow]Review the rendered hooks and artifact hashes, then rerun with "
+                "--expected-preview-digest <digest> --yes.[/yellow]"
+            )
             raise typer.Exit(2)
-        result = install_codex(source_root.resolve(), confirmed=True)
+        if expected_preview_digest is None:
+            console.print(
+                "[yellow]Confirmed install requires --expected-preview-digest from a "
+                "separate preview.[/yellow]"
+            )
+            raise typer.Exit(2)
+        result = install_codex(
+            source_root.resolve(),
+            confirmed=True,
+            expected_preview_digest=expected_preview_digest,
+        )
         console.print_json(data={"result": _integration_json(result)})
         if result.issues:
             raise typer.Exit(1)
@@ -289,25 +317,19 @@ def status() -> None:
         verification = await runtime.event_store.verify()
         statistics = await runtime.queries.statistics()
         policy = runtime.memory_service.policy_engine.policy
-        provider_label = runtime.memory_service.semantic_adjudicator.provider_label
-        provider_isolation = provider_isolation_for(provider_label).value
-        provider_ready = provider_label != "live_codex_subscription"
-        provider_failure_class: str | None = None
-        if runtime.subscription_runner is not None:
-            try:
-                await runtime.subscription_runner.check_chatgpt_auth()
-            except Exception as error:
-                provider_ready = False
-                provider_failure_class = str(getattr(error, "failure_class", "unavailable"))[:64]
+        provider = await semantic_provider_readiness(
+            runtime.memory_service.semantic_adjudicator.provider_label,
+            runtime.subscription_runner,
+        )
         return {
             "mode": policy.mode.value,
             "policy": f"{policy.policy_id}@{policy.version}",
             "ledger_verified": verification.verified,
             "view_consistent": verification.materialized_view_consistent,
-            "semantic_provider": provider_label,
-            "semantic_provider_isolation": provider_isolation,
-            "semantic_provider_ready": provider_ready,
-            "semantic_provider_failure_class": provider_failure_class,
+            "semantic_provider": provider.provider.value,
+            "semantic_provider_isolation": provider.isolation.value,
+            "semantic_provider_ready": provider.ready,
+            "semantic_provider_failure_class": provider.failure_class,
             "counts": statistics["counts"],
         }
 

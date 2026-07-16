@@ -22,6 +22,9 @@ set -e
 
 if [[ $preview_status -ne 2 ]]; then
   echo "Desktop demo preview failed safely; resolve the reported readiness issue first." >&2
+  if [[ $preview_status -eq 0 ]]; then
+    exit 1
+  fi
   exit "$preview_status"
 fi
 

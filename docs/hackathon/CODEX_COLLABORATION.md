@@ -121,7 +121,11 @@ retained.
 This is evidence for one host, sign-in, model, synthetic input, and date. It is
 not evidence of universal entitlement, stable latency, tool absence inside the
 Codex binary, a completed Desktop UI rehearsal, or protection against a
-compromised host.
+compromised host. The successful run preceded the exact incremental JSONL and
+release-review hardening. A post-hardening probe was externally rate-limited
+and returned retryable, content-safe `failed/process_exit` with clean cleanup
+state; that proves fail-closed failure handling, not a successful hardened live
+completion or remote-model attestation.
 
 ## Primary Session ID
 

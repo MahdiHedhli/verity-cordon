@@ -123,6 +123,34 @@ when the project is untrusted, so a user-level installation or a verified launch
 wrapper is required for that case. Native memory files are generated state and
 must not be edited by Verity as its primary control mechanism.
 
+Normal integration preview is read-only. Confirmed install and uninstall use
+one private cooperating-process lock and expected-head SHA-256 checks for every
+config replacement and receipt transition. Receipt version 2 records a
+write-ahead `prepared` state before staged marketplace executables can change,
+binding prior and target artifact digests, config heads, backup digest, preview
+digest, the actual target interpreter path/digest/size/version, and fixed
+active, staging, retired, and removal-tree paths. Recovery accounts for every
+retained executable tree; random temporary or retired tree names are not used.
+Every tree component and artifact is owner/mode/type checked with no symlink
+traversal before digest use, rename, or removal. Successful Codex add/remove
+steps are journaled so retries skip normal already-present/absent operations.
+Artifact replacement preserves a receipt-verified marketplace registration and
+uses an explicit `refresh_plugin` strategy with a separately journaled plugin
+remove/add sequence; it does not reset registration progress and depend on an
+already-present add succeeding.
+Uninstall separately journals command removal, config restoration, tree
+tombstoning/removal, and receipt deletion, including both config heads and its
+backup digest. Recovery continues only from an exact receipt-bound phase.
+Relative roots, symlinked or dangling security paths, and unsafe owner/mode
+paths are rejected. Legacy receipts may be upgraded or removed but cannot
+satisfy runtime readiness.
+
+An external Codex command and the following local receipt transition are not
+one transaction. A process interruption or receipt atomic-write,
+synchronization, or replacement I/O failure after external success leaves a
+narrow ambiguous state that requires Codex status reconciliation or operator
+review; incomplete journal state never satisfies readiness.
+
 The documented runtime has additional security consequences:
 
 - Non-managed command hooks require operator review and trust of the exact hook
@@ -207,8 +235,11 @@ raw evidence.
 **Controls**: Size and schema limits; event-specific adapters; idempotency keys;
 content-free errors; no secret logging; and no-memory success behavior when the
 daemon is unavailable. The installer receipt binds the hook runtime to the
-currently verified Python executable and version; `doctor` never executes an
-arbitrary interpreter path supplied only by a modified receipt.
+currently verified Python executable path, SHA-256, size, and
+executable-reported version. `doctor` checks path, digest, and size before
+executing it, rechecks the complete identity after the bounded cached-hook
+probe, and never executes an arbitrary interpreter path supplied only by a
+modified receipt.
 
 **Residual boundary**: A skipped, untrusted, or failed hook creates a capture
 gap. `doctor` reports this state; it cannot be described as protected.
@@ -420,17 +451,21 @@ cryptographic proof that an arbitrary process performed no outbound action.
 It is not a tool-free API request and never grants memory trust.
 
 **Data crossing out**: Only bounded locally sanitized evidence or a candidate
-safe representation, the minimum provenance needed for the operation, and the
-locally computed request identity and SHA-256 content digest. The child uses the
-operator's supported ChatGPT sign-in through Codex; Verity does not open, copy,
-parse, print, persist, or watch Codex credential files.
+safe representation, the minimum provenance needed for the operation, the
+locally supplied subject identity (`evidence_id` or `candidate_id`), and the
+SHA-256 digest of the sanitized content text. Extraction hashes the sanitized
+evidence; assessment hashes only the sanitized `candidate.statement`, not the
+other candidate fields. The child uses the operator's supported ChatGPT sign-in
+through Codex; Verity does not open, copy, parse, print, persist, or watch Codex
+credential files.
 
 **Controls**: Explicit provider selection; verified Codex executable and auth
 directory identity; a fresh allow-listed environment with no API keys, bearer
 values, proxy credentials, or arbitrary parent variables; fixed non-shell argv;
 stdin-only untrusted content; ephemeral execution; ignored user configuration
 and rules; private empty read-only working directory; disabled high-risk
-feature surfaces; strict output schema; request identity and digest matching;
+feature surfaces; strict output schema; subject identity and content-text digest
+matching;
 bounded JSONL, stderr, and final file; conservative rejection of every tool or
 unknown event; POSIX process-group termination and descendant reaping (with
 direct-child-only fallback on unverified Windows); local re-sanitization;
@@ -462,11 +497,13 @@ resolved absolute regular executables with owner/ancestor mode checks plus
 pinned source, staged artifact, Codex executable, and Python runtime SHA-256
 identities and sizes; atomic writes; a schema-valid `prepared` receipt before
 config mutation; an independently canonicalized managed-entry digest;
-`prepared` and `removing` exact-state reconciliation; repeatable archival of a
-digest-matching `removed` receipt by installation ID; safe bounded fixture
-probe that never calls the sink; and teardown that removes only the exact
-managed entry and digest-matching staged regular files while preserving
-unrelated TOML changes. Confirmed operations use a private Verity operation lock
+`prepared` and `removing` exact-state reconciliation; deterministic
+installation-bound quarantine paths persisted before artifact rename;
+repeatable archival of a digest-matching `removed` receipt by installation ID;
+safe bounded fixture probe that never calls the sink; and teardown that removes
+only the exact managed entry and digest-matching staged regular files while
+preserving unrelated TOML changes. A non-empty staging directory prevents a
+terminal removal receipt. Confirmed operations use a private Verity operation lock
 and expected whole-config SHA-256 head. Teardown may proceed despite an
 unhealthy normal integration when its own receipt, entry, artifacts, runtimes,
 and separately reviewed teardown digest remain exact, so the user-wide fixture
@@ -491,9 +528,9 @@ unverified and lacks the same tested descendant process-group guarantee.
 | Original evidence bytes | Not retained by the MVP | Never as original bytes | No | SHA-256 raw-content digest referenced by `EvidenceCaptured` |
 | Recognized credential or secret | Not retained as raw content; replaced by a typed placeholder | Never as recognized raw content | Never | Redaction type/count and sanitized digest, without the value |
 | Sanitized evidence | Permanent bounded `safe_excerpt` plus a transient bounded SQLite queue body | Yes, in explicit live mode | No queue body or capture excerpt in routine UI; telemetry uses digest/length/source | Queue body is checked against the sanitized digest bound in `EvidenceCaptured`; no semantic-result cache in the MVP |
-| Subscription semantic input | Ephemeral Codex child stdin and private temporary files; no Verity session persistence | Yes, through Codex's supported ChatGPT subscription service when explicitly selected | Provider/isolation/failure state, latency, and IDs only; no prompt, status output, JSONL body, stderr, paths, or final free text | Local request identity and sanitized-content digest must match strict output; this is not a signature from Codex or OpenAI |
+| Subscription semantic input | Ephemeral Codex child stdin and private temporary files; no Verity session persistence | Yes, through Codex's supported ChatGPT subscription service when explicitly selected | Provider/isolation/failure state, latency, and IDs only; no prompt, status output, JSONL body, stderr, paths, or final free text | Locally supplied `evidence_id` or `candidate_id` and the sanitized content-text digest must match strict output; assessment covers `candidate.statement`, not the other candidate fields; this is not a signature from Codex or OpenAI and does not attest invocation freshness |
 | Candidate safe representation | Local candidate store | Yes, if policy invokes semantic review | Yes, only after redaction rules | Candidate ID, source refs, and payload digest |
-| Semantic assessment | Local event payload | Returned from direct OpenAI API or Codex subscription service | Provider state, isolation, categories, scores, and safe rationale | Schema/version/model-or-requested-model/prompt bound to event; subscription output also binds request identity and sanitized digest |
+| Semantic assessment | Local event payload | Returned from direct OpenAI API or Codex subscription service | Provider state, isolation, categories, scores, and safe rationale | Schema/version/model-or-requested-model/prompt bound to event; subscription output also matches candidate subject identity and the digest of sanitized `candidate.statement` |
 | Active memory | Derived local view | Not for adjudication unless rescanned | Safe statement according to policy | Deterministic replay from committed events |
 | Ledger event and public key | Local database; public export when requested | No | Safe metadata may appear | `VC-CJ-1`, SHA-256 chain, Ed25519 signature |
 | Private signing key or IPC capability | User-only local file; OS keychain support is deferred | Never | Never | Permission and availability checks; never event payload |

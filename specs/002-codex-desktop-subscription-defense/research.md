@@ -46,6 +46,16 @@ build.
   isolated configuration, read-only sandboxing, JSONL events, a strict output
   schema, and writing the final response to a designated file.
 
+**Compatibility decision**: Feature 002 accepts only an exact bounded
+`codex-cli MAJOR.MINOR.PATCH` version marker in the range
+`>=0.144.4,<1.0.0`. Every readiness probe invokes the verified executable's
+version command and then performs a fresh ChatGPT login-status check; successful
+authentication is not cached. This range records the exercised lower bound and
+rejects a future major contract change by default. It is not evidence that a
+particular binary exposes a model, preserves event fields, or correctly applies
+the requested isolation flags. The fixed invocation, incremental JSONL gate,
+and strict final-file validation remain the runtime capability evidence.
+
 **Decision**: The MVP subscription provider uses `codex exec`, not credential
 file access and not an undocumented Desktop transport. The provider first calls
 the supported login-status command, requires a successful ChatGPT sign-in, and
@@ -135,11 +145,41 @@ entitlement or latency claim. The failed base-model attempt remained
 
 **Output boundary**: JSONL progress and the final structured file are both
 untrusted. Verity applies byte and line limits, rejects duplicate JSON keys,
-rejects any command, file, web, MCP, or other tool event, validates the final
-object against the same strict identity/digest schema as the direct provider,
-and terminates the process group on timeout or cancellation. Private temporary
-directories and files use restrictive permissions and are removed after the
-result is classified.
+uses exact field allow lists for every accepted event/item/usage object, and
+classifies a tool-bearing extra field as observed tool activity even under an
+otherwise safe item label. Lines are validated incrementally so the process
+group is terminated as soon as malformed or disallowed output is complete,
+without waiting for child exit. Verity validates the final object against the
+same strict identity/digest schema as the direct provider and terminates the
+process group on timeout or cancellation. Private temporary-root setup is
+transactional; later process-group, reader-drain, and tree-removal cleanup are
+bounded and sticky-fail-closed if accounting is incomplete. Readiness and
+semantic operations are serialized per runner through cleanup, so a concurrent
+probe cannot pass before a preceding operation records degraded cleanup health.
+Executable and authentication-directory trust are checked immediately before
+semantic launch and again after child completion before any result is accepted.
+Post-root private-I/O setup errors are normalized without returning filesystem
+paths, while cancellation and separate sticky cleanup health are preserved.
+
+The current non-interactive-mode documentation includes
+`reasoning_output_tokens` as a nonnegative `turn.completed.usage` counter and
+lists `error` and `turn.failed` as documented JSONL event types. Contract 1.0.5
+therefore accepts that usage key while treating exact failure-event shapes as
+retryable `process_exit`, never as a successful semantic result. Unknown or
+tool-bearing fields remain fail-closed.
+
+On 2026-07-15, a post-hardening live probe used Codex CLI `0.144.4`, ChatGPT
+subscription authentication, no API-key environment variables, the configured
+`gpt-5.6-luna` model, and sanitized synthetic input. Both the strict semantic
+schema and a minimal one-boolean schema produced the same structure-only
+sequence: `thread.started {thread_id,type}`, `turn.started {type}`,
+`error {message,type}`, and `turn.failed {error,type}`. The nested error object
+contained only `message`; the child exited `1`, produced no final document, and
+cleanup remained clean. A local fixed-category classifier categorized the
+discarded message as `rate_limit`; no message, stderr, prompt, path, or hash was
+printed or retained. This demonstrates an external capacity failure rather
+than semantic-schema or final-envelope drift. The provider fails safely as
+retryable `process_exit` with no fixture/API fallback.
 
 **Isolation claim**: These controls reduce inherited context and fail safely on
 observable tool activity. They do not prove that the Codex runtime contains no
@@ -176,6 +216,15 @@ hook definition hash through CLI `/hooks`; a changed definition returns to a
 review-required state. Verity's `--confirm-hook-trust` flag records an operator
 assertion after that review and is not independent proof that Codex persisted
 trust.
+
+The Codex configuration reference was rechecked on 2026-07-15 for the MCP
+approval controls used by the fixture. It documents the server-level
+`default_tools_approval_mode` setting and per-tool
+`mcp_servers.<id>.tools.<tool>.approval_mode` override. Verity therefore
+registers `demo_artifact_sink` with `approval_mode = "prompt"`. This requests a
+Codex operator prompt in the Desktop path; the inert sink itself does not
+implement an authorization prompt, and the offline simulation invokes it
+programmatically.
 
 The demo-only poisoned-documentation MCP entry is installed separately from the
 normal Verity plugin. Setup must show a preview, require confirmation, record a

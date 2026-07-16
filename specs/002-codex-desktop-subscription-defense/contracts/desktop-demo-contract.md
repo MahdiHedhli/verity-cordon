@@ -1,6 +1,6 @@
 # Codex Desktop Demo Setup Contract
 
-**Contract version**: `1.0.1`
+**Contract version**: `1.0.5`
 **Managed MCP entry**: `verity_cordon_poisoned_docs`
 **Primary surface**: Codex in the supported ChatGPT desktop app (project
 shorthand: Codex Desktop)
@@ -166,20 +166,34 @@ After explicit confirmation, setup performs this ordered transaction:
 3. Resolve and verify the current Codex and Python executables. The Python
    runtime must support isolated `-I` execution and satisfy the project runtime
    version.
-4. Create a private `0700` staging directory and copy only the fixture server
-   using atomic `0600` writes. Reject symlinks and verify source/destination
-   SHA-256 and byte size.
-5. Record only the pre-mutation config SHA-256 and existence bit. Never copy
+4. Verify the bounded fixture source in memory before creating its staging
+   directory, then create only the private
+   `0700` demo directories required for the transaction. Reject symlinks and
+   bind the expected source SHA-256 and byte size into the prepared state.
+5. Record the pre-mutation config SHA-256, existence bit, exact restrictive
+   owner mode, and SHA-256 of a canonical type-tagged projection of every
+   unrelated parsed TOML value. Never copy
    the full Codex config into demo state because unrelated MCP entries may
    contain credentials.
 6. Atomically write a `prepared` receipt conforming to
-   `desktop-demo-receipt.schema.json` before changing Codex configuration.
-7. Add only the reserved MCP table through parsed TOML and atomically replace
-   the config with mode no broader than its prior secure mode.
-8. Re-read and canonicalize the managed table, verify its expected digest and
-   all unrelated parsed values, then atomically update the receipt to
-   `installed` with the after-config digest.
-9. Return content-safe operator actions: restart Codex Desktop, use `/mcp` to
+   `desktop-demo-receipt.schema.json` before staging the executable fixture or
+   changing Codex configuration.
+7. Copy only the receipt-bound fixture server using an atomic `0600` write
+   bound to the target's expected absence and empty digest, then
+   verify the staged SHA-256 and byte size.
+8. Add only the reserved MCP table through parsed TOML and atomically replace
+   the config only while both its expected existence and whole-file digest
+   match. Preserve its exact restrictive owner mode (`0400` remains `0400`);
+   only a newly created config defaults to `0600`.
+9. Re-read and canonicalize the managed table, verify its expected digest, and
+   compare every unrelated parsed value with the pre-replacement projection
+   and recorded projection digest without rendering or logging that content.
+   A mismatch advances the receipt to non-finalizable `failed` state; a retry
+   cannot turn the changed config into an installed receipt. Only after a fresh
+   normal-integration v2 receipt/digest and doctor check may setup atomically
+   update the exact prepared receipt to `installed` with the after-config
+   digest.
+10. Return content-safe operator actions: restart Codex Desktop, use `/mcp` to
    confirm the expected synthetic server, run a benign hook-delivery canary,
    and continue only after its signed terminal decision is visible.
 
@@ -193,14 +207,35 @@ The receipt is write-ahead state:
 All receipt timestamps are canonical UTC RFC 3339 strings ending in `Z`;
 non-UTC offsets and timezone-free values are invalid.
 
-- `prepared` plus no managed entry: setup may be retried or staged artifacts
-  may be removed after their digests verify.
-- `prepared` plus the exact managed entry: setup may verify artifacts and
-  finalize the receipt as `installed`.
-- `prepared` plus a different managed entry: report drift and make no change.
+- `prepared` plus no managed entry: setup may be retried only when the current
+  whole-config digest still equals the receipt's pre-mutation digest. A missing
+  artifact may then be restaged only from the fixed repository fixture after
+  its digest and size match the receipt; a present but different artifact is
+  drift and is not overwritten.
+- `prepared` plus the exact managed entry and the original unrelated-value
+  projection: setup may verify or safely restage a missing receipt-bound
+  artifact and finalize the receipt as `installed`.
+- `prepared` plus the exact managed entry, exact present receipt-bound artifact,
+  and a different unrelated-value projection: setup MUST NOT finalize. This is
+  the recoverable state left when the earlier `prepared` to `failed` receipt
+  write was interrupted after config replacement. A current v1.2 receipt may
+  retry only that transition after revalidating the config head, receipt head,
+  artifact, runtimes, and normal integration. The resulting `failed` receipt
+  permits exact confirmed teardown while preserving unrelated config values.
+- `failed`: setup cannot finalize or retry the installation. Exact confirmed
+  teardown remains available to remove the managed fixture safely. Historical
+  v1.1 `failed` receipts are accepted only with their required config mode,
+  unrelated-projection digest, after-config digest, canonical failure class,
+  and empty pre-teardown state; v1.0 cannot represent `failed`.
+- `prepared` plus a different managed entry: report drift and make no artifact
+  or configuration change.
 - config mutation with no valid receipt: report unreceipted state and make no
   automatic removal; the operator receives a bounded manual recovery path.
 
+Recovery binds every receipt transition to the exact observed receipt
+existence, SHA-256, device, inode, owner, and mode. It rechecks the recorded
+normal integration receipt version/digest and fresh doctor state immediately
+before each artifact/config mutation and immediately before finalization.
 Recovery never stores or restores a whole-config backup and never deletes an
 unknown directory recursively.
 
@@ -251,17 +286,30 @@ an unhealthy normal integration does not block exact receipt-bound teardown:
 leaving the user-wide synthetic fixture installed would be the less safe
 failure. With a separately confirmed teardown digest it:
 
-1. validates the receipt and updates it atomically to `removing`;
+1. validates the receipt and updates its exact observed file head atomically to
+   `removing`. A legacy `installed` or historically valid v1.1 `failed` receipt
+   is migrated in that same write to schema-valid v1.2 using the verified
+   current config mode, unrelated-value projection digest, and whole-config
+   digest before its deterministic artifact-removal plan is persisted;
 2. re-reads current config and compares the managed entry independently of the
    whole-file digest;
 3. refuses automatic removal if the managed entry drifted;
 4. removes only `mcp_servers.verity_cordon_poisoned_docs` when it exactly
    matches the receipt, preserving all unrelated changes made since setup;
-5. removes only digest-matching staged regular files below the receipt-bound
-   staging root, then removes empty managed directories;
-6. records the post-teardown config digest and updates the receipt to
+5. re-reads the config before artifact removal and proves the managed entry is
+   absent while every unrelated typed TOML value and the restrictive mode are
+   unchanged;
+6. persists a deterministic installation-bound quarantine path and `planned`
+   state in the `removing` receipt, then removes only a digest-, size-, mode-,
+   device-, and inode-matching staged regular file below the receipt-bound
+   staging root by anchored rename, re-verification, and unlink. Recovery
+   reconciles the original or that exact quarantine entry before finalization;
+   an unknown non-empty staging directory blocks `removed`. A replacement or
+   symlink is restored or left intact and is never deleted as the fixture;
+7. re-reads the config again, records the post-teardown digest, and updates the
+   exact `removing` receipt head to
    `removed`; and
-7. instructs the operator to restart Codex Desktop.
+8. instructs the operator to restart Codex Desktop.
 
 Confirmed setup and teardown are serialized against other cooperating Verity
 demo operations by a private operation lock. Each config replacement also
@@ -324,6 +372,13 @@ an Ed25519-signed event. Its SHA-256 bindings detect the tested drift only while
 the verifier and host remain trustworthy. Memory decisions, revocation, and
 protection claims rely on the separate signed event ledger.
 
+New setup records the current normal-integration receipt version `2.0.0`.
+Desktop receipt parsing retains bounded compatibility for `1.0.0` and `1.1.0`
+so existing receipts can be inspected and safely cleaned up under the legacy
+state rules above. A legacy in-flight removal without the current deterministic
+quarantine plan fails closed for manual recovery. The normal integration doctor
+must still be ready, so legacy runtime identity cannot authorize new demo setup.
+
 ## Required Contract Tests
 
 - preview has zero filesystem/config/process side effects;
@@ -333,6 +388,20 @@ protection claims rely on the separate signed event ledger.
 - config drift between preview/apply and managed-entry drift at teardown;
 - unrelated TOML changes survive setup and teardown;
 - interrupted setup at every mutation boundary is reconcilable;
+- atomic writes distinguish a missing target from an existing empty file and
+  bind config, receipt, artifact, and receipt-archive writes to expected
+  existence plus SHA-256;
+- receipt/archive inode replacement, normal v2 receipt/doctor drift, and
+  finalization races stop before the next dependent mutation;
+- prepared recovery classifies the current config before restaging, so config
+  or managed-entry drift leaves an absent artifact absent;
+- initial and recovery config replacements re-read and verify every unrelated
+  parsed value without exposing it, persist a non-finalizable failure on
+  mismatch, cannot launder that mismatch through retry, and recover an
+  interrupted `prepared` to `failed` journal write before exact teardown;
+- setup, recovery, and teardown preserve an existing `0400` config mode;
+- recovery verifies bounded source digest and size before recreating the
+  staging directory;
 - interrupted teardown in `removing` is exactly resumable, and repeat setup
   archives a digest-matching `removed` receipt without overwriting conflicts;
 - normal-integration failure prevents setup/readiness but does not strand an
@@ -340,7 +409,8 @@ protection claims rely on the separate signed event ledger.
 - cooperating demo mutations serialize under the operation lock, expected
   config-head drift is rejected, and non-cooperating-writer risk is documented;
 - symlink, permissions, path containment, source/runtime/artifact digest, and
-  unsafe recursive-cleanup checks;
+  unsafe recursive-cleanup checks, including a path-replacement race proving
+  anchored teardown does not delete the replacement file;
 - fixture exposes exactly two allow-listed tools over bounded stdio;
 - fixture source does not import network, environment, subprocess, filesystem,
   email, or browser modules;

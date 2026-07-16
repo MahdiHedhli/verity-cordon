@@ -95,19 +95,29 @@ uv run verity ledger verify
 > signatures, and the materialized view. This is tamper-evident within the
 > documented local-host boundary—not tamper-proof or factual truth proof.
 
-## 2:35–2:55 — Codex Subscription, GPT-5.6, and Close
+## 2:35–2:55 — Semantic Provider and Close
 
 **Visual**: Show the provider badge and isolation warning, then the architecture
 panel and final title card.
 
-**Narration**:
+**Live narration — use only when the exact subscription run succeeded**:
 
-> GPT-5.6 supplies structured extraction and semantic risk advice in this live
-> subscription pipeline. Codex runs as the explicitly lower-isolation
+> This live subscription pipeline requested `gpt-5.6-luna` for structured
+> extraction and semantic risk advice; the Codex event stream does not attest
+> the returned remote model. Codex runs as the explicitly lower-isolation
 > `agentic_sandboxed` provider; observed tool activity invalidates its result,
 > and we do not call it tool-free. Deterministic policy keeps final authority.
 > Codex helped specify, build, test, and attack the product. Verity Cordon.
 > Verifiable memory. Revocable trust.
+
+**Recorded-fixture fallback narration — use when the live run did not
+succeed**:
+
+> This run uses visibly labeled recorded deterministic semantic fixtures. It
+> exercises the real detector, policy, signed-ledger, revocation, and memory-view
+> pipeline, but it does not demonstrate a live semantic provider. Deterministic
+> policy keeps final authority. Verity Cordon. Verifiable memory. Revocable
+> trust.
 
 ## Recording and Safety Checklist
 
