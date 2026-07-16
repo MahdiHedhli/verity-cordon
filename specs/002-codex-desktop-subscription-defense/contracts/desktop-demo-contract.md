@@ -370,9 +370,11 @@ the verifier and host remain trustworthy. Memory decisions, revocation, and
 protection claims rely on the separate signed event ledger.
 
 New setup records the current normal-integration receipt version `2.0.0`.
-Desktop receipt parsing retains `1.0.0` only so an existing receipt can be
-inspected and safely torn down; the normal integration doctor must still be
-ready, so legacy runtime identity cannot authorize new demo setup.
+Desktop receipt parsing retains bounded compatibility for `1.0.0` and `1.1.0`
+so existing receipts can be inspected and safely cleaned up under the legacy
+state rules above. A legacy in-flight removal without the current deterministic
+quarantine plan fails closed for manual recovery. The normal integration doctor
+must still be ready, so legacy runtime identity cannot authorize new demo setup.
 
 ## Required Contract Tests
 
