@@ -51,7 +51,7 @@ def receipt_sample(root: Path, *, state: str = "prepared") -> dict[str, Any]:
             "config_after_teardown_sha256": SHA256,
         }
     return {
-        "receipt_version": "1.0.0",
+        "receipt_version": "1.1.0",
         "installation_id": "018f1f4e-7c2a-7a30-8a11-1234567890ab",
         "state": state,
         "operator_confirmed": True,
@@ -68,7 +68,10 @@ def receipt_sample(root: Path, *, state: str = "prepared") -> dict[str, Any]:
         "staging_root": str(staging_root),
         "config_existed_before": True,
         "config_before_sha256": SHA256,
+        "config_mode_before": 0o600,
+        "config_unrelated_sha256": SHA256,
         "config_after_sha256": config_after,
+        "failure_class": "config_projection_mismatch" if state == "failed" else None,
         "backup_path": None,
         "backup_sha256": None,
         "managed_entry_original": {
@@ -122,7 +125,7 @@ def receipt_sample(root: Path, *, state: str = "prepared") -> dict[str, Any]:
     }
 
 
-@pytest.mark.parametrize("state", ["prepared", "installed", "removing", "removed"])
+@pytest.mark.parametrize("state", ["prepared", "failed", "installed", "removing", "removed"])
 def test_receipt_schema_accepts_each_valid_write_ahead_state(
     tmp_path: Path,
     state: str,
@@ -137,6 +140,7 @@ def test_receipt_schema_accepts_each_valid_write_ahead_state(
     ("state", "mutation"),
     [
         ("prepared", {"config_after_sha256": SHA256}),
+        ("failed", {"failure_class": None}),
         ("installed", {"config_after_sha256": None}),
         (
             "removing",
@@ -304,6 +308,54 @@ def test_runtime_receipt_state_machine_allows_only_forward_bound_transitions(
                 occurred_at=REMOVED_AT,
                 config_sha256=SHA256,
             )
+
+
+def test_runtime_receipt_records_non_finalizable_projection_failure(
+    tmp_path: Path,
+) -> None:
+    api = _demo_api()
+    prepared = receipt_sample(tmp_path, state="prepared")
+
+    failed = api.transition_desktop_demo_receipt(
+        prepared,
+        target_state="failed",
+        occurred_at=CREATED_AT,
+        config_sha256=SHA256,
+    )
+    removing = api.transition_desktop_demo_receipt(
+        failed,
+        target_state="removing",
+        occurred_at=REMOVING_AT,
+    )
+
+    assert failed["state"] == "failed"
+    assert failed["failure_class"] == "config_projection_mismatch"
+    assert removing["state"] == "removing"
+    assert removing["failure_class"] is None
+    Draft202012Validator(_schema(), format_checker=FormatChecker()).validate(failed)
+
+
+def test_runtime_parser_retains_legacy_receipt_for_safe_cleanup(tmp_path: Path) -> None:
+    api = _demo_api()
+    data_dir = (tmp_path / "verity-data").resolve()
+    codex_home = (tmp_path / "codex-home").resolve()
+    data_dir.mkdir(mode=0o700)
+    codex_home.mkdir(mode=0o700)
+    receipt_path = data_dir / "desktop-demo-receipt.json"
+    legacy = receipt_sample(tmp_path, state="installed")
+    legacy["receipt_version"] = "1.0.0"
+    for field in ("config_mode_before", "config_unrelated_sha256", "failure_class"):
+        legacy.pop(field)
+    receipt_path.write_text(json.dumps(legacy), encoding="utf-8")
+    receipt_path.chmod(0o600)
+
+    parsed = api.parse_desktop_demo_receipt(
+        receipt_path,
+        codex_home=codex_home,
+        data_dir=data_dir,
+    )
+
+    assert parsed == legacy
 
 
 def test_new_config_receipt_uses_empty_digest_and_no_backup(tmp_path: Path) -> None:

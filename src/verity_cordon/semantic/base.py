@@ -12,6 +12,7 @@ from verity_cordon.core.models import (
     MemoryCandidate,
     PersistenceIntent,
     ProviderState,
+    RequestedProvider,
     SemanticAssessment,
     SemanticFailure,
     Signal,
@@ -28,14 +29,18 @@ def failed_assessment(
     failure_class: str,
     retryable: bool,
     latency_ms: int,
+    requested_provider: RequestedProvider | None = None,
+    requested_model: str | None = None,
+    prompt_version: str = "semantic-risk-v1",
 ) -> SemanticAssessment:
     return SemanticAssessment(
         assessment_id=new_id(),
         candidate_id=candidate.candidate_id,
         provider_state=ProviderState.FAILED,
-        requested_model=None,
+        requested_provider=requested_provider,
+        requested_model=requested_model,
         returned_model=None,
-        prompt_version="semantic-risk-v1",
+        prompt_version=prompt_version,
         risk_score=None,
         categories=[],
         persistence_intent=PersistenceIntent.UNKNOWN,
@@ -51,6 +56,33 @@ def failed_assessment(
         failure=SemanticFailure(class_name=failure_class, retryable=retryable),
         assessed_at=format_utc(),
     )
+
+
+def _requested_provider_metadata(adjudicator: Any) -> RequestedProvider | None:
+    configured = getattr(adjudicator, "requested_provider", None)
+    if configured is not None:
+        try:
+            return RequestedProvider(configured)
+        except (TypeError, ValueError):
+            return None
+    return {
+        ProviderState.RECORDED_FIXTURE.value: RequestedProvider.FIXTURE,
+        ProviderState.LIVE_OPENAI.value: RequestedProvider.OPENAI,
+        ProviderState.LIVE_CODEX_SUBSCRIPTION.value: RequestedProvider.CODEX_SUBSCRIPTION,
+    }.get(getattr(adjudicator, "provider_label", ""))
+
+
+def _bounded_metadata(value: Any) -> str | None:
+    return value if isinstance(value, str) and 0 < len(value) <= 128 else None
+
+
+def _requested_model_metadata(adjudicator: Any) -> str | None:
+    requested = getattr(adjudicator, "requested_model", None)
+    if requested is None:
+        requested = getattr(adjudicator, "model", None)
+    if requested is None:
+        requested = getattr(getattr(adjudicator, "runner", None), "model", None)
+    return _bounded_metadata(requested)
 
 
 async def run_semantic_assessment(
@@ -81,6 +113,10 @@ async def _run_semantic_assessment_untraced(
     timeout_ms: int,
 ) -> SemanticAssessment:
     started = perf_counter()
+    requested_provider = _requested_provider_metadata(adjudicator)
+    requested_model = _requested_model_metadata(adjudicator)
+    prompt_version = _bounded_metadata(getattr(adjudicator, "prompt_version", None))
+    failure_prompt_version = prompt_version or "semantic-risk-v1"
     try:
         async with asyncio.timeout(timeout_ms / 1000):
             raw = await adjudicator.assess(candidate)
@@ -91,7 +127,16 @@ async def _run_semantic_assessment_untraced(
             raise ValueError("semantic candidate identity mismatch")
         if result.sanitized_content_digest != candidate.content_digest:
             raise ValueError("semantic candidate digest mismatch")
-        return result
+        updates: dict[str, Any] = {}
+        if requested_provider is not None:
+            updates["requested_provider"] = requested_provider
+        if result.requested_model is None and requested_model is not None:
+            updates["requested_model"] = requested_model
+        if not updates:
+            return result
+        normalized = result.model_dump(mode="python")
+        normalized.update(updates)
+        return SemanticAssessment.model_validate(normalized)
     except TimeoutError:
         failure_class, retryable = "timeout", True
     except (ValidationError, TypeError, ValueError):
@@ -106,4 +151,7 @@ async def _run_semantic_assessment_untraced(
         failure_class=failure_class,
         retryable=retryable,
         latency_ms=latency_ms,
+        requested_provider=requested_provider,
+        requested_model=requested_model,
+        prompt_version=failure_prompt_version,
     )

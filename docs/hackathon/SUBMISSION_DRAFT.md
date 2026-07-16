@@ -83,8 +83,9 @@ in no injected memory.
 ## Built With
 
 - Codex Desktop, Codex CLI, and GitHub Spec Kit
-- GPT-5.6 through the OpenAI Responses API, plus the exercised GPT-5.6-family
-  `gpt-5.6-luna` model through supported Codex ChatGPT-subscription execution
+- An OpenAI Responses API provider configured to request `gpt-5.6`, plus an
+  exercised Codex ChatGPT-subscription path that requested `gpt-5.6-luna`; the
+  current Codex event stream does not attest the returned remote model
 - Python, asyncio, Pydantic, FastAPI, aiosqlite, cryptography, Typer
 - React, TypeScript, Vite, Vitest
 - SQLite, SHA-256, Ed25519
@@ -105,21 +106,22 @@ isolated review, Codex plugin/hook integration, and secondary test and
 documentation work. The primary thread reviewed and integrated that work and
 retained the majority of the core build.
 
-## How GPT-5.6 Is Used at Runtime
+## How GPT-5.6 Is Configured at Runtime
 
-GPT-5.6 performs two distinct schema-constrained tasks after local secret
-sanitization: extracting atomic candidate memories and assessing semantic risk
-such as persistence intent, authority claims, exfiltration, tool hijack, and
-cross-task contamination. The model recommends risk; deterministic policy
-retains final authority. Offline mode uses visibly labeled recorded fixtures
-and never pretends they are live.
+Verity's explicit live providers request GPT-5.6-family identifiers for two
+schema-constrained tasks after local secret sanitization: extracting atomic
+candidate memories and assessing semantic risk such as persistence intent,
+authority claims, exfiltration, tool hijack, and cross-task contamination. The
+model output recommends risk; deterministic policy retains final authority.
+Offline mode uses visibly labeled recorded fixtures and never pretends they are
+live.
 
 The direct Responses API provider has no tools, durable memory, conversation,
 or previous response. The separate subscription provider is deliberately
 labeled `agentic_sandboxed`: it runs a bounded Codex child, rejects any observed
 tool activity, and makes no claim that tools are absent inside the Codex binary.
 On 2026-07-15, an initial sanitized synthetic assessment succeeded through
-Codex CLI `0.144.4` and ChatGPT sign-in using `gpt-5.6-luna`, returned
+Codex CLI `0.144.4` and ChatGPT sign-in while requesting `gpt-5.6-luna`, returned
 `live_codex_subscription`, and recommended quarantine in 11,026 ms. A later
 no-key closure run exercised both live candidate extraction and live semantic
 assessment: four candidates produced allow and quarantine outcomes, and the
@@ -129,7 +131,13 @@ schema's required list; Verity fixed that contract and added a regression test
 before the successful rerun. An earlier explicit request for base `gpt-5.6`
 was unavailable for that identity and failed without fallback. These runs prove
 bounded execution on one host and date, not universal plan entitlement, stable
-latency, remote-model attestation, or a credentialed direct-API run.
+latency, remote-model attestation, or a credentialed direct-API run. In
+particular, `requested_model=gpt-5.6-luna` is local configuration evidence;
+`returned_model` remains null for subscription assessments. The successful
+runs preceded the final exact incremental JSONL hardening. A post-hardening
+probe reached an external rate limit and verified retryable fail-closed
+`process_exit` handling with clean cleanup state, but did not revalidate a
+successful hardened completion; that evidence remains pending.
 
 ## Challenges
 
@@ -201,11 +209,14 @@ export VERITY_SEMANTIC_PROVIDER=codex_subscription
 export VERITY_CODEX_MODEL=gpt-5.6-luna
 uv run verity ledger init-key
 uv run verity install-codex --source-root .
-uv run verity install-codex --source-root . --yes
+export VERITY_CODEX_INSTALL_DIGEST="<copy preview.preview_digest after reviewing hooks, artifacts, and hook runtime>"
+uv run verity install-codex --source-root . \
+  --expected-preview-digest "$VERITY_CODEX_INSTALL_DIGEST" --yes
 ```
 
-Use Codex CLI `/hooks` to inspect and trust the exact Verity command hook hash,
-then continue:
+The install preview digest is verified before any mutation, but it does not
+grant Codex hook trust. After installation, use Codex CLI `/hooks` to inspect
+and trust the exact installed Verity command hook hash, then continue:
 
 ```bash
 export VERITY_CONFIRM_HOOK_TRUST=1

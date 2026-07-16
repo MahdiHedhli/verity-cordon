@@ -14,6 +14,7 @@ from verity_cordon.core.models import (
     MemoryCandidate,
     MemoryKind,
     ProviderState,
+    RequestedProvider,
     SemanticAssessment,
     Sensitivity,
     SourceClass,
@@ -84,6 +85,7 @@ def _contains_refusal(response: Any) -> bool:
 
 class _OpenAIBase:
     provider_label = "live_openai"
+    requested_provider = RequestedProvider.OPENAI
 
     def __init__(
         self,
@@ -274,10 +276,11 @@ class OpenAISemanticAdjudicator(_OpenAIBase):
                 failure_class="unavailable",
                 retryable=True,
                 latency_ms=0,
+                requested_provider=self.requested_provider,
+                requested_model=self.model,
+                prompt_version=self.prompt_version,
             ).model_copy(
                 update={
-                    "requested_model": self.model,
-                    "prompt_version": self.prompt_version,
                     "sanitized_content_digest": digest,
                 }
             )
@@ -289,11 +292,12 @@ class OpenAISemanticAdjudicator(_OpenAIBase):
                 failure_class=failure_class,
                 retryable=False,
                 latency_ms=0,
+                requested_provider=self.requested_provider,
+                requested_model=self.model,
+                prompt_version=self.prompt_version,
             ).model_copy(
                 update={
-                    "requested_model": self.model,
                     "returned_model": _optional_returned_model(self.sanitizer, response),
-                    "prompt_version": self.prompt_version,
                     "sanitized_content_digest": digest,
                 }
             )
@@ -337,10 +341,11 @@ class OpenAISemanticAdjudicator(_OpenAIBase):
                 failure_class="invalid_schema",
                 retryable=False,
                 latency_ms=0,
+                requested_provider=self.requested_provider,
+                requested_model=self.model,
+                prompt_version=self.prompt_version,
             ).model_copy(
                 update={
-                    "requested_model": self.model,
-                    "prompt_version": self.prompt_version,
                     "sanitized_content_digest": digest,
                 }
             )
@@ -348,6 +353,7 @@ class OpenAISemanticAdjudicator(_OpenAIBase):
             assessment_id=new_id(),
             candidate_id=candidate.candidate_id,
             provider_state=ProviderState.LIVE_OPENAI,
+            requested_provider=self.requested_provider,
             requested_model=self.model,
             returned_model=returned_model,
             prompt_version=self.prompt_version,

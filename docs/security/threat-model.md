@@ -24,10 +24,11 @@ memory becomes active and is supplied to a later session.
 The optional Codex subscription provider is a lower-isolation
 `agentic_sandboxed` semantic adviser. Verity minimizes and sanitizes its input,
 requests a restricted ephemeral child, rejects observed tool activity, and
-validates the returned schema, request identity, and content digest. Those
-controls are acceptance gates, not outbound information-flow control and not
-proof that the child had no tools or made no attempted side effect before an
-event was observed. Deterministic policy remains the final authority.
+validates the returned schema, subject identity, and sanitized content-text
+digest. Those controls are acceptance gates, not outbound information-flow
+control, and they do not prove that the child had no tools or made no attempted
+side effect before an event was observed. Deterministic policy remains the
+final authority.
 
 ## Protected Assets
 
@@ -449,11 +450,14 @@ detector and semantic inputs, `actual_action=allow`, stricter
 `would_have_action`, and `shadow_mode=true` in signed events. The Control Room
 must state that this is not active protection. The demonstration sink accepts
 only `VERITY_SYNTHETIC_RELEASE_MANIFEST_V1` and
-`VERITY_SYNTHETIC_DEMO_ENV_V1` over local stdio, requires an operator prompt,
-and performs no external action. After enforcement is activated, the same
-malicious operational candidate is quarantined; a confirmed rescan appends a
-revocation, deterministic rebuild removes it from later injection, unrelated
-and false-positive-trap memories remain, and ledger verification must succeed.
+`VERITY_SYNTHETIC_DEMO_ENV_V1` over local stdio and performs no external action.
+The Desktop MCP registration configures Codex to request operator approval
+before invoking that sink; the sink itself enforces the fixed arguments rather
+than the approval boundary, and the offline simulation invokes it
+programmatically. After enforcement is activated, the same malicious
+operational candidate is quarantined; a confirmed rescan appends a revocation,
+deterministic rebuild removes it from later injection, unrelated and
+false-positive-trap memories remain, and ledger verification must succeed.
 
 **Residual risk**: Shadow mode intentionally permits durable reuse and a later
 task can act on the admitted text before revocation. The inert fixed-marker sink
@@ -531,6 +535,9 @@ in-scope conditions retain their own controls and residual risk:
 | Oversized or empty candidates | Apply pre-extraction size/structure limits, per-stream buffer caps, and an anomalous-size detector; abort without partial commit | Limits can reject benign large content and can be exercised for local denial of service |
 | Malformed or missing active policy | Validate with the versioned Pydantic model; reject invalid activation; use only an intact last-known-good policy; otherwise fail closed for commits | Recovery requires operator action and reduces availability |
 | Native Codex memory is accidentally re-enabled | Installer writes the controlled configuration; `doctor` verifies effective use/generation state and hook trust; Control Room reports configuration drift | Configuration can change after a check; native-memory behavior is outside Verity's ledger if re-enabled |
+| Normal integration install or reinstall is interrupted | Write the private version-2 `prepared` receipt before marketplace staging; bind prior and target artifact sets, config heads, backup digest, preview digest, runtime identity, and deterministic active/staging/retired/removal paths; converge or safely sweep every retained tree from exact state | Same-user or host compromise can replace receipt, artifacts, config, and verifier together; non-cooperating writers are detected at the expected-head check but are not serialized |
+| Normal integration root, config, receipt, or marketplace path is relative, symlinked, dangling, unexpectedly owned, or group/world writable | Reject before security-critical reads or writes; preserve absolute lexical roots across preview and apply; keep preview read-only for nonexistent safe roots | Platform filesystem guarantees vary and a fully compromised user or host is outside scope |
+| Hook interpreter changes after installation | Receipt binds target path, SHA-256, size, and executable-reported version; doctor verifies digest and size before runtime execution and rechecks identity after the bounded hook probe | A same-host attacker that replaces interpreter, receipt, verifier, and staged hook coherently defeats local checks |
 | Event deletion or omission | Verify contiguous sequence, prior-hash links, signatures, expected ledger head where available, and view replay | A consistently truncated tail cannot be proven from a self-contained ledger alone; see [the cryptographic limitation](./cryptographic-claims.md#what-omission-verification-can-and-cannot-prove) |
 | Forged or replayed Control Room mutation | Loopback peer restriction, strict Host/Origin, bearer capability for non-browser clients, minimum-length passphrase challenge, single-use 60-second nonce, constant-time proof check, bounded challenge issuance, failed-proof cooldown, 15-minute idle HttpOnly session and CSRF for the UI, JSON-only request, confirmation, reason, actor, and idempotency key | A weak operator-selected passphrase remains guessable; same-user malware that steals a capability, verifier, passphrase, or live browser session can act with local authority. The two-phase idempotency reservation can remain indeterminate after a process interruption; replay is refused and operator recovery may be required. |
 | Sanitized evidence retention | Original submitted bytes are not retained; bind their digest, permanently retain a bounded sanitized excerpt, and transiently queue full sanitized text under item/byte/age limits | Pattern sanitization is not exhaustive. Undetected sensitive text can remain in the signed excerpt or transient queue; the digest cannot reveal unavailable original bytes to a new verifier. |
@@ -546,6 +553,9 @@ availability. It is fail-closed for the Verity memory trust boundary.
 |---|---|---|---|
 | Daemon or local IPC unavailable | Refuse; never queue an unverified implicit commit | Return no Verity context; Codex may continue | Content-free health warning; recover daemon and rerun health checks |
 | Hook times out, exits nonzero, or emits invalid output | No commit from that hook invocation | No context from a failed `SessionStart` hook | Codex hook status; daemon records a failure only if reachable; doctor checks trust, effective config, staged files, and the current verified Python runtime rather than executing a receipt-selected interpreter |
+| Normal integration backup, receipt, staging, config replacement, or receipt transition fails | Refuse Codex install commands unless durable state is receipt-bound; retain a `prepared` receipt for exact recovery after staging begins; digest-remove a newly created backup when the first receipt write did not bind it; never overwrite an unexpected config or receipt head | Content-safe installer error; close Codex surfaces, inspect exact state, and retry with the original receipt-bound preview only when state remains exact |
+| Codex plugin or marketplace add/remove partially succeeds | Persist each successful step and skip it on retry; on artifact replacement preserve verified marketplace registration and journal an explicit plugin remove/add refresh sequence; retain config, trees, and receipt until the ordered sequence completes | A process interruption or any atomic-write, synchronization, or replacement I/O failure after external command success but before the local journal transition becomes durable leaves ambiguous external state requiring status reconciliation or operator review; no readiness claim is made while the journal is incomplete |
+| Normal uninstall backup, config restoration, tree removal, or receipt deletion fails | Resume from receipt-bound `uninstall_commands`, `uninstall_config`, `uninstall_tree`, or `uninstall_receipt`; bind both config heads and backup before replacement; rename the active tree to the deterministic removal tombstone before retryable deletion | Codex may already be unregistered while local cleanup is pending; same-user or host replacement of all bound state remains out of scope |
 | Evidence queue reaches its item or byte bound | Reject atomically before signed capture | Existing verified view only | Content-free resource-limit response; drain or repair the worker |
 | Queued evaluation exceeds three attempts or one hour | Append `EvidenceEvaluationFailed` and purge the full queued text | No memory from the failed evidence | Terminal safe error code and failed-queue count |
 | Queued sanitized text fails its signed digest check | Append an exact signed terminal failure when possible, purge text, and mark the ledger unhealthy; preserve the failure across restart | Disable injection | Sticky critical integrity state; investigate local storage before restoring service |

@@ -12,6 +12,8 @@ from verity_cordon.core.models import (
     Action,
     MemoryKind,
     ProviderState,
+    RequestedProvider,
+    SemanticAssessment,
     SourceClass,
     new_id,
 )
@@ -68,6 +70,7 @@ async def test_fixture_semantic_assessment_is_deterministic_and_labeled() -> Non
     second = await provider.assess(target)
 
     assert first.provider_state is ProviderState.RECORDED_FIXTURE
+    assert first.requested_provider is RequestedProvider.FIXTURE
     assert first.returned_model == "verity-fixture-v1"
     assert first.risk_score is not None and first.risk_score >= 0.9
     assert first.recommended_disposition is Action.QUARANTINE
@@ -91,6 +94,17 @@ class _SlowAdjudicator:
         raise AssertionError("unreachable")
 
 
+class _SlowSubscriptionAdjudicator:
+    provider_label = "live_codex_subscription"
+    requested_model = "gpt-5.6-luna"
+    prompt_version = "codex-subscription-semantic-risk-v1"
+
+    async def assess(self, candidate):
+        del candidate
+        await asyncio.sleep(1)
+        raise AssertionError("unreachable")
+
+
 class _MalformedAdjudicator:
     provider_label = "synthetic-malformed"
 
@@ -106,6 +120,31 @@ class _WrongDigestAdjudicator:
         return assessment.model_copy(update={"sanitized_content_digest": "0" * 64})
 
 
+class _MismatchedSubscriptionAdjudicator:
+    provider_label = "live_codex_subscription"
+    requested_provider = RequestedProvider.CODEX_SUBSCRIPTION
+    requested_model = "gpt-5.6-luna"
+    prompt_version = "codex-subscription-semantic-risk-v1"
+
+    def __init__(self, returned_state: ProviderState) -> None:
+        self.returned_state = returned_state
+
+    async def assess(self, candidate):
+        fixture = await FixtureSemanticAdjudicator().assess(candidate)
+        if self.returned_state is ProviderState.RECORDED_FIXTURE:
+            return fixture
+        payload = fixture.model_dump(mode="python")
+        payload.update(
+            {
+                "provider_state": ProviderState.LIVE_OPENAI,
+                "requested_provider": RequestedProvider.OPENAI,
+                "requested_model": "gpt-5.6",
+                "returned_model": "gpt-5.6-synthetic",
+            }
+        )
+        return SemanticAssessment.model_validate(payload)
+
+
 @pytest.mark.asyncio
 async def test_semantic_timeout_is_an_explicit_failed_assessment() -> None:
     target = make_candidate(kind=MemoryKind.OPERATIONAL_INSTRUCTION)
@@ -116,6 +155,47 @@ async def test_semantic_timeout_is_an_explicit_failed_assessment() -> None:
     assert result.failure is not None and result.failure.class_name == "timeout"
     assert result.risk_score is None
     assert result.recommended_disposition is None
+
+
+@pytest.mark.asyncio
+async def test_outer_subscription_timeout_preserves_attempted_provider_metadata() -> None:
+    target = make_candidate(kind=MemoryKind.OPERATIONAL_INSTRUCTION)
+
+    result = await run_semantic_assessment(
+        _SlowSubscriptionAdjudicator(),
+        target,
+        timeout_ms=5,
+    )
+
+    assert result.provider_state is ProviderState.FAILED
+    assert result.requested_provider is RequestedProvider.CODEX_SUBSCRIPTION
+    assert result.requested_model == "gpt-5.6-luna"
+    assert result.returned_model is None
+    assert result.prompt_version == "codex-subscription-semantic-risk-v1"
+    assert result.failure is not None and result.failure.class_name == "timeout"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "returned_state",
+    [ProviderState.RECORDED_FIXTURE, ProviderState.LIVE_OPENAI],
+)
+async def test_subscription_wrapper_rejects_mismatched_success_provider_identity(
+    returned_state: ProviderState,
+) -> None:
+    target = make_candidate()
+
+    result = await run_semantic_assessment(
+        _MismatchedSubscriptionAdjudicator(returned_state),
+        target,
+        timeout_ms=100,
+    )
+
+    assert result.provider_state is ProviderState.FAILED
+    assert result.requested_provider is RequestedProvider.CODEX_SUBSCRIPTION
+    assert result.requested_model == "gpt-5.6-luna"
+    assert result.returned_model is None
+    assert result.failure is not None and result.failure.class_name == "invalid_schema"
 
 
 @pytest.mark.asyncio

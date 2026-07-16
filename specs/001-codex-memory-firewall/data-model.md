@@ -102,7 +102,7 @@ operational marker is not a supported recovery procedure.
 | `sensitivity` | enum | `public`, `internal`, `sensitive`, `restricted`, `credential`. |
 | `requested_ttl_seconds` | integer/null | 60 through 31,536,000 seconds and policy-capped. |
 | `contains_redactions` | boolean | True when local sanitization replaced protected content. |
-| `extractor_provider` | enum | `recorded_fixture`, `live_openai`, `deterministic`. |
+| `extractor_provider` | enum | `recorded_fixture`, `live_openai`, `live_codex_subscription`, `deterministic`. |
 | `extractor_version` | string | Required version/prompt tuple. |
 | `content_digest` | digest | SHA-256 binding of the sanitized statement. |
 | `created_at` | UTC time | Candidate creation time. |
@@ -149,8 +149,9 @@ another.
 |---|---|---|
 | `assessment_id` | UUIDv7 | Primary identifier. |
 | `candidate_id` | UUIDv7 | Required reference. |
-| `provider_state` | enum | `live_openai`, `recorded_fixture`, `failed`. Deterministic-only evaluations omit this record and are labeled at the API summary layer. |
-| `requested_model` / `returned_model` | string/null | Both present for live calls; fixture requests may be null. |
+| `provider_state` | enum | `live_openai`, `live_codex_subscription`, `recorded_fixture`, `failed`. Deterministic-only evaluations omit this record and are labeled at the API summary layer. |
+| `requested_provider` | enum/null | Locally selected `fixture`, `openai`, or `codex_subscription`. New assessments always populate it; null or absence is accepted only when replaying legacy `1.0.0` records. A failed state does not erase which provider was attempted. |
+| `requested_model` / `returned_model` | string/null | Direct live API calls record both when the response attests a model. Subscription calls record the local requested identifier and require `returned_model=null`; fixture requests may be null. |
 | `prompt_version` | string | Required. |
 | `risk_score` | decimal/null | 0 through 1 for successful assessments; null on failure. |
 | `categories` | ordered list[enum] | `persistent_instruction`, `privilege_escalation`, `tool_hijack`, `data_exfiltration`, `cross_task_contamination`, `self_reinforcement`, `secret_material`, `protected_namespace`, `concealed_instruction`, `benign_fact`, `benign_preference`, `ambiguous`. |
@@ -162,10 +163,10 @@ another.
 | `secret_risk` | decimal/null | 0 through 1 on success; null on failure. |
 | `rationale` | string/null | Bounded, pattern-sanitized rationale on success; null on failure. Routine UI detail replaces it with a fixed safe summary. |
 | `recommended_disposition` | enum/null | `allow`, `redact`, `quarantine`, `block`; null on failure. |
-| `sanitized_content_digest` | digest | Sanitized-input and audit binding. |
+| `sanitized_content_digest` | digest | SHA-256 binding to the sanitized candidate statement/content text. It is not a full candidate-payload digest or invocation nonce. |
 | `cache_hit` | boolean | Reserved compatibility field; always `false` in the MVP because semantic reuse is disabled. |
 | `latency_ms` | integer | Non-negative. |
-| `failure` | object/null | Safe class (`timeout`, `unavailable`, `refusal`, `incomplete`, `invalid_schema`, `invalid_response`, or `internal_error`) and retryable flag. |
+| `failure` | object/null | Allow-listed safe class (`timeout`, `unavailable`, `refusal`, `incomplete`, `invalid_schema`, `invalid_response`, `internal_error`, `unsupported_auth`, `executable_drift`, `tool_activity`, `output_limit`, `process_exit`, `cleanup_failure`, or `cancelled`) and retryable flag. |
 | `assessed_at` | UTC time | Required. |
 
 Failed assessment records contain no fabricated scores and cannot be interpreted
@@ -253,7 +254,7 @@ enforcement result.
 | `evidence_references` | ordered list[EventEvidenceReference] | `{evidence_id, digest}` references bound by the envelope. |
 | `policy_id` / `policy_version` | string/null | Present for governed actions. |
 | `detector_bundle_version` | string/null | Present for evaluation. |
-| `semantic_model_identifier` | string/null | Returned live model or fixture label. |
+| `semantic_model_identifier` | string/null | Trustworthy `returned_model` when present, otherwise the locally configured `requested_model`. For subscription execution this is the requested Codex model identifier and is not a remote-model attestation. Initial evaluation and rescan use the same derivation. |
 | `payload` | object | Event-specific safe payload, independently digested. |
 | `payload_digest` | digest | SHA-256 of exact payload bytes. |
 | `previous_event_hash` | digest | Genesis is 64 zeroes. |

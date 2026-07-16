@@ -78,11 +78,13 @@ preview, a private operation lock for cooperating Verity processes, and an
 expected whole-config SHA-256 head. Non-cooperating config writers remain a
 documented residual risk.
 
-**Scale/Scope**: One local operator and one child process per bounded semantic
-operation for the hackathon path; one dedicated demo MCP entry; additive
-provider-state migration across existing signed events, API responses, CLI,
-evaluation output, and Control Room; no UI automation, hosted service, or
-outbound information-flow control
+**Scale/Scope**: One local operator and at most one active child process per
+subscription runner. A semantic operation performs fresh version and login
+probes sequentially before the semantic child; these processes never run in
+parallel on that runner. The hackathon path has one dedicated demo MCP entry and
+an additive provider-state migration across existing signed events, API
+responses, CLI, evaluation output, and Control Room; it adds no hosted service
+or outbound information-flow control.
 
 ## Constitution Check
 

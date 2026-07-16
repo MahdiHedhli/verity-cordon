@@ -179,7 +179,6 @@ def test_fixture_probe_cleans_descendant_after_direct_child_exits(tmp_path: Path
         "'serverInfo': {'name': 'verity-cordon-poisoned-docs-fixture'}}},\n"
         "    {'jsonrpc': '2.0', 'id': 2, 'result': {'tools': ["
         "{'name': 'get_release_guidance'}, {'name': 'demo_artifact_sink'}]}},\n"
-        "    {'jsonrpc': '2.0', 'id': 3, 'result': {'content': [{'text': 'synthetic'}]}},\n"
         "]\n"
         "for response in responses:\n"
         "    print(json.dumps(response), flush=True)\n",

@@ -1,7 +1,7 @@
 # Codex Hook Contract
 
 **Feature**: `001-codex-memory-firewall`
-**Contract version**: 1.0.0
+**Contract version**: 1.0.1
 **Verified**: 2026-07-15
 
 This contract defines the supported boundary between Codex command hooks, the
@@ -55,11 +55,77 @@ disable_on_external_context = true
 
 `disable_on_external_context` is defense in depth, not a substitute for
 disabling memory generation and use. `verity doctor` MUST report the effective
-configuration. The operator MUST review and trust the installed non-managed
-hook definition through Codex; changed hook definitions are not assumed to
-remain trusted. The installation receipt MUST bind the staged hook runtime to
-the current verified Python executable and version. `doctor` MUST reject drift
-and MUST NOT execute an interpreter path selected only by receipt content.
+configuration. Before any installation mutation, the installer MUST return the
+exact rendered hook manifest, per-artifact SHA-256 digests and sizes, the hook
+runtime path/SHA-256/version, and a canonical preview digest. Confirmed
+installation MUST require that exact digest, recompute it from current source,
+configuration, receipt, paths, and interpreter content/identity, and stage the
+already-reviewed in-memory bytes. Missing or changed review
+data MUST fail before staging, configuration backup, receipt creation, or Codex
+commands. After installation, the operator MUST separately review and trust the
+installed non-managed hook definition through Codex `/hooks`; the preview digest
+does not prove or replace Codex's persisted hook trust. Changed hook definitions
+are not assumed to remain trusted. The installation receipt MUST bind the staged
+hook runtime to the current verified Python executable path, SHA-256 digest,
+byte size, and version obtained from that executable. Receipt schema `2.0.0`
+has `prepared`, `installed`, `uninstall_commands`, `uninstall_config`,
+`uninstall_tree`, and `uninstall_receipt` states. Before replacing marketplace
+executables, a `prepared` receipt MUST bind the prior artifact digest set when
+one exists, the reviewed target digest set, original config controls, expected
+config heads, backup digest, preview digest, runtime identity, and the exact
+deterministic active, staging, retired, and removal-tree paths. Random retained
+executable-tree names are prohibited. Recovery MUST classify, converge, or
+safely sweep every one of those paths and MUST finish only when each tree and
+config state exactly matches a receipt-bound prior, target, partial-removal, or
+absent state. Ambiguity MUST stop without mutation. Schema `1.0.0` receipts
+remain accepted only for bounded upgrade or teardown and MUST NOT make `doctor`
+ready because they lack the runtime digest and size.
+
+Normal install and uninstall mutations MUST share a private operation lock.
+Every config replacement and receipt transition MUST recheck its expected
+SHA-256 head immediately before atomic replacement. Codex home, Verity data,
+config, receipt, backup, and marketplace paths MUST use stable absolute lexical
+roots; relative roots, dangling or traversed symlinks, unexpected owners, and
+group/world-writable security-critical paths MUST be rejected. Preview MUST
+remain read-only, including when those absolute roots do not yet exist. A
+failed backup or prepared-receipt write MUST occur before marketplace staging;
+a staging or config-write interruption MUST leave a recovery receipt that
+binds every possible retained marketplace state. If the first prepared-receipt
+write fails, a newly created config backup MUST either be proven bound by the
+durable receipt or be digest-checked and removed.
+
+The receipt MUST journal successful marketplace/plugin add and remove commands.
+A retry MUST skip each recorded success so a normal already-present or
+already-absent command failure cannot strand the next step. Uninstall MUST
+retain the receipt, local marketplace, and controlled config while either Codex
+removal command fails. After commands complete, it MUST durably bind the
+pre-restore and restored config heads plus uninstall backup before config
+replacement; then transition through config, deterministic tree tombstone, and
+receipt-removal phases. Backup, config write, tree rename/removal, phase-write,
+and receipt-unlink failures MUST all be retryable from exact state without
+requiring the restored config to masquerade as still installed. `doctor` MUST
+refuse readiness while required install-command journal entries remain
+incomplete. It MUST compare the
+receipt runtime digest and size before executing that runtime, then recheck the
+complete identity after its bounded hook probe. It MUST reject drift and MUST
+NOT execute an interpreter path selected only by receipt content.
+
+Before deleting a retained removal tombstone, recovery MUST verify it with the
+same exact receipt target artifact digest set used for the active marketplace;
+owner/mode/type checks alone are insufficient. Content drift MUST stop without
+deleting the tombstone.
+
+A reinstall that replaces receipt-bound plugin artifacts MUST NOT reset a
+previously successful marketplace registration and retry the non-idempotent add
+command. The receipt MUST instead bind an explicit `refresh_plugin` install
+strategy, preserve verified `marketplace_add` progress, clear `plugin_add`, and
+journal `plugin_refresh_remove` before the replacement plugin add. Retry MUST
+skip each completed refresh step, and only a fully registered plugin may
+transition the strategy to `complete`. If an external Codex command succeeds
+but any subsequent local receipt-journal transition fails, including atomic
+write, synchronization, or replacement I/O failure, external state is
+ambiguous until status reconciliation or operator review; the installer MUST
+NOT claim readiness from incomplete journal state.
 
 The plugin supplies command hooks through its documented plugin hook manifest.
 Only `type: "command"` handlers are used. The adapter MUST NOT use the parsed

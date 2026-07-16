@@ -182,15 +182,22 @@ cannot be confused with an applied installation:
 uv run verity install-codex
 ```
 
-After reviewing the preview and hook definition, close every ChatGPT Desktop
+The preview returns the exact rendered hook manifest, per-artifact SHA-256 and
+size, the verified hook-runtime path/SHA-256/version, and
+`preview.preview_digest`. After reviewing those immutable details,
+copy the digest, then close every ChatGPT Desktop
 task, exit Codex CLI TUI and IDE Codex sessions, and fully quit the ChatGPT
 desktop app before applying the user-wide change:
 
 ```bash
-uv run verity install-codex --yes
+export VERITY_CODEX_INSTALL_DIGEST="<copy preview.preview_digest>"
+uv run verity install-codex \
+  --expected-preview-digest "$VERITY_CODEX_INSTALL_DIGEST" --yes
 ```
 
-Start Codex CLI and enter `/hooks`. Review the exact Verity command hook
+Confirmed installation recomputes the digest before any mutation and stages
+the reviewed in-memory bytes; this does not grant Codex hook trust. Start Codex
+CLI after installation and enter `/hooks`. Review the exact Verity command hook
 definitions and trust their current hashes, then exit the CLI. Only after that
 Codex-managed review should you record the operator assertion:
 

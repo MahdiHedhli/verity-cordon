@@ -43,13 +43,174 @@ def _benign_events() -> list[dict[str, Any]]:
         },
         {
             "type": "turn.completed",
-            "usage": {"input_tokens": 3, "cached_input_tokens": 0, "output_tokens": 2},
+            "usage": {
+                "input_tokens": 3,
+                "cached_input_tokens": 0,
+                "output_tokens": 2,
+                "reasoning_output_tokens": 1,
+            },
         },
     ]
 
 
 def test_benign_lifecycle_and_reasoning_message_items_are_allowed() -> None:
     assert CodexSubscriptionRunner.validate_event_stream(_stream(_benign_events())) is None
+
+
+def test_documented_completion_only_safe_item_is_allowed() -> None:
+    events = [
+        {"type": "thread.started", "thread_id": "thread-synthetic-001"},
+        {"type": "turn.started"},
+        {
+            "type": "item.completed",
+            "item": {
+                "id": "item-synthetic-001",
+                "type": "agent_message",
+                "text": "Synthetic response.",
+            },
+        },
+        {"type": "turn.completed", "usage": {}},
+    ]
+
+    assert CodexSubscriptionRunner.validate_event_stream(_stream(events)) is None
+
+
+def test_documented_failure_lifecycle_maps_to_content_safe_process_exit() -> None:
+    marker = "SYNTHETIC-ERROR-CONTENT-MUST-NOT-ECHO"
+    events = [
+        {"type": "thread.started", "thread_id": "thread-synthetic-001"},
+        {"type": "turn.started"},
+        {"type": "error", "message": marker},
+        {"type": "turn.failed", "error": {"message": marker}},
+    ]
+
+    with pytest.raises(SemanticProviderError) as captured:
+        CodexSubscriptionRunner.validate_event_stream(_stream(events))
+
+    assert captured.value.failure_class == "process_exit"
+    assert captured.value.retryable is True
+    assert marker not in str(captured.value)
+
+
+@pytest.mark.parametrize(
+    "failure_event",
+    [
+        {"type": "error", "message": "synthetic", "future": True},
+        {"type": "error", "message": None},
+        {"type": "turn.failed", "error": "synthetic"},
+        {
+            "type": "turn.failed",
+            "error": {"message": "synthetic", "future": True},
+        },
+        {"type": "turn.failed", "error": {"message": ""}},
+    ],
+)
+def test_malformed_failure_event_shapes_remain_invalid_response(
+    failure_event: dict[str, Any],
+) -> None:
+    events = [
+        {"type": "thread.started", "thread_id": "thread-synthetic-001"},
+        {"type": "turn.started"},
+        failure_event,
+    ]
+
+    with pytest.raises(SemanticProviderError) as captured:
+        CodexSubscriptionRunner.validate_event_stream(_stream(events))
+
+    assert captured.value.failure_class == "invalid_response"
+
+
+def test_tool_bearing_failure_event_still_maps_to_tool_activity() -> None:
+    events = [
+        {"type": "thread.started", "thread_id": "thread-synthetic-001"},
+        {"type": "turn.started"},
+        {
+            "type": "turn.failed",
+            "error": {
+                "message": "synthetic",
+                "tool_call": {"name": "synthetic"},
+            },
+        },
+    ]
+
+    with pytest.raises(SemanticProviderError) as captured:
+        CodexSubscriptionRunner.validate_event_stream(_stream(events))
+
+    assert captured.value.failure_class == "tool_activity"
+
+
+@pytest.mark.parametrize(
+    "events",
+    [
+        [
+            {"type": "turn.completed", "usage": {}},
+            {"type": "thread.started", "thread_id": "thread-synthetic-001"},
+            {"type": "turn.started"},
+        ],
+        [
+            {"type": "thread.started", "thread_id": "thread-synthetic-001"},
+            {
+                "type": "item.completed",
+                "item": {"id": "item-synthetic-001", "type": "agent_message"},
+            },
+            {"type": "turn.started"},
+            {"type": "turn.completed", "usage": {}},
+        ],
+        [
+            *_benign_events(),
+            {
+                "type": "item.completed",
+                "item": {"id": "item-after-terminal", "type": "agent_message"},
+            },
+        ],
+    ],
+    ids=["terminal-first", "item-before-turn", "event-after-terminal"],
+)
+def test_reordered_and_post_terminal_events_are_rejected(
+    events: list[dict[str, Any]],
+) -> None:
+    with pytest.raises(SemanticProviderError):
+        CodexSubscriptionRunner.validate_event_stream(_stream(events))
+
+
+@pytest.mark.parametrize(
+    "events",
+    [
+        [*_benign_events()[:3], *_benign_events()[4:]],
+        [*_benign_events()[:3], _benign_events()[2], *_benign_events()[3:]],
+        [*_benign_events()[:4], _benign_events()[3], *_benign_events()[4:]],
+        [
+            *_benign_events()[:2],
+            _benign_events()[3],
+            _benign_events()[2],
+            *_benign_events()[4:],
+        ],
+        [
+            *_benign_events()[:3],
+            {
+                "type": "item.completed",
+                "item": {
+                    "id": "item-synthetic-001",
+                    "type": "agent_message",
+                    "text": "Mismatched synthetic response.",
+                },
+            },
+            *_benign_events()[4:],
+        ],
+    ],
+    ids=[
+        "unmatched-start",
+        "duplicate-start",
+        "duplicate-completion",
+        "completion-before-start",
+        "type-mismatch",
+    ],
+)
+def test_started_item_pairing_and_id_reuse_are_enforced(
+    events: list[dict[str, Any]],
+) -> None:
+    with pytest.raises(SemanticProviderError):
+        CodexSubscriptionRunner.validate_event_stream(_stream(events))
 
 
 @pytest.mark.parametrize(
@@ -95,6 +256,86 @@ def test_unknown_item_type_is_treated_as_tool_activity() -> None:
 
     with pytest.raises(SemanticProviderError, match="tool activity"):
         CodexSubscriptionRunner.validate_event_stream(_stream(events))
+
+
+@pytest.mark.parametrize(
+    ("location", "field"),
+    [
+        ("event", "tool_call"),
+        ("event", "tool_calls"),
+        ("item", "command"),
+        ("item", "function_call"),
+        ("usage", "mcp_tool_call"),
+    ],
+)
+def test_tool_bearing_extra_fields_in_otherwise_allowed_events_fail_closed(
+    location: str,
+    field: str,
+) -> None:
+    events = _benign_events()
+    target: dict[str, Any]
+    if location == "event":
+        target = events[2]
+    elif location == "item":
+        target = events[2]["item"]
+    else:
+        target = events[-1]["usage"]
+    target[field] = {"synthetic": True}
+
+    with pytest.raises(SemanticProviderError) as captured:
+        CodexSubscriptionRunner.validate_event_stream(_stream(events))
+
+    assert captured.value.failure_class == "tool_activity"
+
+
+@pytest.mark.parametrize(
+    ("event_index", "location"),
+    [
+        (0, "event"),
+        (1, "event"),
+        (2, "event"),
+        (2, "item"),
+        (-1, "event"),
+        (-1, "usage"),
+    ],
+)
+def test_unknown_fields_are_rejected_at_every_allowed_event_boundary(
+    event_index: int,
+    location: str,
+) -> None:
+    events = _benign_events()
+    target: dict[str, Any]
+    if location == "item":
+        target = events[event_index]["item"]
+    elif location == "usage":
+        target = events[event_index]["usage"]
+    else:
+        target = events[event_index]
+    target["future_metadata"] = "synthetic"
+
+    with pytest.raises(SemanticProviderError) as captured:
+        CodexSubscriptionRunner.validate_event_stream(_stream(events))
+
+    assert captured.value.failure_class == "invalid_response"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda events: events[2]["item"].update(text=1),
+        lambda events: events[-1]["usage"].update(input_tokens=True),
+        lambda events: events[-1]["usage"].update(output_tokens=-1),
+        lambda events: events[-1].update(usage=[]),
+    ],
+)
+def test_allowed_field_values_are_strictly_typed(mutation: Any) -> None:
+    events = _benign_events()
+    mutation(events)
+
+    with pytest.raises(SemanticProviderError) as captured:
+        CodexSubscriptionRunner.validate_event_stream(_stream(events))
+
+    assert captured.value.failure_class == "invalid_response"
 
 
 @pytest.mark.parametrize(

@@ -41,6 +41,7 @@ describe("CandidateDetailPage", () => {
         assessment_id: "assessment-subscription-0001",
         candidate_id: candidateDetail.candidate.candidate_id,
         provider_state: "live_codex_subscription",
+        requested_provider: "codex_subscription",
         requested_model: "gpt-5.6",
         returned_model: null,
         prompt_version: "codex-subscription-risk-v1",
@@ -74,6 +75,50 @@ describe("CandidateDetailPage", () => {
     expect(screen.getByText(/lower-isolation agentic provider/i)).toBeVisible();
     expect(screen.getByText(/agentic_sandboxed/i)).toBeVisible();
     expect(screen.getByText(/tool activity invalidates the result/i)).toBeVisible();
+  });
+
+  it("preserves the attempted subscription boundary when semantic review fails", async () => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>(() => Promise.resolve(jsonResponse({
+      ...candidateDetail,
+      semantic_assessment: {
+        schema_version: "1.0.0",
+        assessment_id: "assessment-subscription-failed-0001",
+        candidate_id: candidateDetail.candidate.candidate_id,
+        provider_state: "failed",
+        requested_provider: "codex_subscription",
+        requested_model: "gpt-5.6-luna",
+        returned_model: null,
+        prompt_version: "codex-subscription-semantic-risk-v1",
+        risk_score: null,
+        categories: [],
+        persistence_intent: "unknown",
+        authority_claim: "unknown",
+        exfiltration_risk: null,
+        tool_hijack_risk: null,
+        cross_task_risk: null,
+        secret_risk: null,
+        rationale: null,
+        recommended_disposition: null,
+        sanitized_content_digest: "e".repeat(64),
+        cache_hit: false,
+        latency_ms: 250,
+        failure: { class: "timeout", retryable: true },
+        assessed_at: "2026-07-15T14:21:02Z",
+      },
+    }))));
+
+    render(
+      <TestProviders initialEntries={[`/candidates/${candidateDetail.candidate.candidate_id}`]}>
+        <Routes>
+          <Route element={<CandidateDetailPage />} path="/candidates/:candidateId" />
+        </Routes>
+      </TestProviders>,
+    );
+
+    expect(await screen.findByText(/attempted the lower-isolation agentic provider/i)).toBeVisible();
+    expect(screen.getByText(/agentic_sandboxed/i)).toBeVisible();
+    expect(screen.getAllByText(/codex subscription/i)).not.toHaveLength(0);
+    expect(screen.getByText(/failed without producing a risk recommendation/i)).toBeVisible();
   });
 
   it("shows shadow admission and selective revocation as a delayed-attack timeline", async () => {

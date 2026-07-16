@@ -128,6 +128,16 @@ def _provider_summary(semantic: SemanticAssessment | None) -> ProviderSummarySta
     return ProviderSummaryState.RECORDED_FIXTURE
 
 
+def semantic_model_identifier_for_event(
+    semantic: SemanticAssessment | None,
+) -> str | None:
+    """Select signed model provenance without treating a request as attestation."""
+
+    if semantic is None:
+        return None
+    return semantic.returned_model or semantic.requested_model
+
+
 def _parse_queue_timestamp(value: object, *, field: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
@@ -447,9 +457,7 @@ class MemoryService:
             "policy_id": decision.policy_id,
             "policy_version": decision.policy_version,
             "detector_bundle_version": self.detector_runner.bundle_version,
-            "semantic_model_identifier": (
-                semantic.returned_model if semantic is not None else None
-            ),
+            "semantic_model_identifier": semantic_model_identifier_for_event(semantic),
             "occurred_at": occurred_at,
         }
         inputs = [

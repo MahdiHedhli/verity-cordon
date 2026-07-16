@@ -217,7 +217,12 @@ both live candidate extraction and live semantic assessment for four synthetic
 candidates, produced allow and quarantine outcomes, and verified a 50-event
 ledger with a consistent view. `gpt-5.6-luna` is the requested local model
 identifier, not a remote model attestation. Model access and limits remain
-subscription- and workspace-dependent.
+subscription- and workspace-dependent. Those successful runs preceded the
+release-hardening exact incremental JSONL grammar. A post-hardening probe on
+the same CLI version reached an external rate limit and verified fail-closed
+`process_exit` handling with clean cleanup state; successful revalidation of
+the hardened live completion path remains pending and is not implied by the
+earlier runs.
 
 ## Codex Integration
 
@@ -231,15 +236,22 @@ exits with status 2):
 uv run verity install-codex
 ```
 
-After reviewing the preview and bundled hook definition, close every ChatGPT
+The preview includes the exact rendered hook manifest, per-artifact SHA-256 and
+size, the verified hook-runtime path/SHA-256/version, and
+`preview.preview_digest`. After reviewing those immutable details,
+copy the digest, then close every ChatGPT
 Desktop task, exit Codex CLI TUI and IDE Codex sessions, and fully quit the
 ChatGPT desktop app before applying the user-wide change:
 
 ```bash
-uv run verity install-codex --yes
+export VERITY_CODEX_INSTALL_DIGEST="<copy preview.preview_digest>"
+uv run verity install-codex \
+  --expected-preview-digest "$VERITY_CODEX_INSTALL_DIGEST" --yes
 ```
 
-Start Codex CLI, enter `/hooks`, inspect the exact Verity definitions, and trust
+The installer recomputes that digest before any mutation and stages the reviewed
+in-memory bytes. This does not grant Codex hook trust. After installation, start
+Codex CLI, enter `/hooks`, inspect the installed Verity definitions, and trust
 their current hashes. Then exit the CLI and set the post-review assertion:
 
 ```bash
@@ -288,9 +300,12 @@ See the versioned
 
 In this repository, **Codex Desktop** is shorthand for the Codex experience in
 the supported ChatGPT desktop app. It is the primary interactive demo surface;
-the name does not imply an undocumented interception surface. After the normal
-Verity integration is installed and its exact hook hashes are trusted through
-CLI `/hooks`, preview the separate synthetic MCP fixture without changing state:
+the name does not imply an undocumented interception surface. The automated
+contracts and Control Room browser smoke are complete, but the timed,
+operator-visible Codex Desktop rehearsal is still pending and is not claimed as
+observed app evidence. After the normal Verity integration is installed and its
+exact hook hashes are trusted through CLI `/hooks`, preview the separate
+synthetic MCP fixture without changing state:
 
 ```bash
 export VERITY_DATA_DIR="$PWD/.verity-desktop-demo"
@@ -479,13 +494,15 @@ integrated the majority of core work. Details and the required real `/feedback`
 placeholder are in
 [`docs/hackathon/CODEX_COLLABORATION.md`](docs/hackathon/CODEX_COLLABORATION.md).
 
-At runtime, GPT-5.6 is used only in explicit live modes for structured candidate
-extraction and semantic risk assessment after local sanitization. The direct
-Responses API path has no tools or Verity memory. The separate subscription
-path is labeled `agentic_sandboxed`, rejects observed tool activity, requires no
-API key, and never silently substitutes another provider. Neither path can
-grant trust: deterministic versioned policy always makes the final action
-decision. Offline mode uses clearly labeled recorded fixtures.
+At runtime, Verity's explicit live modes request GPT-5.6-family identifiers for
+structured candidate extraction and semantic risk assessment after local
+sanitization. The direct Responses API path has no tools or Verity memory. The
+separate subscription path is labeled `agentic_sandboxed`, rejects observed
+tool activity, requires no API key, and never silently substitutes another
+provider. Its exercised `gpt-5.6-luna` value is a requested local identifier;
+the current Codex event stream does not attest the returned remote model.
+Neither path can grant trust: deterministic versioned policy always makes the
+final action decision. Offline mode uses clearly labeled recorded fixtures.
 
 ## Roadmap and License
 

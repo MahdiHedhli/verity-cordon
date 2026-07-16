@@ -15,6 +15,7 @@ from verity_cordon.core.models import (
     MemoryKind,
     PersistenceIntent,
     ProviderState,
+    RequestedProvider,
     Sensitivity,
     Signal,
     SourceClass,
@@ -134,6 +135,7 @@ async def test_structured_assessment_records_requested_and_returned_models() -> 
     result = await provider.assess(target)
 
     assert result.provider_state is ProviderState.LIVE_OPENAI
+    assert result.requested_provider is RequestedProvider.OPENAI
     assert result.requested_model == "gpt-5.6"
     assert result.returned_model == "gpt-5.6-sol-2026-07-01"
     assert result.recommended_disposition is Action.QUARANTINE
@@ -342,6 +344,8 @@ async def test_refusal_and_incomplete_are_explicit_failures(response, failure_cl
     result = await provider.assess(make_candidate())
 
     assert result.provider_state is ProviderState.FAILED
+    assert result.requested_provider is RequestedProvider.OPENAI
+    assert result.requested_model == "gpt-5.6"
     assert result.failure is not None
     assert result.failure.class_name == failure_class
     assert result.risk_score is None
@@ -361,5 +365,7 @@ async def test_unavailable_provider_retries_boundedly_and_never_uses_fixture() -
 
     assert len(client.responses.calls) == 2
     assert result.provider_state is ProviderState.FAILED
+    assert result.requested_provider is RequestedProvider.OPENAI
+    assert result.requested_model == "gpt-5.6"
     assert result.failure is not None and result.failure.class_name == "unavailable"
     assert result.returned_model is None

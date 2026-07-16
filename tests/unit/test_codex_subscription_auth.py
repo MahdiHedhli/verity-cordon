@@ -8,8 +8,10 @@ from typing import Any
 import pytest
 
 from tests.unit.test_codex_subscription_runner import (
+    _fail_cleanup_after_removal,
     _fake_codex,
     _homes,
+    _path_exists,
     _records,
     _secure_tree,
 )
@@ -20,6 +22,9 @@ from verity_cordon.semantic.codex_subscription import CodexSubscriptionRunner
 def _auth_runner(
     root: Any,
     *,
+    version: str = "codex-cli 0.144.4\n",
+    version_stderr: str = "",
+    version_exit: int = 0,
     status: str = "Logged in using ChatGPT\n",
     status_stderr: str = "",
     status_exit: int = 0,
@@ -28,6 +33,9 @@ def _auth_runner(
 ) -> tuple[CodexSubscriptionRunner, Any]:
     executable, monitor, _ = _fake_codex(
         root,
+        version=version,
+        version_stderr=version_stderr,
+        version_exit=version_exit,
         status=status,
         status_stderr=status_stderr,
         status_exit=status_exit,
@@ -72,6 +80,112 @@ async def test_exact_chatgpt_marker_on_stderr_matches_the_supported_cli() -> Non
 
         assert await runner.check_chatgpt_auth() == "ready_chatgpt"
         assert _records(monitor)[0]["argv"] == ["login", "status"]
+
+
+@pytest.mark.asyncio
+async def test_readiness_checks_current_executable_version_and_fresh_auth_each_time() -> None:
+    with _secure_tree() as root:
+        runner, monitor = _auth_runner(root)
+
+        assert await runner.check_chatgpt_auth() == "ready_chatgpt"
+        assert await runner.check_chatgpt_auth() == "ready_chatgpt"
+
+        assert runner.codex_version == "codex-cli 0.144.4"
+        assert [record["kind"] for record in _records(monitor)] == ["status", "status"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("version", "version_stderr", "version_exit"),
+    [
+        ("codex-cli 0.144.3\n", "", 0),
+        ("codex-cli 1.0.0\n", "", 0),
+        ("codex-cli 0.144.4-beta\n", "", 0),
+        ("Codex 0.144.4\n", "", 0),
+        ("codex-cli 0.144.4\nextra\n", "", 0),
+        ("codex-cli 0.144.4\n", "synthetic detail", 0),
+        ("codex-cli 0.144.4\n", "", 7),
+    ],
+)
+async def test_malformed_unsupported_or_failed_version_is_not_ready(
+    version: str,
+    version_stderr: str,
+    version_exit: int,
+) -> None:
+    with _secure_tree() as root:
+        runner, monitor = _auth_runner(
+            root,
+            version=version,
+            version_stderr=version_stderr,
+            version_exit=version_exit,
+        )
+
+        with pytest.raises(SemanticProviderError) as captured:
+            await runner.check_chatgpt_auth()
+
+        assert captured.value.failure_class == "unavailable"
+        assert runner.codex_version is None
+        assert runner.last_auth_state == "codex_unavailable"
+        assert runner.last_failure_class == "unavailable"
+        assert _records(monitor) == []
+        assert "synthetic detail" not in str(captured.value)
+
+
+@pytest.mark.asyncio
+async def test_oversized_version_output_is_bounded_and_content_safe() -> None:
+    with _secure_tree() as root:
+        marker = "SYNTHETIC-VERSION-MUST-NOT-ECHO"
+        runner, monitor = _auth_runner(root, version="codex-cli 0.144.4" + marker * 300)
+
+        with pytest.raises(SemanticProviderError) as captured:
+            await runner.check_chatgpt_auth()
+
+        assert captured.value.failure_class == "output_limit"
+        assert runner.codex_version is None
+        assert runner.last_auth_state == "codex_unavailable"
+        assert _records(monitor) == []
+        assert marker not in str(captured.value)
+
+
+@pytest.mark.asyncio
+async def test_auth_temp_cleanup_failure_invalidates_readiness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _secure_tree() as root:
+        runner, monitor = _auth_runner(root)
+        _fail_cleanup_after_removal(monkeypatch, prefix="verity-codex-auth-")
+
+        with pytest.raises(SemanticProviderError) as captured:
+            await runner.check_chatgpt_auth()
+
+        assert captured.value.failure_class == "cleanup_failure"
+        assert runner.last_cleanup_failure == "temporary_artifacts"
+        assert runner.last_auth_state == "status_failed"
+        assert runner.last_failure_class == "cleanup_failure"
+        assert not _path_exists(_records(monitor)[0]["env"]["TMPDIR"])
+        assert "synthetic cleanup failure" not in str(captured.value)
+
+        with pytest.raises(SemanticProviderError) as repeated:
+            await runner.check_chatgpt_auth()
+        assert repeated.value.failure_class == "cleanup_failure"
+        assert len(_records(monitor)) == 1
+
+
+@pytest.mark.asyncio
+async def test_auth_temp_cleanup_failure_does_not_mask_auth_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _secure_tree() as root:
+        runner, _ = _auth_runner(root, status="Not logged in\n")
+        _fail_cleanup_after_removal(monkeypatch, prefix="verity-codex-auth-")
+
+        with pytest.raises(SemanticProviderError) as captured:
+            await runner.check_chatgpt_auth()
+
+        assert captured.value.failure_class == "unsupported_auth"
+        assert runner.last_cleanup_failure == "temporary_artifacts"
+        assert runner.last_auth_state == "unsupported_auth"
+        assert runner.last_failure_class == "unsupported_auth"
 
 
 @pytest.mark.asyncio

@@ -34,14 +34,21 @@ Provider selection is explicit and there is no fallback chain.
 | `provider_state` | enum | Successful assessment state: `recorded_fixture`, `live_openai`, or `live_codex_subscription`; `failed` for an attempted provider that did not return an acceptable result. |
 | `provider_isolation` | derived enum | `recorded_fixture`, `tool_free_api`, or `agentic_sandboxed`; derived locally from the requested provider and never accepted from model output. |
 | `requested_model` | string/null | Required for both live providers. It is the locally validated configured identifier. |
-| `returned_model` | string/null | Recorded only when trustworthy Codex runtime metadata identifies it. Model-authored text cannot establish this value. It MAY remain null for subscription execution. |
+| `returned_model` | string/null | MUST be null for subscription execution because the current Codex runtime contract exposes no trustworthy remote-model metadata. Direct API providers may populate the shared field from their trusted response envelope. Model-authored text cannot establish it. |
 | `prompt_version` | string | Stable local prompt identifier. Subscription extraction and assessment use distinct versions. |
 | `output_schema_version` | string | Stable local structured-output envelope version. |
 | `executable_path` | absolute path/null | Subscription provider only; resolved locally and never exposed in routine API, telemetry, or UI output. |
 | `executable_digest` | SHA-256/null | Subscription provider only; used for doctor and drift checks. |
-| `codex_version` | string/null | Bounded output from the verified executable's version command. |
+| `codex_version` | string/null | Canonical `codex-cli MAJOR.MINOR.PATCH` parsed from a fresh bounded invocation of the verified executable. Feature 002 supports `>=0.144.4,<1.0.0`; version acceptance is compatibility gating, not proof of capability or remote-model availability. |
 | `started_at` / `completed_at` | UTC time | Operational timing; only bounded latency and content-safe state enter routine telemetry. |
 | `failure_class` | enum/null | Content-safe classification when no acceptable result was produced. |
+
+Every newly constructed success or failure assessment populates
+`requested_provider` from trusted adjudicator metadata. Absence remains
+accepted only for backward-compatible replay of legacy `1.0.0` records. Outer
+timeout, validation, and internal-error wrappers preserve the attempted
+provider, locally requested model, and prompt version when available; they do
+not substitute another provider.
 
 The presentation mapping is fixed:
 
@@ -50,7 +57,7 @@ The presentation mapping is fixed:
 | `live_openai` | `tool_free_api` | Direct OpenAI API; tool-free request path |
 | `live_codex_subscription` | `agentic_sandboxed` | Codex subscription; lower isolation, tool activity invalidates the result |
 | `recorded_fixture` | `recorded_fixture` | Recorded deterministic fixture |
-| `failed` | derived from requested provider | Failed semantic evaluation |
+| `failed` | `failed` | Failed semantic evaluation; `requested_provider` separately preserves which provider was attempted |
 
 `live_codex_subscription` does not inherit direct-API claims about tool absence
 or request storage. Deterministic policy consumes the semantic result as
@@ -65,12 +72,25 @@ Validated settings extend the existing `Settings` model:
 | `semantic_provider` | enum | existing default | Adds explicit value `codex_subscription`; no automatic selection. |
 | `codex_model` | string | requested `gpt-5.6-luna` | 1-128 safe identifier characters; passed as one fixed argument. Luna is the exercised GPT-5.6-family subscription model for bounded extraction and classification. Availability is checked only by an explicit invocation and failure does not trigger fallback. |
 | `codex_executable` | absolute path/null | null | When null, resolve `codex` once from absolute PATH entries whose complete ancestor chains are effective-user/root-owned and not group/world-writable. Explicit paths must be absolute. The resolved regular executable and every ancestor obey the same rule. |
-| `codex_semantic_timeout_seconds` | decimal | 30 | Greater than zero and no more than 120 seconds. |
-| `codex_auth_timeout_seconds` | decimal | 5 | Greater than zero and no more than 15 seconds. |
+| `codex_semantic_timeout_seconds` | integer | 30 | Greater than zero and no more than 120 seconds. |
+| `codex_auth_timeout_seconds` | integer | 5 | Greater than zero and no more than 15 seconds. |
 | `codex_max_input_bytes` | integer | 262144 | Positive and no more than 1048576. Applied after local secret sanitization and canonical UTF-8 encoding. |
 | `codex_max_jsonl_bytes` | integer | 2097152 | Positive and no more than 4194304. |
 | `codex_max_stderr_bytes` | integer | 262144 | Positive and no more than 1048576; stderr content is discarded after content-safe classification. |
 | `codex_max_final_bytes` | integer | 65536 | Positive and no more than 262144. |
+| `codex_termination_grace_seconds` | integer | 1 | At least 1 and no more than 3 seconds for bounded child and process-group cleanup. |
+
+The subscription runner additionally enforces a constructor-only JSONL line
+bound, `max_jsonl_line_bytes`, with default `262144` and inclusive range
+`1..1048576`. It is intentionally not an environment-configurable `Settings`
+field in this sprint. All five byte-bound constructor values reject zero,
+negative values, values above their documented hard maxima, booleans, and
+coercible non-integer values such as floats or strings.
+
+Public subscription readiness uses a fixed 250 millisecond runner-lock
+acquisition budget. Lock contention reports retryable `unavailable` without
+cancelling the lock holder. A probe that acquires the lock still performs the
+fresh version/login checks and observes sticky cleanup health.
 
 Configuration validation fails before provider construction. A configured
 subscription provider never falls back to `openai` or `fixture` when any field,
@@ -87,9 +107,13 @@ Authentication readiness is operational state, not a credential record.
 | `codex_version` | string/null | Content-safe bounded version string. |
 | `failure_class` | string/null | Content-safe value only. |
 
-The readiness check invokes the supported `codex login status` surface. Verity
-does not open, copy, parse, print, persist, or watch Codex credential files.
-Raw status output is never logged or included in events. API-key or unsupported
+Each readiness check freshly invokes bounded `codex --version` followed by the
+supported `codex login status` surface. No previous success is cached. The
+version parser accepts only canonical `codex-cli MAJOR.MINOR.PATCH` output in
+the supported range `>=0.144.4,<1.0.0`, after executable identity rechecks; the
+later semantic invocation remains the behavior/capability test. Verity does not
+open, copy, parse, print, persist, or watch Codex credential files. Raw version
+and status output is never logged or included in events. API-key or unsupported
 authentication is not treated as subscription readiness.
 
 ## Subscription Structured-Output Envelopes
@@ -126,10 +150,17 @@ recomputes the statement digest, and records
 | `assessment` | object | Existing strict `SemanticRiskOutput`: bounded scores, categories, signals, rationale, and recommended disposition. |
 
 Verity constructs `SemanticAssessment` locally with
-`provider_state=live_codex_subscription`. The local configured model is stored
-as `requested_model`; `returned_model` is null unless verified runtime metadata
-provides it. The model cannot set assessment IDs, timestamps, latency, cache
-state, provider state, or failure metadata.
+`requested_provider=codex_subscription` and
+`provider_state=live_codex_subscription`. The attempted provider remains
+`codex_subscription` if execution later fails; absence is accepted only while
+replaying legacy signed `1.0.0` assessments. The local configured model is
+stored as `requested_model`; `returned_model` is null under the current
+subscription contract because its runtime event stream supplies no trusted
+remote-model attestation. The signed event envelope therefore falls back to
+the local `requested_model` for `semantic_model_identifier`; that field records
+the request and is not a remote-model attestation. The model cannot set
+assessment IDs, timestamps, latency, cache state, requested/provider state, or
+failure metadata.
 
 ## Subscription Failure Classification
 
@@ -141,6 +172,7 @@ all existing values:
 - `tool_activity`
 - `output_limit`
 - `process_exit`
+- `cleanup_failure`
 - `cancelled`
 
 Existing values remain appropriate for `timeout`, `unavailable`, `refusal`,
@@ -148,8 +180,22 @@ Existing values remain appropriate for `timeout`, `unavailable`, `refusal`,
 Missing Codex and usage/rate-limit errors map to `unavailable` unless the
 runtime provides a safer, stable content-free class. Duplicate JSON keys,
 identity/digest mismatch, an unknown JSONL event, or a malformed final document
-map to `invalid_response` or `invalid_schema`. Raw child stdout/stderr is never
-stored in the failure object.
+map to `invalid_response` or `invalid_schema`. An exact documented
+`error`/`turn.failed` JSONL failure lifecycle maps to retryable `process_exit`;
+its message values are discarded and it can never yield an accepted semantic
+assessment. Malformed or tool-bearing failure events remain `invalid_response`
+or `tool_activity`, respectively. Incomplete process-group,
+stdout/stderr reader-drain, or temporary-artifact cleanup maps to
+`cleanup_failure`; the internal sticky cleanup-health reason is
+`process_group`, `stream_drain`, or `temporary_artifacts`. When another provider
+error or cancellation is already active, that primary outcome is preserved and
+the cleanup health state is recorded separately. Partial temporary-root setup
+is transactionally removed. Failures after root creation while creating or
+writing private I/O artifacts map to content-safe `internal_error`; failure to
+remove the partial tree additionally records sticky `temporary_artifacts`
+cleanup health. Parent cancellation remains cancellation after the cleanup
+attempt. Raw exception paths and child stdout/stderr are never stored in the
+failure object.
 
 A failed assessment contains no scores, rationale, categories, or recommended
 disposition. High-risk semantic failure is consumed by the existing fail-closed
@@ -190,13 +236,20 @@ It is independent from the normal Codex integration receipt.
 | Identity | receipt version, installation UUID, lifecycle state, create/update times | One receipt identifies one setup attempt. |
 | Confirmation | `operator_confirmed` | Must be true before any write-ahead receipt or configuration mutation. |
 | Paths | Codex home, config path, private staging root; reserved `backup_path=null` compatibility field | Absolute local paths; private and omitted from routine output. No whole-config copy is created. |
-| Config binding | existence flag, before/after digests; reserved `backup_sha256=null` compatibility field | Whole-file digests support exact-head checks and diagnostics without retaining potentially secret config content. |
+| Config binding | existence flag, before/after digests, original restrictive mode, unrelated typed-value projection digest; reserved `backup_sha256=null` compatibility field | Expected existence plus whole-file digests bind replacements; the projection digest prevents a retry from accepting unrelated post-write changes without retaining potentially secret config content. Existing restrictive owner mode is preserved; only a new config defaults to `0600`. |
 | Managed entry | fixed name, canonical entry digest, fixed stdio command/arguments/options | Teardown compares this entry independently so unrelated config changes are preserved. |
-| Original value | `original_entry_present=false`, null digest | Setup refuses a pre-existing entry with the reserved demo name rather than copying possibly secret configuration into a receipt. |
+| Original value | `managed_entry_original` object with `present=false`, `digest=null`, and boolean `parent_table_present` | Setup refuses a pre-existing entry with the reserved demo name rather than copying possibly secret configuration into a receipt; the parent-table flag supports exact teardown. |
 | Runtime identity | Codex and Python resolved paths, file digests, bounded versions | Doctor rejects runtime drift before use. |
 | Staged artifacts | relative path, digest, byte size | All paths are below the private staging root; no symlinks. |
 | Product integration | normal integration receipt path/digest | Binds the demo to a verified normal Verity installation without merging the receipts. |
 | Teardown | request/completion times and post-teardown config digest | Null before removal; populated through atomic state transitions. |
+
+New demo receipts use receipt version `1.1.0` and record normal-integration
+receipt version `2.0.0`. Demo receipt version `1.0.0` remains parseable only
+for existing-receipt inspection and safe cleanup; it cannot resume a prepared
+setup because it lacks the mode and unrelated-projection bindings. A legacy
+normal receipt cannot satisfy the current normal-integration readiness gate
+for new setup.
 
 The receipt contains no credential, capability, environment dump, raw evidence,
 signing key, hook input, or child output. It is written with mode `0600` below a
@@ -206,9 +259,12 @@ signing key, hook input, or child output. It is written with mode `0600` below a
 
 ```text
 absent
-  | explicit confirmation, artifacts staged, write-ahead receipt committed
+  | explicit confirmation; write-ahead receipt committed before artifact mutation
   v
-prepared
+prepared (artifact may still be absent)
+  | exact receipt-bound artifact staged or safely restaged
+  v
+prepared + staged
   | exact managed MCP entry written atomically
   v
 installed
@@ -218,6 +274,14 @@ removing
   | managed entry and verified staged artifacts removed
   v
 removed
+
+prepared + config replaced but unrelated projection mismatch
+  | append non-finalizable local failure state
+  v
+failed
+  | exact confirmed teardown only
+  v
+removing
 ```
 
 Rules:
@@ -225,23 +289,46 @@ Rules:
 1. Preview is read-only and creates no directory, backup, receipt, or config
    file.
 2. A receipt in `prepared` state is written before the Codex config mutation.
-   On restart, an absent entry permits safe retry; an exact managed entry permits
-   finalization; any other entry requires operator review.
+   On restart, an absent entry permits safe retry only when the whole config
+   still matches the receipt's pre-mutation digest; an exact managed entry
+   permits finalization only when the recorded unrelated-value projection still
+   matches; any other entry requires operator review. Config and managed-entry
+   state are classified before a missing artifact is restaged. If the exact
+   managed entry and exact present artifact are live but the projection differs,
+   a current v1.1 recovery retries only the interrupted `prepared` to `failed`
+   receipt transition after revalidating the config and receipt heads, runtimes,
+   and normal integration. It never finalizes that installation.
 3. Setup refuses a pre-existing `verity_cordon_poisoned_docs` entry. It does not
    overwrite or serialize unknown existing values.
 4. `installed` requires the exact managed-entry digest and all staged artifact
-   digests to verify.
+   digests to verify. After either the initial or recovery config replacement,
+   every unrelated parsed config value must also equal its pre-replacement
+   projection and the receipt's type-tagged projection digest; the comparison
+   does not render or persist those values. A mismatch records `failed` and
+   cannot be finalized by retry. If the first failure-state receipt write is
+   interrupted, exact-bound recovery records the same failure before teardown;
+   it does not reinterpret the changed projection as a new baseline.
 5. Unrelated Codex config changes do not block teardown when the managed entry
    is byte-equivalent after canonical TOML parsing. Drift inside the managed
    entry blocks teardown. Only the pre-mutation digest is retained; the demo
    never copies or restores the full Codex config.
-6. Staged artifacts are removed only when their path containment and digest
-   checks pass. Drift is reported for manual review rather than recursively
-   deleting the staging root.
+6. Staged artifacts are removed only when their path containment, digest,
+   byte-size, owner mode, device, and inode checks pass. The selected entry is
+   renamed through an anchored parent descriptor to a unique quarantine name,
+   reverified, and only then unlinked. A replacement or symlink is not deleted.
+   Drift is reported for manual review rather than recursively deleting the
+   staging root.
 7. `removed` is a terminal receipt state. The receipt remains as local setup
    history; a later setup receives a new installation identifier.
 8. Setup and teardown never delete or rewrite the Verity event ledger, signing
    key, policies, or memory projections.
+9. Config, receipt, archive, and artifact writes bind both expected existence
+   and SHA-256; receipt-dependent mutations additionally recheck device, inode,
+   owner, and mode. New setup/recovery rebinds the exact normal v2 receipt and a
+   fresh doctor result before each mutation and finalization.
+10. Teardown re-reads config before artifact removal and again before the
+    `removed` transition, requiring managed absence, equality of every
+    unrelated typed TOML value, and the preserved restrictive mode.
 
 ## Evidence Evaluation State
 

@@ -9,11 +9,20 @@ from pathlib import Path
 import pytest
 
 from verity_cordon.core.errors import LedgerError, ResourceLimitError
-from verity_cordon.core.models import Action, EventType, Mode, SourceClass, new_id
+from verity_cordon.core.models import (
+    Action,
+    EventType,
+    Mode,
+    ProviderState,
+    RequestedProvider,
+    SourceClass,
+    new_id,
+)
 from verity_cordon.crypto.keys import FileKeyProvider
 from verity_cordon.daemon.evidence_queue import EvidenceQueueWorker
 from verity_cordon.detectors.builtin import builtin_detectors
 from verity_cordon.detectors.runner import DetectorRunner
+from verity_cordon.ledger.queries import LedgerQueries
 from verity_cordon.ledger.store import SQLiteEventStore
 from verity_cordon.memory.injection import render_approved_memory
 from verity_cordon.memory.materializer import SQLiteMemoryView
@@ -94,7 +103,7 @@ async def test_safe_evidence_becomes_active_signed_memory(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_poisoned_tool_instruction_is_quarantined_and_not_injected(tmp_path) -> None:
-    service, _, view = await build_service(tmp_path)
+    service, store, view = await build_service(tmp_path)
     origin_session = new_id()
 
     evaluation = await service.evaluate_evidence(
@@ -120,6 +129,86 @@ async def test_poisoned_tool_instruction_is_quarantined_and_not_injected(tmp_pat
     assert "release.yaml" in rendered
     assert "demo_artifact_sink" not in rendered
     assert "do not mention" not in rendered.casefold()
+    malicious = next(
+        outcome
+        for outcome in evaluation.outcomes
+        if "demo_artifact_sink" in outcome.candidate.statement
+    )
+    assert {
+        event.semantic_model_identifier
+        for event in await store.list_events()
+        if event.stream_id == malicious.candidate.candidate_id
+    } == {"verity-fixture-v1"}
+
+
+class _SubscriptionFixtureSemantic(FixtureSemanticAdjudicator):
+    provider_label = "live_codex_subscription"
+    requested_provider = RequestedProvider.CODEX_SUBSCRIPTION
+    requested_model = "gpt-5.6-luna"
+    prompt_version = "codex-subscription-semantic-risk-v1"
+
+    async def assess(self, candidate):
+        assessment = await FixtureSemanticAdjudicator().assess(candidate)
+        payload = assessment.model_dump(mode="python")
+        payload.update(
+            {
+                "provider_state": ProviderState.LIVE_CODEX_SUBSCRIPTION,
+                "requested_provider": self.requested_provider,
+                "requested_model": self.requested_model,
+                "returned_model": None,
+                "prompt_version": self.prompt_version,
+            }
+        )
+        return type(assessment).model_validate(payload)
+
+
+@pytest.mark.asyncio
+async def test_subscription_events_sign_requested_model_without_remote_attestation(
+    tmp_path,
+) -> None:
+    service, store, _ = await build_service(
+        tmp_path,
+        adjudicator=_SubscriptionFixtureSemantic(),
+    )
+
+    evaluation = await service.evaluate_evidence(
+        EvidenceSubmission(
+            session_id=new_id(),
+            source_class=SourceClass.TOOL_OUTPUT,
+            content=POISONED_DOCS,
+        )
+    )
+    malicious = next(
+        outcome
+        for outcome in evaluation.outcomes
+        if "demo_artifact_sink" in outcome.candidate.statement
+    )
+    semantic = malicious.semantic_assessment
+    assert semantic is not None
+    assert semantic.provider_state is ProviderState.LIVE_CODEX_SUBSCRIPTION
+    assert semantic.requested_provider is RequestedProvider.CODEX_SUBSCRIPTION
+    assert semantic.requested_model == "gpt-5.6-luna"
+    assert semantic.returned_model is None
+
+    candidate_events = [
+        event
+        for event in await store.list_events()
+        if event.stream_id == malicious.candidate.candidate_id
+    ]
+    assert candidate_events
+    assert {event.semantic_model_identifier for event in candidate_events} == {"gpt-5.6-luna"}
+    semantic_event = next(
+        event
+        for event in candidate_events
+        if event.event_type is EventType.SEMANTIC_ASSESSMENT_RECORDED
+    )
+    assert semantic_event.payload["requested_provider"] == "codex_subscription"
+    assert semantic_event.payload["requested_model"] == "gpt-5.6-luna"
+    assert semantic_event.payload["returned_model"] is None
+    detail = await LedgerQueries(store).get_candidate_detail(malicious.candidate.candidate_id)
+    assert detail["semantic_assessment"]["requested_provider"] == "codex_subscription"
+    assert detail["semantic_assessment"]["provider_state"] == "live_codex_subscription"
+    assert (await store.verify()).verified is True
 
 
 @pytest.mark.asyncio

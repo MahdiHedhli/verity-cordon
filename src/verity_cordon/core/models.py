@@ -133,6 +133,12 @@ class ProviderState(StrEnum):
     FAILED = "failed"
 
 
+class RequestedProvider(StrEnum):
+    FIXTURE = "fixture"
+    OPENAI = "openai"
+    CODEX_SUBSCRIPTION = "codex_subscription"
+
+
 class ProviderSummaryState(StrEnum):
     LIVE_OPENAI = "live_openai"
     LIVE_CODEX_SUBSCRIPTION = "live_codex_subscription"
@@ -323,6 +329,7 @@ class SemanticFailure(StrictModel):
         "tool_activity",
         "output_limit",
         "process_exit",
+        "cleanup_failure",
         "cancelled",
     ] = Field(alias="class")
     retryable: bool
@@ -333,6 +340,7 @@ class SemanticAssessment(StrictModel):
     assessment_id: Identifier
     candidate_id: Identifier
     provider_state: ProviderState
+    requested_provider: RequestedProvider | None = None
     requested_model: str | None = Field(default=None, max_length=128)
     returned_model: str | None = Field(default=None, max_length=128)
     prompt_version: str = Field(min_length=1, max_length=128)
@@ -354,6 +362,17 @@ class SemanticAssessment(StrictModel):
 
     @model_validator(mode="after")
     def validate_provider_outcome(self) -> SemanticAssessment:
+        successful_provider = {
+            ProviderState.RECORDED_FIXTURE: RequestedProvider.FIXTURE,
+            ProviderState.LIVE_OPENAI: RequestedProvider.OPENAI,
+            ProviderState.LIVE_CODEX_SUBSCRIPTION: RequestedProvider.CODEX_SUBSCRIPTION,
+        }
+        if (
+            self.requested_provider is not None
+            and self.provider_state is not ProviderState.FAILED
+            and self.requested_provider is not successful_provider[self.provider_state]
+        ):
+            raise ValueError("successful semantic provider identity is inconsistent")
         score_fields = (
             self.risk_score,
             self.exfiltration_risk,

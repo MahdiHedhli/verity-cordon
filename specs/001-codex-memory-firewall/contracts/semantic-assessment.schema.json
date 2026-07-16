@@ -47,6 +47,19 @@
         "failed"
       ]
     },
+    "requested_provider": {
+      "description": "Locally selected provider. New records populate this field; null or absence is accepted only for backward-compatible replay of legacy 1.0.0 records.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "fixture",
+        "openai",
+        "codex_subscription",
+        null
+      ]
+    },
     "requested_model": {
       "type": [
         "string",
@@ -194,6 +207,7 @@
                 "tool_activity",
                 "output_limit",
                 "process_exit",
+                "cleanup_failure",
                 "cancelled"
               ]
             },
@@ -226,6 +240,9 @@
       },
       "then": {
         "properties": {
+          "requested_provider": {
+            "const": "openai"
+          },
           "requested_model": {
             "type": "string"
           },
@@ -251,11 +268,36 @@
       },
       "then": {
         "properties": {
+          "requested_provider": {
+            "const": "codex_subscription"
+          },
           "requested_model": {
             "type": "string"
           },
+          "returned_model": {
+            "type": "null"
+          },
           "failure": {
             "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "provider_state": {
+            "const": "recorded_fixture"
+          }
+        },
+        "required": [
+          "provider_state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requested_provider": {
+            "const": "fixture"
           }
         }
       }

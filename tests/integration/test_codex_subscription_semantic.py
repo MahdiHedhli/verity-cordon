@@ -19,6 +19,7 @@ from verity_cordon.core.models import (
     Action,
     MemoryKind,
     ProviderState,
+    RequestedProvider,
     Sensitivity,
     Signal,
     SourceClass,
@@ -185,6 +186,7 @@ async def test_assessment_records_subscription_state_without_model_authored_iden
         result = await CodexSubscriptionSemanticAdjudicator(runner=runner).assess(candidate)
 
         assert result.provider_state is ProviderState.LIVE_CODEX_SUBSCRIPTION
+        assert result.requested_provider is RequestedProvider.CODEX_SUBSCRIPTION
         assert result.requested_model == "gpt-5.6"
         assert result.returned_model is None
         assert result.prompt_version == "codex-subscription-semantic-risk-v1"
@@ -257,6 +259,9 @@ async def test_assessment_rejects_output_authored_identity(
         result = await CodexSubscriptionSemanticAdjudicator(runner=runner).assess(candidate)
 
         assert result.provider_state is ProviderState.FAILED
+        assert result.requested_provider is RequestedProvider.CODEX_SUBSCRIPTION
+        assert result.requested_model == "gpt-5.6"
+        assert result.returned_model is None
         assert result.failure is not None
         assert result.failure.class_name == failure_class
         assert result.risk_score is None
