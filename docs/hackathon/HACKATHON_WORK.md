@@ -566,7 +566,7 @@ The repository was public, unarchived, and defaulted to `main`; anonymous
 repository, README, and tracked Control Room screenshot requests returned HTTP
 200. Dependabot and secret-scanning reported zero open alerts. Code scanning
 returned `no analysis found`, so no zero-alert code-scanning claim is made. PRs
-#1, #2, and #3 had zero unresolved review threads.
+1, 2, and 3 had zero unresolved review threads.
 
 ## New Work versus Prior Art
 
@@ -625,7 +625,7 @@ evidence.
   `392555741121c3fe5c47b4ab87bc96198c7e81f2`
 - **Public `main` before release-review hardening**:
   `3a18cf7dfc14ef59d48198789b567a44157c3b2b`
-- **Clean-clone verified release head**:
+- **Clean-clone verified pre-merge pushed head**:
   `d999451e537feaac28229932a9abea8721e148b5`
 - **Locally verified release implementation commit**:
   `a831e3e20bbdc656b3d8199ad75ab76eeb3a7c3d`
