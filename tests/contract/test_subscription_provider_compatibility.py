@@ -338,6 +338,63 @@ def test_failed_assessment_may_preserve_any_attempted_provider(
     assert parsed.requested_provider is requested_provider
 
 
+@pytest.mark.parametrize("requested_provider", ["openai", "codex_subscription"])
+@pytest.mark.parametrize("model_form", ["absent", "null"])
+def test_current_failed_live_provider_requires_requested_model_in_schema_and_pydantic(
+    requested_provider: str,
+    model_form: str,
+) -> None:
+    payload = _failed_assessment_payload(requested_provider=requested_provider)
+    if model_form == "absent":
+        payload.pop("requested_model")
+    else:
+        payload["requested_model"] = None
+    validator = Draft202012Validator(
+        _load_json_schema("semantic-assessment.schema.json"),
+        format_checker=FormatChecker(),
+    )
+
+    assert list(validator.iter_errors(payload))
+    with pytest.raises(ValidationError, match="requires requested model"):
+        SemanticAssessment.model_validate(payload)
+
+
+def test_current_failed_fixture_provider_may_have_null_requested_model() -> None:
+    payload = _failed_assessment_payload(requested_provider="fixture")
+    payload["requested_model"] = None
+    validator = Draft202012Validator(
+        _load_json_schema("semantic-assessment.schema.json"),
+        format_checker=FormatChecker(),
+    )
+
+    validator.validate(payload)
+    parsed = SemanticAssessment.model_validate(payload)
+
+    assert parsed.requested_provider is RequestedProvider.FIXTURE
+    assert parsed.requested_model is None
+
+
+@pytest.mark.parametrize("requested_provider", ["openai", "codex_subscription"])
+def test_explicit_legacy_failed_live_provider_may_have_null_requested_model(
+    requested_provider: str,
+) -> None:
+    payload = _failed_assessment_payload(
+        schema_version="1.0.0",
+        requested_provider=requested_provider,
+    )
+    payload["requested_model"] = None
+    validator = Draft202012Validator(
+        _load_json_schema("semantic-assessment.schema.json"),
+        format_checker=FormatChecker(),
+    )
+
+    validator.validate(payload)
+    parsed = SemanticAssessment.model_validate(payload)
+
+    assert parsed.schema_version == "1.0.0"
+    assert parsed.requested_model is None
+
+
 def test_current_failed_assessment_rejects_returned_model_in_schema_and_pydantic() -> None:
     payload = _failed_assessment_payload()
     payload["returned_model"] = "output-authored-model"

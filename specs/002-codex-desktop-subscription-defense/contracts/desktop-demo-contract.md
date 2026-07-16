@@ -287,7 +287,10 @@ leaving the user-wide synthetic fixture installed would be the less safe
 failure. With a separately confirmed teardown digest it:
 
 1. validates the receipt and updates its exact observed file head atomically to
-   `removing`;
+   `removing`. A legacy `installed` or historically valid v1.1 `failed` receipt
+   is migrated in that same write to schema-valid v1.2 using the verified
+   current config mode, unrelated-value projection digest, and whole-config
+   digest before its deterministic artifact-removal plan is persisted;
 2. re-reads current config and compares the managed entry independently of the
    whole-file digest;
 3. refuses automatic removal if the managed entry drifted;

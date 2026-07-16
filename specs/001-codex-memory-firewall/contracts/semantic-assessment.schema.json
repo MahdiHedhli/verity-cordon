@@ -261,6 +261,36 @@
           },
           "provider_state": {
             "const": "failed"
+          },
+          "requested_provider": {
+            "enum": [
+              "openai",
+              "codex_subscription"
+            ]
+          }
+        },
+        "required": [
+          "schema_version",
+          "provider_state",
+          "requested_provider"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requested_model": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": "1.0.1"
+          },
+          "provider_state": {
+            "const": "failed"
           }
         },
         "required": [

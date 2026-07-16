@@ -15,6 +15,7 @@ from tests.integration.test_memory_pipeline import build_service
 from verity_cordon.core.errors import ConfigurationError, SemanticProviderError
 from verity_cordon.core.models import (
     Action,
+    EventType,
     MemoryKind,
     PersistenceIntent,
     ProviderState,
@@ -26,6 +27,7 @@ from verity_cordon.core.models import (
     new_id,
 )
 from verity_cordon.crypto.canonical import canonical_json, sha256_hex
+from verity_cordon.ledger.queries import LedgerQueries
 from verity_cordon.memory.service import EvidenceSubmission
 from verity_cordon.semantic.base import run_semantic_assessment
 from verity_cordon.semantic.openai_provider import (
@@ -394,6 +396,60 @@ async def test_wrapper_preserves_refusal_and_incomplete_failure_class(
     assert result.failure.class_name == failure_class
     assert result.risk_score is None
     assert_current_semantic_contract(result)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_class", ["refusal", "incomplete"])
+async def test_failed_openai_projection_preserves_trusted_requested_model(
+    tmp_path: Path,
+    failure_class: str,
+) -> None:
+    service, store, _ = await build_service(
+        tmp_path,
+        extractor=OpenAICandidateExtractor(
+            model="gpt-5.6",
+            client=_FakeClient([extraction_response()]),
+        ),
+        adjudicator=OpenAISemanticAdjudicator(
+            model="gpt-5.6",
+            client=_FakeClient([failed_risk_response(failure_class)]),
+        ),
+    )
+
+    evaluation = await service.evaluate_evidence(
+        EvidenceSubmission(
+            session_id=new_id(),
+            source_class=SourceClass.TOOL_OUTPUT,
+            content="The release manifest comes from release.yaml.",
+        )
+    )
+    outcome = evaluation.outcomes[0]
+    semantic = outcome.semantic_assessment
+
+    assert semantic is not None
+    assert semantic.provider_state is ProviderState.FAILED
+    assert semantic.requested_provider is RequestedProvider.OPENAI
+    assert semantic.requested_model == "gpt-5.6"
+    assert semantic.returned_model is None
+    assert semantic.failure is not None and semantic.failure.class_name == failure_class
+    candidate_events = [
+        event
+        for event in await store.list_events()
+        if event.stream_id == outcome.candidate.candidate_id
+    ]
+    assert {event.semantic_model_identifier for event in candidate_events} == {"gpt-5.6"}
+    semantic_event = next(
+        event
+        for event in candidate_events
+        if event.event_type is EventType.SEMANTIC_ASSESSMENT_RECORDED
+    )
+    assert semantic_event.payload["requested_model"] == "gpt-5.6"
+    assert semantic_event.payload["returned_model"] is None
+    assert semantic_event.payload["failure"]["class"] == failure_class
+    detail = await LedgerQueries(store).get_candidate_detail(outcome.candidate.candidate_id)
+    assert detail["semantic_assessment"]["requested_model"] == "gpt-5.6"
+    assert detail["semantic_assessment"]["returned_model"] is None
+    assert (await store.verify()).verified is True
 
 
 @pytest.mark.asyncio

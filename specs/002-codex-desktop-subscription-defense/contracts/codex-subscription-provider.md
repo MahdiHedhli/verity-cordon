@@ -322,8 +322,10 @@ is explicitly non-attesting remote-model provenance.
 Persisted semantic assessments emit contract version `1.0.1`, which requires a
 non-null locally selected `requested_provider` for both successful and failed
 records. Version `1.0.0` is accepted only as an explicit legacy-replay
-discriminator and may omit that additive field. A subscription success always
-requires the exact `codex_subscription` identity and `returned_model=null`.
+discriminator and may omit that additive field. A current subscription failure
+also requires the trusted local `requested_model` and `returned_model=null`. A
+subscription success always requires the exact `codex_subscription` identity
+and `returned_model=null`.
 
 ## JSONL Event Gate
 

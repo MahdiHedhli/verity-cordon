@@ -100,11 +100,11 @@
         384,
         448
       ],
-      "description": "Exact pre-setup private owner mode, preserved by setup and recovery. New config files use decimal 384 (0600)."
+      "description": "Exact pre-setup private owner mode for native v1.2 setup, or the exact verified pre-removal mode when a legacy terminal-capable receipt is migrated atomically to v1.2 removing. New config files use decimal 384 (0600)."
     },
     "config_unrelated_sha256": {
       "$ref": "#/$defs/sha256Hex",
-      "description": "SHA-256 of the canonical type-tagged projection of every parsed TOML value outside the managed demo entry. The values themselves are never stored."
+      "description": "SHA-256 of the canonical type-tagged projection of every parsed TOML value outside the managed demo entry. For a migrated legacy teardown, this binds the exact verified pre-removal projection. The values themselves are never stored."
     },
     "config_after_sha256": {
       "anyOf": [
@@ -114,7 +114,8 @@
         {
           "type": "null"
         }
-      ]
+      ],
+      "description": "Exact post-setup config digest, refreshed to the exact verified pre-removal config digest when a legacy receipt is migrated atomically to v1.2 removing."
     },
     "failure_class": {
       "enum": [

@@ -398,6 +398,13 @@ class SemanticAssessment(StrictModel):
         if self.provider_state == ProviderState.FAILED:
             if self.failure is None:
                 raise ValueError("failed semantic assessment requires failure metadata")
+            if (
+                self.schema_version == "1.0.1"
+                and self.requested_provider
+                in {RequestedProvider.OPENAI, RequestedProvider.CODEX_SUBSCRIPTION}
+                and self.requested_model is None
+            ):
+                raise ValueError("current failed live-provider assessment requires requested model")
             if self.schema_version == "1.0.1" and self.returned_model is not None:
                 raise ValueError(
                     "current failed semantic assessment must not assert a returned model"

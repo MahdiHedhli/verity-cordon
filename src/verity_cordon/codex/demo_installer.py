@@ -357,7 +357,8 @@ class _DesktopReceipt(StrictModel):
             )
         elif self.state == "removing":
             valid = (
-                _is_sha(self.config_after_sha256)
+                self.receipt_version == RECEIPT_VERSION
+                and _is_sha(self.config_after_sha256)
                 and self.failure_class is None
                 and self.teardown.requested_at is not None
                 and self.teardown.completed_at is None
@@ -366,15 +367,17 @@ class _DesktopReceipt(StrictModel):
                 and all(item.state == "planned" for item in self.artifact_removals)
             )
         else:
-            removal_state_valid = bool(
-                self.artifact_removals is not None
-                and all(item.state == "removed" for item in self.artifact_removals)
-            )
-            if self.receipt_version != RECEIPT_VERSION and self.artifact_removals is None:
+            if self.receipt_version == RECEIPT_VERSION:
+                removal_state_valid = bool(
+                    self.artifact_removals is not None
+                    and all(item.state == "removed" for item in self.artifact_removals)
+                )
+            else:
                 # Older terminal receipts remain inspectable and archivable. An
                 # older in-flight removal without a persisted plan is rejected
-                # above and cannot be finalized by this implementation.
-                removal_state_valid = True
+                # above and undeclared legacy-version/planned-removal hybrids
+                # are rejected rather than silently accepted.
+                removal_state_valid = self.artifact_removals is None
             valid = (
                 _is_sha(self.config_after_sha256)
                 and self.failure_class is None
@@ -1417,6 +1420,9 @@ def transition_desktop_demo_receipt(
     target_state: str,
     occurred_at: str,
     config_sha256: str | None = None,
+    verified_config_mode: int | None = None,
+    verified_config_unrelated_sha256: str | None = None,
+    verified_config_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Apply one forward-only write-ahead receipt transition."""
 
@@ -1451,6 +1457,20 @@ def transition_desktop_demo_receipt(
     elif target_state == "installed":
         updated["config_after_sha256"] = config_sha256
     elif target_state == "removing":
+        if current["receipt_version"] != RECEIPT_VERSION:
+            if (
+                type(verified_config_mode) is not int
+                or not 0 <= verified_config_mode <= 0o777
+                or verified_config_mode & 0o077
+                or not verified_config_mode & 0o400
+                or not _is_sha(verified_config_unrelated_sha256)
+                or not _is_sha(verified_config_sha256)
+            ):
+                raise DesktopDemoError("receipt_transition_invalid")
+            updated["receipt_version"] = RECEIPT_VERSION
+            updated["config_mode_before"] = verified_config_mode
+            updated["config_unrelated_sha256"] = verified_config_unrelated_sha256
+            updated["config_after_sha256"] = verified_config_sha256
         updated["failure_class"] = None
         updated["artifact_removals"] = [
             {
@@ -3428,10 +3448,20 @@ def teardown_desktop_demo(
     current = receipt
     current_receipt_head = receipt_head
     if receipt["state"] in {"failed", "installed"}:
+        _assert_file_head(
+            config_path,
+            config_head,
+            maximum=MAX_CONFIG_BYTES,
+            private=True,
+            error="config_changed_after_preview",
+        )
         current = transition_desktop_demo_receipt(
             receipt,
             target_state="removing",
             occurred_at=format_utc(),
+            verified_config_mode=config_mode,
+            verified_config_unrelated_sha256=_unrelated_config_digest(unrelated_before),
+            verified_config_sha256=_sha256_bytes(raw_config),
         )
         try:
             current_receipt_head = _write_receipt(

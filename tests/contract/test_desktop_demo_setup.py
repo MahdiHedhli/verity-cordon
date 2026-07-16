@@ -222,6 +222,28 @@ def _rewrite_installed_receipt_as_v1_1_failed(context: ReadyContext) -> dict[str
     return receipt
 
 
+def _rewrite_installed_receipt_as_legacy(
+    context: ReadyContext,
+    *,
+    version: str,
+) -> dict[str, Any]:
+    with context.config_path.open("a", encoding="utf-8") as handle:
+        handle.write(f'\n[legacy_teardown_projection]\nversion = "{version}"\n')
+    receipt = json.loads(context.receipt_path.read_text(encoding="utf-8"))
+    assert receipt["state"] == "installed"
+    receipt["receipt_version"] = version
+    receipt.pop("artifact_removals")
+    if version == "1.0.0":
+        for field in ("config_mode_before", "config_unrelated_sha256", "failure_class"):
+            receipt.pop(field)
+    context.receipt_path.write_text(
+        json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    context.receipt_path.chmod(0o600)
+    return receipt
+
+
 def _leave_prepared_before_config(
     context: ReadyContext,
     monkeypatch: pytest.MonkeyPatch,
@@ -953,6 +975,85 @@ def test_interrupted_projection_failure_transition_is_retryable_and_removable(
     assert not staged.exists()
 
 
+@pytest.mark.parametrize("legacy_version", ["1.0.0", "1.1.0"])
+def test_legacy_installed_teardown_migrates_before_interruption_and_recovers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    legacy_version: str,
+) -> None:
+    context, installed = _installed_context(tmp_path)
+    historical = _rewrite_installed_receipt_as_legacy(context, version=legacy_version)
+    api = _api()
+    document, raw_config, config_head = api._load_config(context.config_path)
+    parent_present = bool(historical["managed_entry_original"]["parent_table_present"])
+    expected_unrelated = api._unrelated_config_digest(
+        api._unrelated_config_values(
+            document,
+            managed_parent_present_before=parent_present,
+        )
+    )
+    expected_config_sha256 = hashlib.sha256(raw_config).hexdigest()
+    preview = _teardown(context)
+    real_atomic_write = api._atomic_write
+    interrupted = False
+
+    def interrupt_config_removal(
+        path: Path,
+        content: bytes,
+        *,
+        mode: int = 0o600,
+        expected_sha256: str | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        nonlocal interrupted
+        if path == context.config_path and not interrupted:
+            interrupted = True
+            raise OSError("synthetic migrated teardown interruption")
+        return real_atomic_write(
+            path,
+            content,
+            mode=mode,
+            expected_sha256=expected_sha256,
+            **kwargs,
+        )
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(api, "_atomic_write", interrupt_config_removal)
+        with pytest.raises(api.DesktopDemoError, match="teardown_interrupted"):
+            _teardown(
+                context,
+                confirmed=True,
+                expected_preview_digest=preview.preview_digest,
+            )
+
+    removing = json.loads(context.receipt_path.read_text(encoding="utf-8"))
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(removing)
+    assert interrupted is True
+    assert removing["receipt_version"] == "1.2.0"
+    assert removing["state"] == "removing"
+    assert removing["config_mode_before"] == config_head.mode
+    assert removing["config_unrelated_sha256"] == expected_unrelated
+    assert removing["config_after_sha256"] == expected_config_sha256
+    assert removing["artifact_removals"][0]["state"] == "planned"
+    assert _managed_config(context)["command"] == str(context.python_executable)
+
+    recovery_preview = _teardown(context)
+    recovered = _teardown(
+        context,
+        confirmed=True,
+        expected_preview_digest=recovery_preview.preview_digest,
+    )
+
+    final_receipt = json.loads(context.receipt_path.read_text(encoding="utf-8"))
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(final_receipt)
+    assert recovered.state == "removed"
+    assert final_receipt["receipt_version"] == "1.2.0"
+    assert final_receipt["artifact_removals"][0]["state"] == "removed"
+    assert f'version = "{legacy_version}"' in context.config_path.read_text(encoding="utf-8")
+    assert not installed.staging_root.exists()
+
+
 def test_v1_1_failed_receipt_teardown_interruption_recovers_exactly(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1001,7 +1102,7 @@ def test_v1_1_failed_receipt_teardown_interruption_recovers_exactly(
 
     removing = json.loads(context.receipt_path.read_text(encoding="utf-8"))
     assert interrupted is True
-    assert removing["receipt_version"] == "1.1.0"
+    assert removing["receipt_version"] == "1.2.0"
     assert removing["state"] == "removing"
     assert removing["failure_class"] is None
     assert removing["artifact_removals"][0]["state"] == "planned"
@@ -1016,7 +1117,7 @@ def test_v1_1_failed_receipt_teardown_interruption_recovers_exactly(
 
     final_receipt = json.loads(context.receipt_path.read_text(encoding="utf-8"))
     assert recovered.state == "removed"
-    assert final_receipt["receipt_version"] == "1.1.0"
+    assert final_receipt["receipt_version"] == "1.2.0"
     assert final_receipt["artifact_removals"][0]["state"] == "removed"
     assert MANAGED_NAME not in tomllib.loads(context.config_path.read_text(encoding="utf-8")).get(
         "mcp_servers", {}

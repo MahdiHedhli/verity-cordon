@@ -51,9 +51,10 @@ non-null provider even on failure, and require the exact locally mapped provider
 for every successful state. Outer timeout, validation, and internal-error
 wrappers preserve the attempted provider, locally requested model, and prompt
 version when available; they do not substitute another provider. Current failed
-records require `returned_model=null`, an empty category list, `unknown`
-persistence and authority signals, null risk fields, and no rationale or
-recommended disposition. A legacy result that attempts to assert a returned
+records for live providers require the trusted local `requested_model`; all
+current failed records require `returned_model=null`, an empty category list,
+`unknown` persistence and authority signals, null risk fields, and no rationale
+or recommended disposition. A legacy result that attempts to assert a returned
 model is rejected before the wrapper emits a new `1.0.1` failure record.
 
 The presentation mapping is fixed:
@@ -242,7 +243,7 @@ It is independent from the normal Codex integration receipt.
 | Identity | receipt version, installation UUID, lifecycle state, create/update times | One receipt identifies one setup attempt. |
 | Confirmation | `operator_confirmed` | Must be true before any write-ahead receipt or configuration mutation. |
 | Paths | Codex home, config path, private staging root; reserved `backup_path=null` compatibility field | Absolute local paths; private and omitted from routine output. No whole-config copy is created. |
-| Config binding | existence flag, before/after digests, original restrictive mode, unrelated typed-value projection digest; reserved `backup_sha256=null` compatibility field | Expected existence plus whole-file digests bind replacements; the projection digest prevents a retry from accepting unrelated post-write changes without retaining potentially secret config content. Existing restrictive owner mode is preserved; only a new config defaults to `0600`. |
+| Config binding | existence flag, before/after digests, original restrictive mode, unrelated typed-value projection digest; reserved `backup_sha256=null` compatibility field | Expected existence plus whole-file digests bind replacements; the projection digest prevents a retry from accepting unrelated post-write changes without retaining potentially secret config content. Existing restrictive owner mode is preserved; only a new config defaults to `0600`. When a teardown migrates a legacy receipt, mode, projection, and after-config digest bind the exact verified pre-removal state instead. |
 | Managed entry | fixed name, canonical entry digest, fixed stdio command/arguments/options | Teardown compares this entry independently so unrelated config changes are preserved. |
 | Original value | `managed_entry_original` object with `present=false`, `digest=null`, and boolean `parent_table_present` | Setup refuses a pre-existing entry with the reserved demo name rather than copying possibly secret configuration into a receipt; the parent-table flag supports exact teardown. |
 | Runtime identity | Codex and Python resolved paths, file digests, bounded versions | Doctor rejects runtime drift before use. |
@@ -259,8 +260,18 @@ unrelated-projection bindings, while v1.0 never permits `failed`. Neither legacy
 version may resume a `prepared` setup under the current recovery contract. A
 pre-existing legacy `removing` receipt without a deterministic quarantine plan
 fails closed for manual recovery because an earlier random rename cannot be
-reconstructed honestly. A legacy normal receipt cannot satisfy the current
-normal-integration readiness gate for new setup.
+reconstructed honestly; a legacy-version/planned-removal hybrid is also
+rejected because no released schema declares it. A legacy normal receipt cannot
+satisfy the current normal-integration readiness gate for new setup.
+
+Confirmed teardown of a legacy `installed` receipt or historically valid v1.1
+`failed` receipt first verifies the receipt head, exact managed entry, staged
+artifact, runtimes, current config head, private mode, and unrelated typed-value
+projection. Its first persisted removal write is then a schema-valid v1.2
+`removing` receipt: the verified config mode, projection digest, and current
+whole-config digest populate the current bindings before the deterministic
+artifact-removal plan is added. Migration never turns legacy setup into an
+installed success. Legacy `removing` state without a plan is not migrated.
 
 The receipt contains no credential, capability, environment dump, raw evidence,
 signing key, hook input, or child output. It is written with mode `0600` below a

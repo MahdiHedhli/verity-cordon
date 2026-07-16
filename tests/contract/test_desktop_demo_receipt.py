@@ -448,13 +448,37 @@ def test_legacy_receipt_gets_a_plan_before_cleanup_and_unplanned_removal_fails_c
     installed["receipt_version"] = "1.1.0"
     installed.pop("artifact_removals")
 
+    with pytest.raises(api.DesktopDemoError, match="receipt_transition_invalid"):
+        api.transition_desktop_demo_receipt(
+            installed,
+            target_state="removing",
+            occurred_at=REMOVING_AT,
+        )
+
     removing = api.transition_desktop_demo_receipt(
         installed,
         target_state="removing",
         occurred_at=REMOVING_AT,
+        verified_config_mode=0o400,
+        verified_config_unrelated_sha256="b" * 64,
+        verified_config_sha256="c" * 64,
     )
 
+    assert removing["receipt_version"] == "1.2.0"
+    assert removing["config_mode_before"] == 0o400
+    assert removing["config_unrelated_sha256"] == "b" * 64
+    assert removing["config_after_sha256"] == "c" * 64
     assert removing["artifact_removals"][0]["state"] == "planned"
+    Draft202012Validator(_schema(), format_checker=FormatChecker()).validate(removing)
+    undeclared_hybrid = receipt_sample(tmp_path, state="removing")
+    undeclared_hybrid["receipt_version"] = "1.1.0"
+    with pytest.raises(api.DesktopDemoError, match="receipt_invalid"):
+        api.transition_desktop_demo_receipt(
+            undeclared_hybrid,
+            target_state="removed",
+            occurred_at=REMOVED_AT,
+            config_sha256=SHA256,
+        )
     unplanned = receipt_sample(tmp_path, state="removing")
     unplanned["receipt_version"] = "1.1.0"
     unplanned.pop("artifact_removals")
