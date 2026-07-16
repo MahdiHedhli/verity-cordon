@@ -435,8 +435,8 @@ expected state. It also added interruption, drift, concurrency, replacement,
 non-disclosure, and recovery regressions. Independent re-reviews found no
 remaining P1 or P2 issue.
 
-The final local `./scripts/verify.sh` release gate passed 706 backend tests in
-174.84 seconds with 81% aggregate coverage, 13 isolated example/plugin tests,
+The final local `./scripts/verify.sh` release gate passed 708 backend tests in
+183.19 seconds with 81% aggregate coverage, 13 isolated example/plugin tests,
 and 6 Control Room files / 11 tests. Ruff formatting and lint, mypy across 60
 source files, OpenAPI and JSON Schema validation, frontend type checking, lint,
 production build, Python and npm dependency audits, and the 20-sample fixture
@@ -464,6 +464,17 @@ reached external rate limiting. Verity returned the fixed content-safe
 child output, made no disposition, and reported clean cleanup health. This is
 failure-path evidence, not a successful hardened semantic completion or remote
 model attestation. The successful hardened live path remains pending capacity.
+
+PR #3's Gemini review reported three findings. Its critical stdin comment was
+stale against the reviewed implementation: the runner already drains stdin,
+closes it to send EOF, awaits `wait_closed()`, and exercises the blocked-stdin
+deadline in an adversarial regression. Its two directory-mode comments were
+accepted as defense-in-depth. Normal installer roots now create each missing
+path segment explicitly at mode `0700` and validate it before continuing;
+Desktop atomic writes require an existing validated parent, while explicit
+private-directory setup creates and validates every missing segment. The two
+installer contract files passed 152 tests, the new five-test regression focus
+passed, and the complete 708-test gate above passed after this remediation.
 
 ## New Work versus Prior Art
 

@@ -308,9 +308,13 @@ gate, and leave only honest operator-owned submission work.
   acceptance scenarios to 66 tasks, found no ambiguity, duplication,
   constitution violation, unmapped task, or deferred-scope leakage, and added no
   convergence task.
-- `./scripts/verify.sh` passed 706 backend tests with 81% coverage, 13 isolated
+- `./scripts/verify.sh` passed 708 backend tests with 81% coverage, 13 isolated
   example/plugin tests, 11 Control Room tests, formatting, lint, mypy, contracts,
   frontend build, dependency audits, and the 20-sample fixture evaluation.
+- PR #3's stale stdin/EOF finding was answered by existing drain, close,
+  `wait_closed()`, and blocked-stdin tests. Its directory-mode findings were
+  remediated with explicit per-segment `0700` creation plus parent validation;
+  152 installer contract tests and the complete gate passed afterward.
 - Pushed commit `18e04942a637af9eacc3b491fce8c7a9540f21c9` passed no-key bootstrap,
   the 65-event offline demo, and the same complete gate from a new private
   trusted clone.
