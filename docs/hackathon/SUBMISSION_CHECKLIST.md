@@ -22,7 +22,10 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 - [x] Offline path exercises real policy, ledger, view, API, and UI code.
 - [x] A bounded, sanitized `gpt-5.6-luna` subscription run completed candidate
   extraction and semantic assessment through supported ChatGPT sign-in with no
-  API key or provider fallback; requested model is not remote attestation.
+  API key or provider fallback before the final incremental-parser hardening;
+  the requested model is not remote attestation. The hardened follow-up was
+  rate-limited and proved fail-closed handling only, so successful hardened
+  live completion remains pending.
 - [ ] Final video visibly exercises and labels the selected live GPT-5.6
   contribution; pre-recording evidence or fixture output does not substitute
   for what the video shows.
@@ -50,8 +53,9 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 - [x] README explains Codex collaboration, operator decisions, and GPT-5.6 use.
 - [x] No private keys, API keys, bearer capabilities, raw secrets, or unsafe logs
   are tracked.
-- [x] Final branch, initial public commit, repository topics, and verification
-  results are recorded.
+- [x] Current release branch, prior public-main commit, repository topics, and
+  local verification results are recorded; the release-hardening merge and
+  post-merge public-main verification remain an explicit closure gate.
 
 ## Demo Video
 

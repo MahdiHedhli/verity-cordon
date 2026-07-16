@@ -253,6 +253,67 @@ gate, and leave only honest operator-owned submission work.
 - [x] T061 Capture and publish a content-safe real Control Room screenshot from the offline deterministic fixture, label it accurately, and verify zero browser console warnings or errors in `docs/assets/control-room-overview.jpg` and `README.md`.
 - [x] T062 Align the runtime provider-isolation mapping, `/api/v1/status` OpenAPI contract, frontend status type, and semantic failure JSON Schema with executable regression tests in `src/verity_cordon/core/models.py`, `src/verity_cordon/daemon/app.py`, `src/verity_cordon/cli/main.py`, `apps/control-room/src/api/types.ts`, `specs/001-codex-memory-firewall/contracts/{verity-ipc.openapi.yaml,semantic-assessment.schema.json}`, and `tests/contract/test_subscription_provider_compatibility.py`.
 
+### Phase 11: Release review hardening
+
+- [x] T063 Serialize subscription-runner health, bind executable trust across each invocation, enforce constructor resource ceilings, normalize setup failures, and add concurrency/drift/non-disclosure regressions in `src/verity_cordon/semantic/{codex_subscription.py,readiness.py}`, the semantic contracts, and focused tests.
+- [x] T064 Make normal Codex installation and removal fully receipt-journaled and retry-safe, bind every executable staging state, validate complete trusted path chains, and add interruption/partial-command/path-drift regressions in `src/verity_cordon/codex/installer.py`, the hook contract, security documentation, and focused tests.
+- [x] T065 Bind Desktop fixture receipt, artifact, archive, configuration, normal-integration, and teardown transitions to expected state; preserve restrictive modes; prevent drift laundering and deletion races; and add recovery/race regressions in `src/verity_cordon/codex/demo_installer.py`, its contracts, and focused tests.
+- [ ] T066 Run independent cross-review, a fresh sanitized subscription smoke after runtime hardening, Spec Kit analysis and convergence, the complete release verification gate, remote review closure, and public-main verification; record exact evidence in `docs/hackathon/HACKATHON_WORK.md`.
+
+**T063 verification (2026-07-15)**:
+
+- Independent remediation review closed concurrent cleanup-health bypass,
+  pre/post child trust drift, constructor type/range, and private setup-error
+  disclosure cases. The final lifecycle review passed 13 targeted tests; the
+  implementation author's last complete focused runner/event/adversarial gate
+  passed 168 tests, with Ruff, targeted mypy, and diff checks clean.
+- A fresh API-key-free subscription assessment on Codex CLI `0.144.4` exercised
+  the production validator. The child emitted its exact failure lifecycle and
+  returned code 1; an authorized local fixed-category classifier identified
+  external rate limiting without printing or retaining raw child content.
+  Verity returned retryable `failed/process_exit` in 3,704 ms, produced no
+  disposition, retained no final document, and reported clean cleanup health.
+  This is fail-closed classification evidence, not a successful live assessment
+  or remote-model attestation.
+
+**T064 verification (2026-07-15)**:
+
+- Independent remediation review verified deterministic receipt-bound staging,
+  retired, and removal trees; exact tombstone digest checks; journaled partial
+  add/remove retries; retry-safe phased uninstall; strict plugin refresh on
+  upgrade; full path owner/mode/symlink validation; and fail-closed incomplete
+  journals. The complete hook contract suite passed 85 tests, with Ruff,
+  targeted installer mypy, and diff checks clean.
+- The residual crash window after an external Codex command succeeds but before
+  its local journal transition is durable is explicit for process interruption
+  and atomic write/sync/replacement failure. Readiness remains disabled and
+  controlled local state is retained for operator reconciliation.
+
+**T065 verification (2026-07-15)**:
+
+- `uv run pytest -q tests/contract/test_desktop_demo_receipt.py tests/contract/test_desktop_demo_setup.py tests/end_to_end/test_desktop_demo_contract.py` — 89 passed. This includes expected-existence/digest writes, receipt and archive inode races, normal-v2 receipt/doctor rebinding, non-finalizable projection failure and retry, interrupted `prepared` to `failed` recovery followed by exact teardown, `0400` preservation, source-before-staging recovery, teardown typed-value rechecks, and anchored replacement-safe artifact removal.
+- `uv run ruff check src/verity_cordon/codex/demo_installer.py tests/contract/test_desktop_demo_setup.py tests/contract/test_desktop_demo_receipt.py` — passed.
+- `uv run ruff format --check src/verity_cordon/codex/demo_installer.py tests/contract/test_desktop_demo_setup.py tests/contract/test_desktop_demo_receipt.py` — passed.
+- `uv run mypy src/verity_cordon/codex/demo_installer.py` and `git diff --check` — passed.
+
+**T066 partial verification (2026-07-15)**:
+
+- Three independent release-hardening re-reviews found no remaining P1 or P2
+  issue across the subscription runner, normal Codex installer, Desktop demo
+  installer, and integrated provider-provenance contract.
+- The fresh API-key-free hardened subscription probe failed closed under an
+  external rate limit as recorded under T063; successful hardened live
+  completion remains pending and is not inferred.
+- Final read-only Spec Kit analysis mapped 46/46 requirements and 15/15
+  acceptance scenarios to 66 tasks, found no ambiguity, duplication,
+  constitution violation, unmapped task, or deferred-scope leakage, and added no
+  convergence task.
+- `./scripts/verify.sh` passed 706 backend tests with 81% coverage, 13 isolated
+  example/plugin tests, 11 Control Room tests, formatting, lint, mypy, contracts,
+  frontend build, dependency audits, and the 20-sample fixture evaluation.
+- T066 remains open for remote review closure and post-merge public-main
+  verification.
+
 ---
 
 ## Dependencies & Execution Order
