@@ -8,7 +8,7 @@
 - **Clean baseline commit**: `ef2c80d` (`chore: establish hackathon baseline`)
 - **Integrated default branch**: `main`
 - **Implemented baseline feature**: `specs/001-codex-memory-firewall/`
-- **Current implementation branch**: `codex/002-release-review-hardening`
+- **Current release branch**: `main`
 - **Only active sprint feature**:
   `specs/002-codex-desktop-subscription-defense/`
 
@@ -56,13 +56,15 @@ renamed codebase.
 | `d09b2b0` | Enforced private per-segment installer directory creation and validation | Complete |
 | `f7b2050` | Closed final receipt, semantic provenance, and signed-event review gaps | Complete |
 | `cfa25ef` | Finalized receipt migration and failed-provider provenance contracts | Complete |
+| `bea9e07` | Closed the final Spec Kit artifact findings | Complete |
+| `3925557` | Merged PR #3 release-review hardening into public `main` | Complete |
 
 The feature-001 branch was fast-forwarded into `main` without rewriting history
 or force-pushing. Sprint 002 subsequently merged through PR #1, and its
 post-merge contract/readiness alignment merged through PR #2 at
-`3a18cf7dfc14ef59d48198789b567a44157c3b2b`. Release-review hardening remains on
-the current feature branch until its remote review and public-main verification
-are complete.
+`3a18cf7dfc14ef59d48198789b567a44157c3b2b`. Release-review hardening merged
+through PR #3 into public `main` at
+`392555741121c3fe5c47b4ab87bc96198c7e81f2`.
 
 ## Sprint 002 Baseline
 
@@ -150,7 +152,7 @@ attestation, or protection from a compromised host.
 - [x] Final full verification after security hardening
 - [x] Final Spec Kit analysis and checklist convergence
 - [x] Public repository creation and push
-- [ ] Release-hardening remote review closure and public-main verification
+- [x] Release-hardening remote review closure and public-main verification
 - [ ] Operator video, `/feedback`, and Devpost submission
 
 ## Verified Checkpoints
@@ -543,6 +545,29 @@ consecutive repetitions, and the same source tree passed the complete gate once
 the external load ended. No timeout, trust binding, or security behavior was
 relaxed.
 
+Fresh pushed-head acceptance then cloned exact remote commit
+`d999451e537feaac28229932a9abea8721e148b5` beneath a new private `0700` trusted
+cache parent. With `OPENAI_API_KEY` absent, bootstrap passed in 16.66 seconds
+without creating a runtime key, database, credential, or Git-visible change.
+The no-serve offline demo passed in 3.66 seconds with 65 verified events, a
+consistent view, two unrelated active memories preserved, the poisoned memory
+absent from simulated injection, and no external transmission. The clean clone
+then passed `./scripts/verify.sh` in 274.08 seconds: 779 backend tests in 219.14
+seconds at 81% coverage, 13 isolated contract/schema tests, all 11 Control Room
+tests, frontend type/lint/build, dependency audits, and the 20-sample fixture
+evaluation. The checkout remained clean. Subsequent commits through `bea9e07`
+changed only the Spec Kit task-status document; the final read-only analysis and
+convergence audit returned zero findings and changed no file.
+
+PR #3 merged the reviewed release into public `main` at
+`392555741121c3fe5c47b4ab87bc96198c7e81f2`. After pruning the deleted release
+branch, local `main`, `origin/main`, and the public remote ref matched that SHA.
+The repository was public, unarchived, and defaulted to `main`; anonymous
+repository, README, and tracked Control Room screenshot requests returned HTTP
+200. Dependabot and secret-scanning reported zero open alerts. Code scanning
+returned `no analysis found`, so no zero-alert code-scanning claim is made. PRs
+1, 2, and 3 had zero unresolved review threads.
+
 ## New Work versus Prior Art
 
 Verity Cordon's implemented contribution is an async-first local daemon, a
@@ -566,8 +591,10 @@ requirements and all 15 scenarios map to implementation or verification tasks,
 for 100% traceability. All 93 checklist items are complete. The analysis found
 zero unresolved ambiguity, duplication, constitution violation, unmapped task,
 or deferred-scope leakage. Convergence would append no task and therefore left
-`tasks.md` unchanged. T056 remains the explicit operator-observed Desktop
-acceptance-evidence gate; T066 remains the remote release-closure gate.
+`tasks.md` unchanged. A final artifact-only rerun at `bea9e07` also returned
+zero findings after normalizing the remaining gate descriptions and phase
+sequence. T056 remains the explicit operator-observed Desktop
+acceptance-evidence gate; T066 is complete.
 
 ## Open Issues and Operator Actions
 
@@ -593,11 +620,13 @@ evidence.
 ## Sprint 002 Handoff Snapshot
 
 - **Public repository**: `https://github.com/MahdiHedhli/verity-cordon`
-- **Branch**: `codex/002-release-review-hardening`
+- **Branch**: `main`
+- **Public release merge**:
+  `392555741121c3fe5c47b4ab87bc96198c7e81f2`
 - **Public `main` before release-review hardening**:
   `3a18cf7dfc14ef59d48198789b567a44157c3b2b`
-- **Locally verified release-review implementation commit**:
-  `3d8a91d3142e6f56477963652ebe093fb4dc37eb`
+- **Clean-clone verified pre-merge pushed head**:
+  `d999451e537feaac28229932a9abea8721e148b5`
 - **Locally verified release implementation commit**:
   `a831e3e20bbdc656b3d8199ad75ab76eeb3a7c3d`
 - **Locally verified contract-alignment commit**:
@@ -606,7 +635,7 @@ evidence.
   `8540cbb`
 - **Prior clean-checkout implementation/evidence checkpoint**:
   `79a12d0c8058d579664c90740a8bd44ae3359c68`
-- **Automated verification**: 706 backend tests, 13 isolated example/plugin
+- **Automated verification**: 779 backend tests, 13 isolated example/plugin
   tests, 11 frontend tests, 81% backend coverage, schema/OpenAPI validation,
   dependency audits, type checks, lint, production build, and 20 fixture
   evaluations with 0 fixture-scoped false positives and 0 fixture-scoped false

@@ -175,8 +175,8 @@ active task graph; and no unresolved ambiguity, duplication, constitution
 violation, unmapped task, or high-severity inconsistency remained after
 convergence. Convergence appended no task. The still-open timed,
 operator-observed Desktop rehearsal (T056) is an acceptance-evidence gate, not
-an exception to a constitutional MUST; remote review and public-main release
-closure remain tracked by T066. This report changes no normative principle and
+an exception to a constitutional MUST. Remote review and public-main release
+closure completed under T066. This report changes no normative principle and
 therefore does not amend the constitution version.
 
 ## Governance
