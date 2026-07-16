@@ -71,6 +71,27 @@ def _safe_error(error: Exception) -> None:
         error_console.print("[red]unexpected_error:[/red] Operation failed safely.")
 
 
+def _daemon_reachable(settings: Settings) -> bool:
+    """Probe only the configured loopback health endpoint with a strict bound."""
+
+    connection: http.client.HTTPConnection | None = None
+    try:
+        connection = http.client.HTTPConnection(settings.host, settings.port, timeout=0.5)
+        connection.request(
+            "GET",
+            "/api/v1/health",
+            headers={"Host": f"{settings.host}:{settings.port}"},
+        )
+        response = connection.getresponse()
+        body = response.read(4097)
+        return response.status == 200 and len(body) <= 4096
+    except (OSError, TimeoutError, http.client.HTTPException):
+        return False
+    finally:
+        if connection is not None:
+            connection.close()
+
+
 @app.command()
 def doctor(
     confirm_hook_trust: Annotated[
@@ -154,23 +175,7 @@ def doctor(
     control_room_built = (control_room_dist / "index.html").is_file()
     checks.append(("Control Room assets", "built" if control_room_built else "missing"))
     ok = ok and control_room_built
-    daemon_reachable = False
-    connection: http.client.HTTPConnection | None = None
-    try:
-        connection = http.client.HTTPConnection(settings.host, settings.port, timeout=0.5)
-        connection.request(
-            "GET",
-            "/api/v1/health",
-            headers={"Host": f"{settings.host}:{settings.port}"},
-        )
-        response = connection.getresponse()
-        body = response.read(4097)
-        daemon_reachable = response.status == 200 and len(body) <= 4096
-    except (OSError, TimeoutError, http.client.HTTPException):
-        daemon_reachable = False
-    finally:
-        if connection is not None:
-            connection.close()
+    daemon_reachable = _daemon_reachable(settings)
     checks.append(("Daemon", "reachable" if daemon_reachable else "not running"))
     ok = ok and daemon_reachable
     table = Table(title="Verity Cordon Doctor")
@@ -585,8 +590,16 @@ def policy_activate(
         console.print("[yellow]Policy activation requires --yes.[/yellow]")
         raise typer.Exit(2)
     try:
+        settings = Settings.from_env()
+        settings.prepare()
+        if _daemon_reachable(settings):
+            raise ConfigurationError(
+                "Refusing CLI policy activation while the local daemon is running. "
+                "Use the Control Room so the running policy engine and signed ledger "
+                "change atomically, or stop the daemon before activating locally."
+            )
         policy = load_policy(path)
-        runtime = _run(build_runtime())
+        runtime = _run(build_runtime(settings))
         activated = _run(
             runtime.policy_repository.activate(
                 policy,

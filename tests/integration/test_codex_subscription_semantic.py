@@ -134,7 +134,7 @@ async def test_extraction_binds_identity_digest_and_sanitizes_before_child() -> 
         assert len(candidates) == 1
         candidate = candidates[0]
         assert candidate.extractor_provider == "live_codex_subscription"
-        assert candidate.extractor_version.startswith("codex-subscription-candidate-v1")
+        assert candidate.extractor_version.startswith("codex-subscription-candidate-v2")
         assert candidate.source_class is SourceClass.TOOL_OUTPUT
         assert candidate.session_id == session_id
         assert candidate.task_id == task_id

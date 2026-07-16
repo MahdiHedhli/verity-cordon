@@ -53,6 +53,31 @@ def _api() -> Any:
     return importlib.import_module("verity_cordon.codex.demo_installer")
 
 
+def test_default_runner_preserves_legitimate_large_plugin_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugins = [{"name": f"filler-{index}", "description": "x" * 96} for index in range(64)]
+    plugins.append({"name": "verity-cordon", "enabled": True})
+    payload = json.dumps({"plugins": plugins}).encode("utf-8")
+    assert len(payload) > 4_096
+
+    class Completed:
+        returncode = 0
+        stdout = payload
+
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: Completed())
+
+    result = _api()._default_runner(
+        ["codex", "plugin", "list", "--json"],
+        environment={"HOME": "/private/demo"},
+        timeout=10.0,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == payload
+    assert json.loads(result.stdout)["plugins"][-1]["name"] == "verity-cordon"
+
+
 def _ready_context(tmp_path: Path, *, repository_root: Path = REPOSITORY_ROOT) -> ReadyContext:
     codex_home = tmp_path / "codex-home"
     data_dir = tmp_path / "verity-data"

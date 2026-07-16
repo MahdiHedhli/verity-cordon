@@ -499,6 +499,35 @@ async def test_hook_evidence_queue_is_durable_and_ack_precedes_evaluation(tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_unicode_evidence_capture_preserves_sanitization_integrity(tmp_path) -> None:
+    service, store, _ = await build_service(tmp_path)
+    submission = EvidenceSubmission(
+        session_id=new_id(),
+        source_class=SourceClass.TOOL_OUTPUT,
+        source_name="documentation-tool",
+        content="The release guide calls this “safe” — café.",
+    )
+
+    evidence = await service.enqueue_evidence(submission)
+    events_before_mismatch = await store.list_events()
+    sanitized_text = service.sanitizer.sanitize(submission.content).text
+
+    assert evidence.safe_excerpt == sanitized_text
+    assert await service.pending_evidence_count() == 1
+    assert (await store.verify()).verified is True
+
+    with pytest.raises(LedgerError, match="Sanitized evidence changed before capture"):
+        await service._capture_evidence(
+            submission,
+            sanitized_text=f"{sanitized_text} altered",
+        )
+
+    assert await store.list_events() == events_before_mismatch
+    assert await service.pending_evidence_count() == 1
+    assert (await store.verify()).verified is True
+
+
+@pytest.mark.asyncio
 async def test_tampered_sanitized_queue_entry_never_reaches_candidate_pipeline(tmp_path) -> None:
     service, store, view = await build_service(tmp_path)
     extractor = _TrackingExtractor()

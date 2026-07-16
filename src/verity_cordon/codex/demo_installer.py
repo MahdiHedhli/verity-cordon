@@ -74,6 +74,7 @@ EMPTY_SHA256: Final = hashlib.sha256(b"").hexdigest()
 MAX_CONFIG_BYTES: Final = 4_194_304
 MAX_RECEIPT_BYTES: Final = 65_536
 MAX_FIXTURE_BYTES: Final = 1_048_576
+MAX_COMMAND_OUTPUT_BYTES: Final = 1_048_576
 MAX_SYSTEM_RESPONSE_BYTES: Final = 131_072
 _TOOL_NAMES: Final = ("get_release_guidance", "demo_artifact_sink")
 _PREVIEW_CACHE_LIMIT: Final = 64
@@ -514,7 +515,11 @@ def _default_runner(
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise DesktopDemoError("runtime_unavailable") from exc
-    return CommandResult(completed.returncode, completed.stdout[:4096])
+    # Codex plugin inventories can legitimately exceed a few KiB when an
+    # operator has several installed plugins. Keep the same bounded ceiling as
+    # the normal integration doctor so truncation cannot turn valid JSON into a
+    # false `normal_integration_not_ready` result.
+    return CommandResult(completed.returncode, completed.stdout[:MAX_COMMAND_OUTPUT_BYTES])
 
 
 def _sha256_bytes(value: bytes) -> str:

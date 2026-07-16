@@ -270,7 +270,10 @@ class MemoryService:
         sanitized_digest = sha256_hex(sanitized_text.encode("utf-8"))
         sanitization = self.sanitizer.sanitize(submission.content)
         safe_source_name = self._safe_source_name(submission.source_name)
-        if not hmac.compare_digest(sanitization.text, sanitized_text):
+        if not hmac.compare_digest(
+            sanitization.text.encode("utf-8"),
+            sanitized_text.encode("utf-8"),
+        ):
             raise LedgerError("Sanitized evidence changed before capture.")
         record = EvidenceRecord(
             evidence_id=evidence_id,

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from typer.testing import CliRunner
@@ -271,6 +271,96 @@ def test_memory_rescan_requires_explicit_confirmation() -> None:
 
     assert result.exit_code == 2
     assert "requires --yes" in result.output
+
+
+def test_policy_activate_refuses_before_append_when_daemon_is_reachable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = SimpleNamespace(
+        host="127.0.0.1",
+        port=8765,
+        prepare=lambda: None,
+    )
+    runtime_builder = AsyncMock()
+    policy_loader = Mock()
+    monkeypatch.setattr(
+        cli_main.Settings,
+        "from_env",
+        classmethod(lambda _: settings),
+    )
+    monkeypatch.setattr(cli_main, "_daemon_reachable", lambda _: True)
+    monkeypatch.setattr(cli_main, "build_runtime", runtime_builder)
+    monkeypatch.setattr(cli_main, "load_policy", policy_loader)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "policy",
+            "activate",
+            str(tmp_path / "synthetic-policy.yaml"),
+            "--reason",
+            "Synthetic activation guard test.",
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Refusing CLI policy activation" in result.output
+    assert "Control Room" in result.output
+    runtime_builder.assert_not_awaited()
+    policy_loader.assert_not_called()
+
+
+def test_policy_activate_offline_appends_activation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = SimpleNamespace(
+        host="127.0.0.1",
+        port=8765,
+        prepare=lambda: None,
+    )
+    policy = SimpleNamespace(
+        policy_id="verity.synthetic",
+        version="1.0.0",
+        content_digest="a" * 64,
+        mode=SimpleNamespace(value="enforce"),
+    )
+    activate = AsyncMock(return_value=policy)
+    runtime_builder = AsyncMock(
+        return_value=SimpleNamespace(
+            policy_repository=SimpleNamespace(activate=activate),
+        )
+    )
+    monkeypatch.setattr(
+        cli_main.Settings,
+        "from_env",
+        classmethod(lambda _: settings),
+    )
+    monkeypatch.setattr(cli_main, "_daemon_reachable", lambda _: False)
+    monkeypatch.setattr(cli_main, "build_runtime", runtime_builder)
+    monkeypatch.setattr(cli_main, "load_policy", lambda _: policy)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "policy",
+            "activate",
+            str(tmp_path / "synthetic-policy.yaml"),
+            "--reason",
+            "Synthetic offline activation.",
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code == 0
+    runtime_builder.assert_awaited_once_with(settings)
+    activate.assert_awaited_once_with(
+        policy,
+        actor_id="operator.local",
+        reason="Synthetic offline activation.",
+    )
 
 
 def test_desktop_setup_confirmation_requires_a_separately_reviewed_digest() -> None:
