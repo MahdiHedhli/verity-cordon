@@ -311,6 +311,9 @@ gate, and leave only honest operator-owned submission work.
 - `./scripts/verify.sh` passed 706 backend tests with 81% coverage, 13 isolated
   example/plugin tests, 11 Control Room tests, formatting, lint, mypy, contracts,
   frontend build, dependency audits, and the 20-sample fixture evaluation.
+- Pushed commit `18e04942a637af9eacc3b491fce8c7a9540f21c9` passed no-key bootstrap,
+  the 65-event offline demo, and the same complete gate from a new private
+  trusted clone.
 - T066 remains open for remote review closure and post-merge public-main
   verification.
 

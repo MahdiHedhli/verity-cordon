@@ -447,6 +447,17 @@ generated `.venv`; those duplicate generated files were removed without
 changing tracked source, package import was rechecked, and the complete gate was
 rerun to the recorded exit-zero result.
 
+Fresh-clone acceptance then checked out pushed branch commit
+`18e04942a637af9eacc3b491fce8c7a9540f21c9` beneath a new private trusted cache
+parent with `OPENAI_API_KEY` explicitly absent. Bootstrap completed without
+creating a signing key, database, or credential. The no-serve offline demo used
+the real policy, signed ledger, materialized view, rescan/revocation/rebuild,
+approved-only simulated session context, and bounded stdio fixture; it ended
+with 65 verified events, a consistent view, two unrelated active memories
+preserved, and no external transmission. The clean clone then passed the same
+complete 706-backend-test, 13-example/plugin-test, 11-frontend-test verification
+gate with 81% coverage and zero configured dependency-audit findings.
+
 The post-hardening API-key-free subscription probe on Codex CLI `0.144.4`
 reached external rate limiting. Verity returned the fixed content-safe
 `failed/process_exit` category in 3,704 ms, retained no final document or raw
