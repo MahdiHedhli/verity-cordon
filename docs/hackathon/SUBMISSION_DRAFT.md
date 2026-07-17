@@ -285,6 +285,10 @@ observations are reported separately as manual smoke evidence.
 ## Required Final Links
 
 - **Repository**: https://github.com/MahdiHedhli/verity-cordon
+- **Unlisted YouTube review video**: https://youtu.be/c-a7sLusXv4
+  (1:24; unlisted availability verified; assigned to the existing
+  `OpenAI Hack-a-thon` playlist on 2026-07-17; pending operator review and
+  public visibility)
 - **Public YouTube demo**: `REPLACE_WITH_PUBLIC_YOUTUBE_URL`
 - **Codex task/session ID**: `019f6486-18b4-74b2-b195-3d513f4dc454`
   (verified through Codex task status; not represented as `/feedback` output)

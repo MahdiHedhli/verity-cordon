@@ -63,6 +63,12 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 
 ## Demo Video
 
+- [x] Checksum-bound final render saved as an **Unlisted** review video at
+  https://youtu.be/c-a7sLusXv4; YouTube reports 1:24, independent metadata
+  verification reports unlisted availability and an 84-second duration, and
+  assignment to the existing `OpenAI Hack-a-thon` playlist was verified on
+  2026-07-17.
+- [ ] Operator reviewed and approved the Unlisted video for publication.
 - [ ] Publicly visible YouTube upload.
 - [ ] Final runtime is strictly less than three minutes.
 - [ ] Audio explains what was built and how both Codex and GPT-5.6 were used.
@@ -91,10 +97,11 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 
 1. Complete and record the timed manual Codex Desktop rehearsal on the claimed
    macOS setup; keep it separate from automated contract evidence.
-2. Upload the completed 2:55 video to public YouTube and verify it logged out.
+2. Review the Unlisted 1:24 YouTube upload, approve it for public visibility,
+   and verify the resulting public player while logged out.
 3. Review the public repository for personal data and secrets.
 4. Join/confirm hackathon registration and submit the Devpost form.
 5. Preserve judge access through the end of judging.
 
-No public video URL, deployment, repository state, or submission is marked
-complete until verified.
+The Unlisted URL is recorded only as review evidence. No public video URL,
+deployment, repository state, or submission is marked complete until verified.

@@ -160,6 +160,9 @@ prevention, or protection from a compromised host.
 - [x] Primary Codex task/session ID verified through Codex task status
 - [x] Under-three-minute demo video rendered locally with OmniVoice Studio
   `The Neighbor` narration
+- [x] Checksum-bound final render saved as an Unlisted YouTube review upload
+  (1:24) and assigned to the existing `OpenAI Hack-a-thon` playlist; unlisted
+  availability was independently verified on 2026-07-17
 - [ ] Public YouTube upload and Devpost submission
 
 ## Verified Checkpoints
@@ -626,18 +629,22 @@ acceptance-evidence gate; T066 is complete.
 - Perform and time the operator-visible Codex Desktop app rehearsal; automated
   fixture, subscription, Control Room, and hook-contract evidence does not
   substitute for that app-level observation.
-- Upload the completed 2:55 video with audio to public YouTube and verify it
-  while logged out.
+- Review the Unlisted 1:24 video at https://youtu.be/c-a7sLusXv4, approve it for
+  public visibility, and verify the resulting public player while logged out.
 - Keep the free judge path available through 2026-08-05 17:00 PT.
 - Submit and review the Devpost entry before 2026-07-21 17:00 PT.
 
 ## Submission Status
 
-Not submitted. The public repository and final local 2:55 video render are
-independently verified. No successful credentialed direct-API call,
-operator-observed Desktop rehearsal, public video URL, or Devpost submission
-is represented as complete until independently created and verified. The
-primary Codex task/session ID is
+Not submitted. The public repository and final local 83.93-second causal video
+render are independently verified. The checksum-bound final was saved on
+2026-07-17 as the Unlisted 1:24 review upload
+https://youtu.be/c-a7sLusXv4 and assigned to the existing
+`OpenAI Hack-a-thon` playlist. Independent metadata verification reports the
+video as unlisted with an 84-second duration. It remains pending operator
+review; no successful credentialed direct-API call, operator-observed Desktop rehearsal,
+public video URL, or Devpost submission is represented as complete until
+independently created and verified. The primary Codex task/session ID is
 `019f6486-18b4-74b2-b195-3d513f4dc454`, verified through Codex task status and
 not represented as `/feedback` output. The tracked offline-fixture product
 screenshot is complete and is not presented as Desktop-app or live-provider
@@ -681,8 +688,10 @@ evidence.
 - **Deferred roadmap**: all `VC-FUT-*` backends, additional agents, remote
   control-plane capabilities, enterprise identity, packaged local models, and
   exporter ecosystems remain outside the active feature task graph
-- **Submission status**: not submitted; the 2:55 local video is rendered and
-  checksum-recorded, while its public upload, final form entry, logged-out link
+- **Submission status**: not submitted; the 83.93-second local causal video is
+  rendered and checksum-recorded, and its 1:24 YouTube review upload is
+  Unlisted pending
+  operator review. Public visibility, final form entry, logged-out public-link
   checks, and Devpost submission remain incomplete. The verified primary Codex
   task/session ID is `019f6486-18b4-74b2-b195-3d513f4dc454`
 - **Release sequence at this checkpoint**: close every ChatGPT Desktop task, exit all
