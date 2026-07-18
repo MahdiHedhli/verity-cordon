@@ -1,46 +1,73 @@
 # Build Week Video Evidence
 
-## Final Local Render
+## Submission Local Render
 
 - **Rendered**: 2026-07-17
-- **Duration**: 83.930 seconds
+- **Duration**: 109.733 seconds
 - **Video**: H.264, 1280×720, 30 fps, YUV 4:2:0
 - **Audio**: AAC mono, derived from the OmniVoice Studio `The Neighbor`
   narration mix
-- **Container size**: 3,528,647 bytes
+- **Container size**: 4,437,776 bytes
 - **SHA-256**:
-  `6e339cb6caf31cd338cb2e69b01acd4c1ed8fe88ad2ff295cd88405e256116bd`
-- **Unlisted YouTube review URL**: https://youtu.be/c-a7sLusXv4
-- **YouTube displayed duration**: 1:24
-- **Public YouTube URL**: pending operator review and publication
+  `b7167f6aedb156778315d89fb0b0ea032255b1f8acf55545df863dd142ce2ce0`
+- **Public YouTube URL**: https://youtu.be/tREkD6WbolI
+- **YouTube video ID**: `tREkD6WbolI`
+- **Published**: 2026-07-17
+- **YouTube displayed duration**: 1:50
+- **Visibility**: Public
+- **Playlist**: `OpenAI Hack-a-thon`
+- **YouTube checks**: Copyright and Community Guidelines checks passed
 
-The local render is intentionally excluded from Git. The checksum binds the
-reviewed upload artifact without adding a binary release asset to the source
-repository.
+The submission render preserves the reviewed 83.930-second causal live demo,
+then holds its verified ledger frame while a 25.300-second OmniVoice Studio
+`The Neighbor` addendum explicitly explains how Codex was used to build the
+product and how GPT-5.6 contributes at runtime. A 0.5-second transition keeps
+the final duration below three minutes. The local render is intentionally
+excluded from Git; this checksum binds the publication artifact without adding
+a binary release asset to the source repository.
 
-## Unlisted Review Upload
+## Public Submission Upload
 
-On 2026-07-17, the checksum-bound final render was saved to YouTube as an
-**Unlisted** review upload at https://youtu.be/c-a7sLusXv4. YouTube reports a
-1:24 duration, `yt-dlp` independently reports `unlisted` availability and an
-84-second duration, and assignment to the existing `OpenAI Hack-a-thon`
-playlist was verified. This is review evidence only: the operator has not yet
-approved public visibility, and the Devpost submission has not been submitted.
+On 2026-07-17, the checksum-bound 109.733-second submission render was
+published as **Public** at https://youtu.be/tREkD6WbolI. YouTube displays a
+1:50 duration, the video is assigned to the existing `OpenAI Hack-a-thon`
+playlist, and YouTube reported that both its Copyright and Community
+Guidelines checks passed. This is the video entered on the accepted Build Week
+Devpost submission `1095381`.
+
+## Superseded Unlisted Review Upload
+
+On 2026-07-17, the checksum-bound superseded 83.930-second render was saved to
+YouTube as an **Unlisted** review upload at https://youtu.be/c-a7sLusXv4.
+YouTube reports a 1:24 duration, `yt-dlp` independently reports `unlisted`
+availability and an 84-second duration, and assignment to the existing
+`OpenAI Hack-a-thon` playlist was verified. This upload is not the submission
+video because its voiceover does not explicitly explain the Codex development
+contribution or name GPT-5.6. It remains review evidence only and must not be
+entered on Devpost.
 
 ## Narration Evidence
 
 - **Voice**: OmniVoice Studio `The Neighbor`
-- **Full WAV duration**: 83.930 seconds
-- **Full WAV integrated loudness**: -16.0 LUFS
-- **Full WAV true peak**: -1.5 dBFS
-- **Full WAV SHA-256**:
-  `0938cd6c665fa532216ff8109a01d125f83cd251d86a8ef4943f0c4bb074cab6`
+- **Base narration duration**: 83.930 seconds
+- **Base narration integrated loudness**: -16.0 LUFS
+- **Base narration true peak**: -1.5 dBFS
+- **Compliance addendum duration**: 25.300 seconds
+- **Compliance addendum SHA-256**:
+  `44f84d084e5f306a32dd697991363ef3517d7b9f4c2c9d2b85f4e7784bbc6767`
+- **Local ASR QA**: the generated addendum was transcribed back as naming
+  OpenAI Codex, GPT-5.6, structured candidate extraction, semantic risk
+  assessment, local secret sanitization, deterministic policy authority, and
+  the recorded semantic fixture
 - **Silence QA**: no interval at or below -45 dB lasting 1.25 seconds or
   longer
 
-The narration identifies semantic assessment as advice and deterministic
-policy as final authority. The Control Room visibly labels the recorded
-semantic fixture used for the deterministic review path; this video is not
+The addendum states that Codex was the build partner for primary-source
+research, Spec Kit planning, implementation, adversarial testing, the Control
+Room, and release verification. It also states that GPT-5.6 performs structured
+candidate extraction and semantic risk assessment after local sanitization,
+while deterministic policy retains final authority. The Control Room visibly
+labels the recorded semantic fixture used for the timed demo; this video is not
 evidence of a live GPT-5.6 provider response.
 
 ## Visual Evidence Shown
@@ -69,10 +96,13 @@ present a fresh-session injection or revocation demonstration, and does not
 present a fixture response as live-model attestation. The synthetic tool
 fixture performs no external transmission and reads no host secrets.
 
-## Publication Gate
+## Publication Record
 
-After operator review and before Devpost submission, change the approved upload
-to **Public**, then verify while logged out that the public YouTube player is
-reachable, reports a duration below three minutes, has audio enabled, and
-includes the repository link. Replace the pending public URL in this file, the
-submission draft, and the checklist only after that public verification.
+The checksum-bound 109.733-second render is published as **Public**, assigned
+to the existing `OpenAI Hack-a-thon` playlist, and below the three-minute
+limit. The public URL is recorded consistently in this evidence file, the
+submission draft, and the submission checklist. An unauthenticated `yt-dlp`
+request independently verified public availability, the expected video ID and
+title, a 1:50 duration, 1280x720 resolution, and the description's Codex,
+GPT-5.6, repository, and Devpost references. Devpost accepted submission
+`1095381` with this video on 2026-07-17 at 20:20:22 EDT.

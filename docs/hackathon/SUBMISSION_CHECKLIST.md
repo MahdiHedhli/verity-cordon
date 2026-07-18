@@ -7,7 +7,8 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 
 - [x] Project work began after 2026-07-13 09:00 PT.
 - [x] Clean baseline commit and dated work boundary are recorded.
-- [ ] Submit before 2026-07-21 17:00 PT.
+- [x] Submitted on 2026-07-17 at 20:20:22 EDT, before the
+  2026-07-21 17:00 PT deadline.
 - [ ] Keep the working judge path free and unrestricted through 2026-08-05
   17:00 PT.
 - [ ] Freeze submission materials at the deadline except organizer-permitted
@@ -29,10 +30,12 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 - [x] One final rendered `SessionStart` context contained 6 approved memory
   records, and the fixed synthetic attack markers were absent. This is
   hook-contract evidence, not a claim of a manually observed Desktop task.
-- [x] The final 2:55 local render visibly exercises and labels the selected
-  live subscription contribution, deterministic policy authority, shadow and
-  enforcement decisions, revocation, and signed-ledger evidence. Its reviewed
-  metadata and checksum are recorded in `VIDEO_EVIDENCE.md`.
+- [x] The final 1:50 public submission video visibly exercises the synthetic
+  attack, deterministic policy authority, shadow and enforcement decisions,
+  quarantine, and signed-ledger verification. Its audio explicitly explains
+  the Codex development contribution and GPT-5.6 runtime role while disclosing
+  the recorded semantic fixture. Metadata and checksum are recorded in
+  `VIDEO_EVIDENCE.md`.
 - [x] Synthetic fixture reads no real environment and sends nothing externally.
 - [x] Temporary-home Desktop fixture setup, status, bounded probe, interruption
   recovery, drift refusal, and exact teardown contracts pass.
@@ -63,45 +66,53 @@ Verified against the [hackathon overview](https://openai.devpost.com/) and
 
 ## Demo Video
 
-- [x] Checksum-bound final render saved as an **Unlisted** review video at
+- [x] The superseded 83.930-second render is preserved as an **Unlisted** review video at
   https://youtu.be/c-a7sLusXv4; YouTube reports 1:24, independent metadata
   verification reports unlisted availability and an 84-second duration, and
   assignment to the existing `OpenAI Hack-a-thon` playlist was verified on
   2026-07-17.
-- [ ] Operator reviewed and approved the Unlisted video for publication.
-- [ ] Publicly visible YouTube upload.
-- [ ] Final runtime is strictly less than three minutes.
-- [ ] Audio explains what was built and how both Codex and GPT-5.6 were used.
-- [ ] Video shows Codex Desktop running the synthetic attack, shadow decision,
-  enforcement, cross-task absence, revocation, replay, and ledger verification.
-- [ ] Loading screens and typing pauses are edited out.
-- [ ] No real secrets, private data, unauthorized trademarks, copyrighted music,
+- [x] The operator reviewed the live causal demo and requested completion.
+- [x] A compliant 109.733-second replacement was rendered with continuous
+  audio covering what was built, how Codex was used, and how GPT-5.6 was used.
+- [x] The final video is published as **Public** at
+  https://youtu.be/tREkD6WbolI, displays a 1:50 duration, and is assigned to
+  the existing `OpenAI Hack-a-thon` playlist.
+- [x] YouTube Copyright and Community Guidelines checks passed.
+- [x] Final runtime is strictly less than three minutes.
+- [x] Audio explains what was built and how both Codex and GPT-5.6 were used.
+- [x] Video shows the reviewed terminal invoking the synthetic attack while the
+  live Control Room displays shadow admission, enforcement quarantine, and
+  ledger verification. It does not claim Desktop origin, fresh-session
+  injection, or revocation footage.
+- [x] Loading screens and typing pauses are edited out.
+- [x] No real secrets, private data, unauthorized trademarks, copyrighted music,
   or unlicensed third-party content appear.
 
 ## Submission Form
 
-- [ ] English title and one-line pitch.
-- [ ] Complete project description and testing instructions.
-- [ ] Public repository URL entered.
-- [ ] Public YouTube URL entered.
+- [x] English title and one-line pitch entered.
+- [x] Complete project description and testing instructions entered.
+- [x] Public repository URL entered.
+- [x] Public YouTube URL entered.
 - [x] Primary Codex task/session ID is recorded as
   `019f6486-18b4-74b2-b195-3d513f4dc454`, verified through Codex task status
   and not represented as `/feedback` command output.
-- [ ] Developer Tools selected.
-- [ ] Codex acceleration, operator decisions, GPT-5.6 runtime contribution,
+- [x] Developer Tools selected.
+- [x] Codex acceleration, operator decisions, GPT-5.6 runtime contribution,
   challenges, accomplishments, learning, and next steps are covered.
-- [ ] All links tested in a logged-out browser.
-- [ ] Final Devpost preview reviewed before submission.
+- [x] Public video independently fetched without account state via `yt-dlp`;
+  repository visibility independently verified through the unauthenticated
+  GitHub API.
+- [x] Submitted entry re-fetched after submission; its video URL, project state,
+  and submission timestamp were verified.
 
 ## Operator-Only Actions
 
-1. Complete and record the timed manual Codex Desktop rehearsal on the claimed
-   macOS setup; keep it separate from automated contract evidence.
-2. Review the Unlisted 1:24 YouTube upload, approve it for public visibility,
-   and verify the resulting public player while logged out.
-3. Review the public repository for personal data and secrets.
-4. Join/confirm hackathon registration and submit the Devpost form.
-5. Preserve judge access through the end of judging.
+1. Preserve the public video, public repository, and no-key judge path through
+   the end of judging.
+2. Monitor the Devpost entry and avoid breaking its published testing path.
 
-The Unlisted URL is recorded only as review evidence. No public video URL,
-deployment, repository state, or submission is marked complete until verified.
+The 1:24 Unlisted URL is recorded only as superseded review evidence. The final
+public video is https://youtu.be/tREkD6WbolI. Devpost accepted submission
+`1095381` on 2026-07-17 at 20:20:22 EDT at
+https://devpost.com/software/verity-cordon.

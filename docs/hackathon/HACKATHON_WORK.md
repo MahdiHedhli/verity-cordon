@@ -160,10 +160,16 @@ prevention, or protection from a compromised host.
 - [x] Primary Codex task/session ID verified through Codex task status
 - [x] Under-three-minute demo video rendered locally with OmniVoice Studio
   `The Neighbor` narration
-- [x] Checksum-bound final render saved as an Unlisted YouTube review upload
+- [x] Checksum-bound superseded 83.930-second render saved as an Unlisted
+  YouTube review upload
   (1:24) and assigned to the existing `OpenAI Hack-a-thon` playlist; unlisted
   availability was independently verified on 2026-07-17
-- [ ] Public YouTube upload and Devpost submission
+- [x] Checksum-bound 109.733-second final video published as Public at
+  https://youtu.be/tREkD6WbolI (YouTube displays 1:50), assigned to the
+  existing `OpenAI Hack-a-thon` playlist, with YouTube Copyright and Community
+  Guidelines checks passed
+- [x] Devpost submission accepted on 2026-07-17 at 20:20:22 EDT as submission
+  `1095381`: https://devpost.com/software/verity-cordon
 
 ## Verified Checkpoints
 
@@ -629,22 +635,25 @@ acceptance-evidence gate; T066 is complete.
 - Perform and time the operator-visible Codex Desktop app rehearsal; automated
   fixture, subscription, Control Room, and hook-contract evidence does not
   substitute for that app-level observation.
-- Review the Unlisted 1:24 video at https://youtu.be/c-a7sLusXv4, approve it for
-  public visibility, and verify the resulting public player while logged out.
 - Keep the free judge path available through 2026-08-05 17:00 PT.
-- Submit and review the Devpost entry before 2026-07-21 17:00 PT.
+- Monitor the submitted Devpost entry and preserve its public video and
+  repository links through judging.
 
 ## Submission Status
 
-Not submitted. The public repository and final local 83.93-second causal video
-render are independently verified. The checksum-bound final was saved on
-2026-07-17 as the Unlisted 1:24 review upload
-https://youtu.be/c-a7sLusXv4 and assigned to the existing
-`OpenAI Hack-a-thon` playlist. Independent metadata verification reports the
-video as unlisted with an 84-second duration. It remains pending operator
-review; no successful credentialed direct-API call, operator-observed Desktop rehearsal,
-public video URL, or Devpost submission is represented as complete until
-independently created and verified. The primary Codex task/session ID is
+Submitted to OpenAI Build Week on 2026-07-17 at 20:20:22 EDT. Devpost accepted
+submission `1095381` at https://devpost.com/software/verity-cordon. The
+checksum-bound 109.733-second final video is **Public** at
+https://youtu.be/tREkD6WbolI; YouTube displays 1:50, lists it in the existing
+`OpenAI Hack-a-thon` playlist, and reports passed Copyright and Community
+Guidelines checks. An unauthenticated `yt-dlp` request independently verified
+the public video ID, title, duration, 1280x720 resolution, and description. An
+unauthenticated GitHub API request verified that the repository is public,
+unarchived, and Apache-2.0 licensed. The video shows the live local attack,
+shadow admission, enforcement quarantine, and ledger verification; it does not
+show fresh-session injection or revocation. No successful credentialed
+direct-API call or operator-observed Desktop rehearsal is represented as
+complete. The primary Codex task/session ID is
 `019f6486-18b4-74b2-b195-3d513f4dc454`, verified through Codex task status and
 not represented as `/feedback` output. The tracked offline-fixture product
 screenshot is complete and is not presented as Desktop-app or live-provider
@@ -688,22 +697,16 @@ evidence.
 - **Deferred roadmap**: all `VC-FUT-*` backends, additional agents, remote
   control-plane capabilities, enterprise identity, packaged local models, and
   exporter ecosystems remain outside the active feature task graph
-- **Submission status**: not submitted; the 83.93-second local causal video is
-  rendered and checksum-recorded, and its 1:24 YouTube review upload is
-  Unlisted pending
-  operator review. Public visibility, final form entry, logged-out public-link
-  checks, and Devpost submission remain incomplete. The verified primary Codex
+- **Submission status**: submitted on 2026-07-17 at 20:20:22 EDT as Devpost
+  submission `1095381` at https://devpost.com/software/verity-cordon. The
+  checksum-bound 109.733-second final video is Public at
+  https://youtu.be/tREkD6WbolI, YouTube displays 1:50, it is assigned to the
+  `OpenAI Hack-a-thon` playlist, and YouTube Copyright and Community Guidelines
+  checks passed. Public video and repository access were independently verified
+  without relying on authenticated Studio state. The verified primary Codex
   task/session ID is `019f6486-18b4-74b2-b195-3d513f4dc454`
-- **Release sequence at this checkpoint**: close every ChatGPT Desktop task, exit all
-  Codex CLI TUI and IDE sessions, and fully quit the ChatGPT desktop app;
-  preview and apply the normal Verity integration; deliberately start CLI,
-  use `/hooks` to trust the exact reviewed Verity hook definitions, exit CLI,
-  and set the post-review assertion; follow the preview/digest-confirmed setup
-  in `scripts/demo-desktop.sh`; start the daemon and pass doctor/status before
-  restarting Desktop; verify `/mcp` and a benign hook canary; run and time the
-  documented attack,
-  enforcement, clean-task, revocation, and ledger sequence; immediately tear
-  down the user-wide fixture; record and upload the under-three-minute public
-  video; enter the verified primary task/session ID; test public links logged
-  out; and submit
-  before 2026-07-21 17:00 PT
+- **Post-submission responsibilities**: keep the no-key judge path, public
+  repository, public video, and Devpost entry available through judging;
+  monitor link and submission status; avoid scope-expanding or compatibility-
+  breaking changes; and continue to disclose the unexercised live direct-API
+  and operator-observed Desktop gates accurately

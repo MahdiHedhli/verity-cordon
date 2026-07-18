@@ -13,10 +13,12 @@ A tamper-evident memory firewall for Codex: verifiable memory, revocable trust.
 Codex can carry useful knowledge between tasks, but durable memory creates a new
 security boundary: untrusted content from tools, documentation, imported files,
 or model output can be cleaned up into a persistent instruction and regain
-influence in a later session. The primary demonstration makes this time-delayed
-risk visible by contrasting a shadow-admitted memory with a later rendered
-`SessionStart` context, enforcement, and selective revocation. The recorded
-evidence does not claim two manually observed Codex Desktop tasks.
+influence in a later session. The primary demonstration invokes a reviewed,
+local Trojan Hippo-inspired poisoned-docs fixture from a terminal while the
+running Control Room shows shadow admission, deterministic enforcement of the
+identical payload, quarantine, signed event history, and ledger verification.
+It does not claim Codex Desktop origin, fresh-session injection footage,
+revocation footage, or live-model attestation.
 
 Verity Cordon makes durable memory explicit, attributable, policy-governed, and
 revocable. Candidate memories are traced to evidence, screened for secrets,
@@ -284,11 +286,15 @@ observations are reported separately as manual smoke evidence.
 
 ## Required Final Links
 
+- **Devpost project**: https://devpost.com/software/verity-cordon
+  (submission `1095381`; accepted 2026-07-17 at 20:20:22 EDT)
 - **Repository**: https://github.com/MahdiHedhli/verity-cordon
-- **Unlisted YouTube review video**: https://youtu.be/c-a7sLusXv4
-  (1:24; unlisted availability verified; assigned to the existing
-  `OpenAI Hack-a-thon` playlist on 2026-07-17; pending operator review and
-  public visibility)
-- **Public YouTube demo**: `REPLACE_WITH_PUBLIC_YOUTUBE_URL`
+- **Superseded Unlisted review video**: https://youtu.be/c-a7sLusXv4
+  (1:24; retained only as review evidence and not suitable for submission
+  because its voiceover omitted the required Codex/GPT-5.6 explanation)
+- **Public YouTube demo**: https://youtu.be/tREkD6WbolI
+  (1:50; published Public on 2026-07-17; assigned to the
+  `OpenAI Hack-a-thon` playlist; YouTube Copyright and Community Guidelines
+  checks passed)
 - **Codex task/session ID**: `019f6486-18b4-74b2-b195-3d513f4dc454`
   (verified through Codex task status; not represented as `/feedback` output)
