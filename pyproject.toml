@@ -20,7 +20,7 @@ classifiers = [
 ]
 dependencies = [
   "aiosqlite>=0.22,<0.23",
-  "cryptography>=49,<50",
+  "cryptography>=50.0.0,<51",
   "fastapi>=0.139,<0.140",
   "httpx>=0.28,<0.29",
   "jsonschema>=4.26,<5",
